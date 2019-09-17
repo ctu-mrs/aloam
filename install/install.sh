@@ -35,7 +35,6 @@ mkdir ceres-bin
 cd ceres-bin
 cmake ../ceres-solver-1.14.0
 make -j3
-make test
 make install
 
 # clean tmp files
