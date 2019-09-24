@@ -1,7 +1,13 @@
 <launch>
 
   <arg name="uav_name" default="$(optenv UAV_NAME)" />
+  <arg name="debug" default="false" />
+  <arg name="fcu_frame" default="fcu_$(arg uav_name)"/>
+  <arg name="sensor_frame" default="os1_sensor"/>
   <arg name="rviz" default="false" />
+
+  <arg unless="$(arg debug)" name="launch_prefix" value=""/>
+  <arg     if="$(arg debug)" name="launch_prefix" value="gdb -ex run --args"/>
 
   <group ns="$(arg uav_name)">
 
@@ -21,7 +27,8 @@
     <node pkg="aloam_velodyne" type="ascanRegistration" name="aloam_registration" output="screen">
 
       <!-- Subscribers -->
-      <remap from="/velodyne_points" to="os1_cloud_node/points"/>
+      <!-- <remap from="/velodyne_points" to="os1_cloud_node/points"/> -->
+      <remap from="/velodyne_points" to="os1_cloud_node/points/sensor_frame"/>
 
       <!-- Publishers -->
       <remap from="/laser_cloud_flat" to="~laser_cloud_flat"/>
@@ -72,6 +79,21 @@
 
     </node>
 
+    <!-- Transform node -->
+    <node pkg="nodelet" type="nodelet" name="cloud_transform" args="standalone cloud_transform/CloudTransform" output="screen" launch-prefix="$(arg launch_prefix)" >
+
+      <param name="target_frame" type="string" value="$(arg sensor_frame)" />
+
+      <!-- Subscribers --> 
+      <remap from="~cloud_scan_in" to="os1_cloud_node/points" />
+
+      <!-- Publishers --> 
+      <remap from="~cloud_transformed_out" to="os1_cloud_node/points/sensor_frame" />
+
+    </node>
+
+    <!-- TF Ouster -->
+    <node pkg="tf2_ros" type="static_transform_publisher" name="$(arg sensor_frame)_to_$(arg fcu_frame)" args="0.0 0.0 0.15 0 0.0 0.0 $(arg fcu_frame) $(arg sensor_frame)" />
 
     <group if="$(arg rviz)">
       <node launch-prefix="nice" pkg="rviz" type="rviz" name="rviz" args="-d $(find aloam_velodyne)/rviz/aloam_velodyne.rviz" />
