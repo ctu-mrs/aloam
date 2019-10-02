@@ -85,10 +85,10 @@
       <!-- <param name="target_frame" type="string" value="$(arg sensor_frame)" /> -->
       <param name="target_frame" type="string" value="$(arg fcu_frame)" />
 
-      <!-- Subscribers --> 
+      <!-- Subscribers -->
       <remap from="~cloud_scan_in" to="os1_cloud_node/points" />
 
-      <!-- Publishers --> 
+      <!-- Publishers -->
       <remap from="~cloud_transformed_out" to="os1_cloud_node/points/sensor_frame" />
 
     </node>
