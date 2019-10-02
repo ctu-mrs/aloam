@@ -53,7 +53,7 @@
 
       <!-- Publishers -->
       <remap from="/velodyne_cloud_3" to="~ouster_cloud_3"/>
-      <remap from="/laser_odom_to_init" to="~laser_odom_to_init"/>
+      <remap from="/laser_odom_to_init" to="~laser_odom_to_init/offline"/>
       <remap from="/laser_odom_path" to="~laser_odom_path"/>
       <remap from="/laser_cloud_corner_last" to="~laser_cloud_corner_last"/>
       <remap from="/laser_cloud_surf_last" to="~laser_cloud_surf_last"/>
