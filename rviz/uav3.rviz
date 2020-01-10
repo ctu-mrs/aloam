@@ -10,6 +10,7 @@ Panels:
         - /odometry1/PointCloud21
         - /mapping1
         - /Axes2
+        - /MarkerArray1/Status1
       Splitter Ratio: 0.5
     Tree Height: 776
   - Class: rviz/Selection
@@ -198,8 +199,8 @@ Visualization Manager:
         - Alpha: 1
           Autocompute Intensity Bounds: true
           Autocompute Value Bounds:
-            Max Value: 15.142948150634766
-            Min Value: -1.5074609518051147
+            Max Value: 2.630204200744629
+            Min Value: -1.426335096359253
             Value: true
           Axis: Z
           Channel Name: intensity
@@ -677,6 +678,14 @@ Visualization Manager:
       Radius: 0.10000000149011612
       Reference Frame: uav3/os1_sensor
       Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /uav3/occupied_cells_vis_array
+      Name: MarkerArray
+      Namespaces:
+        map: true
+      Queue Size: 100
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 0; 0; 0
@@ -720,10 +729,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.5547969341278076
+      Pitch: 0.6447968482971191
       Target Frame: aft_mapped
       Value: XYOrbit (rviz)
-      Yaw: 0.15868882834911346
+      Yaw: 6.1268744468688965
     Saved: ~
 Window Geometry:
   Displays:

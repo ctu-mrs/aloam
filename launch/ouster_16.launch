@@ -7,13 +7,14 @@
   <arg name="lidar_frame" default="$(arg uav_name)/os1_lidar"/>
   <arg name="map_frame" default="$(arg uav_name)/origin_aloam"/>
   <arg name="rviz" default="false" />
+  <arg name="map_builder" default="true" />
 
   <arg unless="$(arg debug)" name="launch_prefix" value=""/>
   <arg     if="$(arg debug)" name="launch_prefix" value="gdb -ex run --args"/>
 
   <group ns="$(arg uav_name)">
 
-    <param name="scan_line" type="int" value="64" />
+    <param name="scan_line" type="int" value="16" />
 
     <!-- if 1, do mapping 10 Hz, if 2, do mapping 5 Hz. Suggest to use 1, it will adjust frequence automaticlly -->
     <param name="mapping_skip_frame" type="int" value="1" />
@@ -82,6 +83,15 @@
 
     </node>
 
+    <!-- Map Builder node -->
+    <group if="$(arg map_builder)">
+      <include file="$(find aloam_velodyne)/launch/map_builder.launch">
+        <arg name="uav_name" value="$(arg uav_name)" />
+        <arg name="map_frame" value="$(arg map_frame)" />
+      </include>
+    </group>
+
+
     <!-- Transform node -->
     <!-- <node pkg="nodelet" type="nodelet" name="cloud_transform" args="standalone cloud_transform/CloudTransform" output="screen" launch-prefix="$(arg launch_prefix)" > -->
 
@@ -96,7 +106,7 @@
     <!-- </node> -->
 
     <group if="$(arg rviz)">
-      <node launch-prefix="nice" pkg="rviz" type="rviz" name="rviz" args="-d $(find aloam_velodyne)/rviz/uav1.rviz" />
+      <node launch-prefix="nice" pkg="rviz" type="rviz" name="rviz" args="-d $(find aloam_velodyne)/rviz/uav3.rviz" />
     </group>
 
   </group>

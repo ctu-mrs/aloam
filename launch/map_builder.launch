@@ -1,0 +1,22 @@
+<launch>
+  
+  <arg name="uav_name" default="$(optenv UAV_NAME)" />
+  <arg name="map_frame" default="$(arg uav_name)/origin_aloam" />
+  <arg name="pointcloud2_in" default="/$(arg uav_name)/aloam_mapping/sensor_cloud_registered" />
+  <!-- <arg name="pointcloud2_in" default="/$(arg uav_name)/aloam_mapping/laser_cloud_map" /> -->
+
+  <arg name="resolution" default="0.1" />
+  <arg name="sensor_max_range" default="100.0" />
+
+	<node pkg="octomap_server" type="octomap_server_node" name="octomap_server">
+		<param name="resolution" value="$(arg resolution)" />
+		<param name="frame_id" type="string" value="$(arg map_frame)" />
+		<param name="sensor_model/max_range" value="$(arg sensor_max_range)" />
+		<param name="sensor_model/hit" value="0.55" />
+
+		<param name="latch" value="false" />
+		<param name="filter_ground" value="false" />
+		
+    <remap from="cloud_in" to="$(arg pointcloud2_in)" />
+	</node>
+</launch>
