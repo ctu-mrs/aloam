@@ -187,7 +187,7 @@ int main(int argc, char **argv) {
   nh.getParam("sensor_frame", _frame_sensor);
   nh.getParam("map_frame", _frame_map);
 
-  printf("Mapping %d Hz \n", 10 / skipFrameNum);
+  ROS_INFO_STREAM_THROTTLE(1, "Mapping at %d " << 10 / skipFrameNum << " Hz");
 
   ros::Subscriber subCornerPointsSharp     = nh.subscribe<sensor_msgs::PointCloud2>("/laser_cloud_sharp", 100, laserCloudSharpHandler);
   ros::Subscriber subCornerPointsLessSharp = nh.subscribe<sensor_msgs::PointCloud2>("/laser_cloud_less_sharp", 100, laserCloudLessSharpHandler);
@@ -218,7 +218,7 @@ int main(int argc, char **argv) {
 
       if (timeCornerPointsSharp != timeLaserCloudFullRes || timeCornerPointsLessSharp != timeLaserCloudFullRes || timeSurfPointsFlat != timeLaserCloudFullRes ||
           timeSurfPointsLessFlat != timeLaserCloudFullRes) {
-        printf("unsync messeage!");
+        ROS_ERROR_STREAM("unsync message!");
         ROS_BREAK();
       }
 
@@ -423,10 +423,10 @@ int main(int argc, char **argv) {
           }
 
           // printf("coner_correspondance %d, plane_correspondence %d \n", corner_correspondence, plane_correspondence);
-          printf("data association time %f ms \n", t_data.toc());
+          ROS_INFO_STREAM_THROTTLE(1, "data association time %f " << t_data.toc() << " ms");
 
           if ((corner_correspondence + plane_correspondence) < 10) {
-            printf("less correspondence! *************************************************\n");
+            ROS_INFO_STREAM("less correspondence! *************************************************");
           }
 
           TicToc                 t_solver;
@@ -436,9 +436,11 @@ int main(int argc, char **argv) {
           options.minimizer_progress_to_stdout = false;
           ceres::Solver::Summary summary;
           ceres::Solve(options, &problem, &summary);
-          printf("solver time %f ms \n", t_solver.toc());
+          /* printf("solver time %f ms \n", t_solver.toc()); */
+          ROS_INFO_STREAM_THROTTLE(1, "solver time %f " << t_solver.toc() << " ms");
         }
-        printf("optimization twice time %f \n", t_opt.toc());
+        /* printf("optimization twice time %f \n", t_opt.toc()); */
+        ROS_INFO_STREAM_THROTTLE(1, "optimization twice time %f " << t_opt.toc() << " ms");
 
         t_w_curr = t_w_curr + q_w_curr * t_last_curr;
         q_w_curr = q_w_curr * q_last_curr;
@@ -523,8 +525,10 @@ int main(int argc, char **argv) {
         laserCloudFullRes3.header.frame_id = _frame_sensor;
         pubLaserCloudFullRes.publish(laserCloudFullRes3);
       }
-      printf("publication time %f ms \n", t_pub.toc());
-      printf("whole laserOdometry time %f ms \n \n", t_whole.toc());
+      /* printf("publication time %f ms \n", t_pub.toc()); */
+      /* printf("whole laserOdometry time %f ms \n \n", t_whole.toc()); */
+      ROS_INFO_STREAM_THROTTLE(1, "publication time %f " << t_pub.toc() << " ms");
+      ROS_INFO_STREAM_THROTTLE(1, "whole laserOdometry time %f " << t_whole.toc() << " ms");
       if (t_whole.toc() > 100)
         ROS_WARN("odometry process over 100ms");
 
