@@ -16,6 +16,8 @@ find_package(catkin REQUIRED COMPONENTS
   image_transport
   cv_bridge
   tf
+  mrs_lib
+  eigen_conversions
 )
 
 #find_package(Eigen3 REQUIRED)
@@ -31,7 +33,7 @@ include_directories(
   ${OpenCV_INCLUDE_DIRS})
 
 catkin_package(
-  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs
+  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs mrs_lib eigen_conversions
   DEPENDS EIGEN3 PCL 
   INCLUDE_DIRS include
 )

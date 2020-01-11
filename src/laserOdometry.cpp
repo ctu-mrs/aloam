@@ -58,7 +58,7 @@
 
 #define DISTORTION 0
 
-std::string _frame_sensor;
+std::string _frame_lidar;
 std::string _frame_map;
 
 int corner_correspondence = 0, plane_correspondence = 0;
@@ -184,7 +184,7 @@ int main(int argc, char **argv) {
 
   nh.param<int>("mapping_skip_frame", skipFrameNum, 2);
 
-  nh.getParam("sensor_frame", _frame_sensor);
+  nh.getParam("lidar_frame", _frame_lidar);
   nh.getParam("map_frame", _frame_map);
 
   ROS_INFO_STREAM_THROTTLE(1, "Mapping at %d " << 10 / skipFrameNum << " Hz");
@@ -423,7 +423,7 @@ int main(int argc, char **argv) {
           }
 
           // printf("coner_correspondance %d, plane_correspondence %d \n", corner_correspondence, plane_correspondence);
-          ROS_INFO_STREAM_THROTTLE(1, "data association time %f " << t_data.toc() << " ms");
+          ROS_INFO_STREAM_THROTTLE(1, "data association time " << t_data.toc() << " ms");
 
           if ((corner_correspondence + plane_correspondence) < 10) {
             ROS_INFO_STREAM("less correspondence! *************************************************");
@@ -437,10 +437,10 @@ int main(int argc, char **argv) {
           ceres::Solver::Summary summary;
           ceres::Solve(options, &problem, &summary);
           /* printf("solver time %f ms \n", t_solver.toc()); */
-          ROS_INFO_STREAM_THROTTLE(1, "solver time %f " << t_solver.toc() << " ms");
+          ROS_INFO_STREAM_THROTTLE(1, "solver time " << t_solver.toc() << " ms");
         }
         /* printf("optimization twice time %f \n", t_opt.toc()); */
-        ROS_INFO_STREAM_THROTTLE(1, "optimization twice time %f " << t_opt.toc() << " ms");
+        ROS_INFO_STREAM_THROTTLE(1, "optimization twice time " << t_opt.toc() << " ms");
 
         t_w_curr = t_w_curr + q_w_curr * t_last_curr;
         q_w_curr = q_w_curr * q_last_curr;
@@ -451,7 +451,7 @@ int main(int argc, char **argv) {
       // publish odometry
       nav_msgs::Odometry laserOdometry;
       laserOdometry.header.frame_id         = _frame_map;
-      laserOdometry.child_frame_id          = _frame_sensor;
+      laserOdometry.child_frame_id          = _frame_lidar;
       laserOdometry.header.stamp            = ros::Time().fromSec(timeSurfPointsLessFlat);
       laserOdometry.pose.pose.orientation.x = q_w_curr.x();
       laserOdometry.pose.pose.orientation.y = q_w_curr.y();
@@ -510,25 +510,25 @@ int main(int argc, char **argv) {
         sensor_msgs::PointCloud2 laserCloudCornerLast2;
         pcl::toROSMsg(*laserCloudCornerLast, laserCloudCornerLast2);
         laserCloudCornerLast2.header.stamp    = ros::Time().fromSec(timeSurfPointsLessFlat);
-        laserCloudCornerLast2.header.frame_id = _frame_sensor;
+        laserCloudCornerLast2.header.frame_id = _frame_lidar;
         pubLaserCloudCornerLast.publish(laserCloudCornerLast2);
 
         sensor_msgs::PointCloud2 laserCloudSurfLast2;
         pcl::toROSMsg(*laserCloudSurfLast, laserCloudSurfLast2);
         laserCloudSurfLast2.header.stamp    = ros::Time().fromSec(timeSurfPointsLessFlat);
-        laserCloudSurfLast2.header.frame_id = _frame_sensor;
+        laserCloudSurfLast2.header.frame_id = _frame_lidar;
         pubLaserCloudSurfLast.publish(laserCloudSurfLast2);
 
         sensor_msgs::PointCloud2 laserCloudFullRes3;
         pcl::toROSMsg(*laserCloudFullRes, laserCloudFullRes3);
         laserCloudFullRes3.header.stamp    = ros::Time().fromSec(timeSurfPointsLessFlat);
-        laserCloudFullRes3.header.frame_id = _frame_sensor;
+        laserCloudFullRes3.header.frame_id = _frame_lidar;
         pubLaserCloudFullRes.publish(laserCloudFullRes3);
       }
       /* printf("publication time %f ms \n", t_pub.toc()); */
       /* printf("whole laserOdometry time %f ms \n \n", t_whole.toc()); */
-      ROS_INFO_STREAM_THROTTLE(1, "publication time %f " << t_pub.toc() << " ms");
-      ROS_INFO_STREAM_THROTTLE(1, "whole laserOdometry time %f " << t_whole.toc() << " ms");
+      ROS_INFO_STREAM_THROTTLE(1, "publication time " << t_pub.toc() << " ms");
+      ROS_INFO_STREAM_THROTTLE(1, "whole laserOdometry time " << t_whole.toc() << " ms");
       if (t_whole.toc() > 100)
         ROS_WARN("odometry process over 100ms");
 

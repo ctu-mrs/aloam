@@ -25,9 +25,10 @@
     <param name="mapping_line_resolution" type="double" value="0.2"/>
     <param name="mapping_plane_resolution" type="double" value="0.4"/>
 
+    <param name="uav_name" type="string" value="$(arg uav_name)"/>
     <param name="map_frame" type="string" value="$(arg map_frame)"/>
-    <param name="sensor_frame" type="string" value="$(arg sensor_frame)"/>
     <param name="lidar_frame" type="string" value="$(arg lidar_frame)"/>
+    <param name="fcu_frame" type="string" value="$(arg fcu_frame)"/>
 
     <!-- Registration node -->
     <node pkg="aloam_velodyne" type="ascanRegistration" name="aloam_registration" output="screen">

@@ -212,7 +212,7 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) {
 
   cloudSize = count;
   /* printf("points size %d \n", cloudSize); */
-  ROS_INFO_STREAM_THROTTLE(1, "points size %d" << cloudSize);
+  ROS_INFO_STREAM_THROTTLE(1, "points size " << cloudSize);
 
   pcl::PointCloud<PointType>::Ptr laserCloud(new pcl::PointCloud<PointType>());
   for (int i = 0; i < N_SCANS; i++) {
@@ -222,7 +222,7 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) {
   }
 
   /* printf("prepare time %f \n", t_prepare.toc()); */
-  ROS_INFO_STREAM_THROTTLE(1, "prepare time %f" << t_prepare.toc() << " ms");
+  ROS_INFO_STREAM_THROTTLE(1, "prepare time " << t_prepare.toc() << " ms");
 
   for (int i = 5; i < cloudSize - 5; i++) {
     float diffX = laserCloud->points[i - 5].x + laserCloud->points[i - 4].x + laserCloud->points[i - 3].x + laserCloud->points[i - 2].x +
@@ -360,8 +360,8 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) {
   }
   /* printf("sort q time %f \n", t_q_sort); */
   /* printf("seperate points time %f \n", t_pts.toc()); */
-  ROS_INFO_STREAM_THROTTLE(1, "sort q time %f" << t_q_sort << " ms");
-  ROS_INFO_STREAM_THROTTLE(1, "separate points time %f" << t_pts.toc() << " ms");
+  ROS_INFO_STREAM_THROTTLE(1, "sort q time " << t_q_sort << " ms");
+  ROS_INFO_STREAM_THROTTLE(1, "separate points time " << t_pts.toc() << " ms");
 
 
   sensor_msgs::PointCloud2 laserCloudOutMsg;
@@ -406,7 +406,7 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) {
   }
 
   /* printf("scan registration time %f ms *************\n", t_whole.toc()); */
-  ROS_INFO_STREAM_THROTTLE(1, "scan registration time %f" << t_whole.toc() << " ms");
+  ROS_INFO_STREAM_THROTTLE(1, "scan registration time " << t_whole.toc() << " ms");
   if (t_whole.toc() > 100)
     ROS_WARN("scan registration process over 100ms");
 }
@@ -421,7 +421,7 @@ int main(int argc, char **argv) {
   nh.getParam("map_frame", _frame_map);
 
   /* printf("scan line number %d \n", N_SCANS); */
-  ROS_INFO_STREAM("scan line number %d" << N_SCANS);
+  ROS_INFO_STREAM("scan line number " << N_SCANS);
 
   if (N_SCANS != 16 && N_SCANS != 32 && N_SCANS != 64) {
     /* printf("only support velodyne with 16, 32 or 64 scan line!"); */
