@@ -5,7 +5,7 @@
   <arg name="fcu_frame" default="$(arg uav_name)/fcu"/>
   <arg name="sensor_frame" default="$(arg uav_name)/os1_sensor"/>
   <arg name="lidar_frame" default="$(arg uav_name)/os1_lidar"/>
-  <arg name="map_frame" default="$(arg uav_name)/origin_aloam"/>
+  <arg name="map_frame" default="$(arg uav_name)/aloam_origin"/>
   <arg name="rviz" default="false" />
   <arg name="map_builder" default="true" />
 
