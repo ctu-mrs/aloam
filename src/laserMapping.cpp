@@ -264,7 +264,7 @@ void process() {
       if (timeLaserCloudCornerLast != timeLaserOdometry || timeLaserCloudSurfLast != timeLaserOdometry || timeLaserCloudFullRes != timeLaserOdometry) {
         ROS_INFO_STREAM("time corner " << timeLaserCloudCornerLast << " surf " << timeLaserCloudSurfLast << " full " << timeLaserCloudFullRes
                                          << " odom " << timeLaserOdometry);
-        ROS_INFO_STREAM("unsync messeage!");
+        ROS_INFO_STREAM("unsync message!");
         /* printf("time corner %f surf %f full %f odom %f \n", timeLaserCloudCornerLast, timeLaserCloudSurfLast, timeLaserCloudFullRes, timeLaserOdometry); */
         /* printf("unsync messeage!"); */
         mBuf.unlock();

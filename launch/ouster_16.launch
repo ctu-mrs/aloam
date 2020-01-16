@@ -9,6 +9,11 @@
   <arg name="rviz" default="false" />
   <arg name="map_builder" default="true" />
 
+  <arg name="min_range" default="0.4" />
+  <arg name="max_range" default="40.0" />
+  <arg name="vertical_fov" default="33.2" />
+  <arg name="frequency" default="10.0" />
+
   <arg unless="$(arg debug)" name="launch_prefix" value=""/>
   <arg     if="$(arg debug)" name="launch_prefix" value="gdb -ex run --args"/>
 
@@ -29,6 +34,11 @@
     <param name="map_frame" type="string" value="$(arg map_frame)"/>
     <param name="lidar_frame" type="string" value="$(arg lidar_frame)"/>
     <param name="fcu_frame" type="string" value="$(arg fcu_frame)"/>
+
+    <param name="min_range" type="double" value="$(arg min_range)"/>
+    <param name="max_range" type="double" value="$(arg max_range)"/>
+    <param name="vertical_fov" type="double" value="$(arg vertical_fov)"/>
+    <param name="frequency" type="double" value="$(arg frequency)"/>
 
     <!-- Odometry node -->
     <node pkg="aloam_velodyne" type="alaserOdometry" name="aloam_odometry" output="screen">

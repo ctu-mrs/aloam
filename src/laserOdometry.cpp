@@ -71,18 +71,21 @@ using std::atan2;
 using std::cos;
 using std::sin;
 
-bool         systemRegistrationInited = false;
-const double scanPeriod               = 0.1;
+bool   systemRegistrationInited = false;
+double scanPeriod;
 
 const int systemDelay     = 0;
 int       systemInitCount = 0;
 int       N_SCANS         = 0;
+float     vertical_fov_half;
+float     ray_vert_delta;
 float     cloudCurvature[400000];
 int       cloudSortInd[400000];
 int       cloudNeighborPicked[400000];
 int       cloudLabel[400000];
 
-double MINIMUM_RANGE = 0.1;
+double min_range_sq;
+double max_range_sq;
 
 /*//}*/
 
@@ -95,7 +98,7 @@ tf::Transform         transform_lidar_to_fcu_;
 
 int corner_correspondence = 0, plane_correspondence = 0;
 
-constexpr double SCAN_PERIOD           = 0.1;
+/* constexpr double SCAN_PERIOD           = 0.1; */
 constexpr double DISTANCE_SQ_THRESHOLD = 25;
 constexpr double NEARBY_SCAN           = 2.5;
 
@@ -147,7 +150,7 @@ bool comp(int i, int j) {
   return (cloudCurvature[i] < cloudCurvature[j]);
 }
 
-void removeClosedPointCloud(const pcl::PointCloud<PointType> &cloud_in, pcl::PointCloud<PointType> &cloud_out, float thres) {
+void removeCloseAndFarPointCloud(const pcl::PointCloud<PointType> &cloud_in, pcl::PointCloud<PointType> &cloud_out) {
   if (&cloud_in != &cloud_out) {
     cloud_out.header = cloud_in.header;
     cloud_out.points.resize(cloud_in.points.size());
@@ -155,10 +158,11 @@ void removeClosedPointCloud(const pcl::PointCloud<PointType> &cloud_in, pcl::Poi
 
   size_t j = 0;
 
-  float thres_sq = thres * thres;
   for (size_t i = 0; i < cloud_in.points.size(); ++i) {
-    if (cloud_in.points[i].x * cloud_in.points[i].x + cloud_in.points[i].y * cloud_in.points[i].y + cloud_in.points[i].z * cloud_in.points[i].z < thres_sq)
+    double dist_sq = cloud_in.points[i].x * cloud_in.points[i].x + cloud_in.points[i].y * cloud_in.points[i].y + cloud_in.points[i].z * cloud_in.points[i].z;
+    if (dist_sq < min_range_sq || dist_sq > max_range_sq) {
       continue;
+    }
     cloud_out.points[j] = cloud_in.points[i];
     j++;
   }
@@ -190,7 +194,7 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) {
   std::vector<int> indices;
 
   pcl::removeNaNFromPointCloud(laserCloudIn, laserCloudIn, indices);
-  removeClosedPointCloud(laserCloudIn, laserCloudIn, MINIMUM_RANGE);
+  removeCloseAndFarPointCloud(laserCloudIn, laserCloudIn);
 
   int   cloudSize = laserCloudIn.points.size();
   float startOri  = -atan2(laserCloudIn.points[0].y, laserCloudIn.points[0].x);
@@ -212,11 +216,13 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) {
     point.y = laserCloudIn.points[i].y;
     point.z = laserCloudIn.points[i].z;
 
-    float angle  = atan(point.z / sqrt(point.x * point.x + point.y * point.y)) * 180 / M_PI;
     int   scanID = 0;
+    float angle  = (M_PI_2 - acos(point.z / sqrt(point.x * point.x + point.y * point.y + point.z * point.z))) * 180.0 / M_PI;
 
     if (N_SCANS == 16) {
-      scanID = int((angle + 15) / 2 + 0.5);
+      scanID = std::round((angle + vertical_fov_half) / ray_vert_delta);
+      /* ROS_WARN("point: (%0.2f, %0.2f, %0.2f), angle: %0.2f deg, scan_id: %d", point.x, point.y, point.z, angle, scanID); */
+      /* scanID = int((angle + 15) / 2 + 0.5); */
       if (scanID > (N_SCANS - 1) || scanID < 0) {
         count--;
         continue;
@@ -275,8 +281,10 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) {
   ROS_INFO_STREAM_THROTTLE(1, "points size " << cloudSize);
 
   pcl::PointCloud<PointType>::Ptr laserCloud(new pcl::PointCloud<PointType>());
+  /* ROS_ERROR("Cloud:"); */
   for (int i = 0; i < N_SCANS; i++) {
     scanStartInd[i] = laserCloud->size() + 5;
+    /* ROS_ERROR("Ring %d: %ld", i, laserCloudScans[i].points.size()); */
     *laserCloud += laserCloudScans[i];
     scanEndInd[i] = laserCloud->size() - 6;
   }
@@ -458,7 +466,7 @@ void TransformToStart(PointType const *const pi, PointType *const po) {
   // interpolation ratio
   double s;
   if (DISTORTION)
-    s = (pi->intensity - int(pi->intensity)) / SCAN_PERIOD;
+    s = (pi->intensity - int(pi->intensity)) / scanPeriod;
   else
     s = 1.0;
   // s = 1;
@@ -498,14 +506,30 @@ int main(int argc, char **argv) {
   ros::NodeHandle nh;
 
   nh.param<int>("scan_line", N_SCANS, 16);
-  nh.param<double>("minimum_range", MINIMUM_RANGE, 0.1);
-  ROS_INFO_STREAM("scan line number " << N_SCANS);
-
   if (N_SCANS != 16 && N_SCANS != 32 && N_SCANS != 64) {
     /* printf("only support velodyne with 16, 32 or 64 scan line!"); */
     ROS_ERROR_STREAM("only support velodyne with 16, 32 or 64 scan line!");
     return 0;
   }
+  ROS_INFO_STREAM("scan line number " << N_SCANS);
+
+  nh.param<double>("min_range", min_range_sq, 0.0);
+  nh.param<double>("max_range", max_range_sq, 1000.0);
+  ROS_INFO_STREAM("min range" << min_range_sq);
+  ROS_INFO_STREAM("max range" << max_range_sq);
+  min_range_sq *= min_range_sq;
+  max_range_sq *= max_range_sq;
+
+  nh.param<float>("vertical_fov", vertical_fov_half, 30.0);
+  ROS_INFO_STREAM("vertical fov" << vertical_fov_half);
+  ray_vert_delta = vertical_fov_half / float(N_SCANS - 1);
+  vertical_fov_half /= 2.0;
+  ROS_INFO_STREAM("vertical fov delta step" << ray_vert_delta);
+  
+  nh.param<double>("frequency", scanPeriod, 10.0);
+  ROS_INFO_STREAM("frequency" << scanPeriod);
+  scanPeriod = 1.0 / scanPeriod;
+
   ros::Subscriber subLaserCloud = nh.subscribe<sensor_msgs::PointCloud2>("/sensor_points", 100, laserCloudHandler);
 
   nh.param<int>("mapping_skip_frame", skipFrameNum, 2);
@@ -671,7 +695,7 @@ int main(int argc, char **argv) {
 
               double s;
               if (DISTORTION)
-                s = (cornerPointsSharp->points[i].intensity - int(cornerPointsSharp->points[i].intensity)) / SCAN_PERIOD;
+                s = (cornerPointsSharp->points[i].intensity - int(cornerPointsSharp->points[i].intensity)) / scanPeriod;
               else
                 s = 1.0;
               ceres::CostFunction *cost_function = LidarEdgeFactor::Create(curr_point, last_point_a, last_point_b, s);
@@ -748,7 +772,7 @@ int main(int argc, char **argv) {
 
                 double s;
                 if (DISTORTION)
-                  s = (surfPointsFlat->points[i].intensity - int(surfPointsFlat->points[i].intensity)) / SCAN_PERIOD;
+                  s = (surfPointsFlat->points[i].intensity - int(surfPointsFlat->points[i].intensity)) / scanPeriod;
                 else
                   s = 1.0;
                 ceres::CostFunction *cost_function = LidarPlaneFactor::Create(curr_point, last_point_a, last_point_b, last_point_c, s);
@@ -857,18 +881,19 @@ int main(int argc, char **argv) {
         pcl::toROSMsg(*laserCloudCornerLast, laserCloudCornerLast2);
         laserCloudCornerLast2.header.stamp    = stamp;
         laserCloudCornerLast2.header.frame_id = _frame_lidar;
-        pubLaserCloudCornerLast.publish(laserCloudCornerLast2);
 
         sensor_msgs::PointCloud2 laserCloudSurfLast2;
         pcl::toROSMsg(*laserCloudSurfLast, laserCloudSurfLast2);
         laserCloudSurfLast2.header.stamp    = stamp;
         laserCloudSurfLast2.header.frame_id = _frame_lidar;
-        pubLaserCloudSurfLast.publish(laserCloudSurfLast2);
 
         sensor_msgs::PointCloud2 laserCloudFullRes3;
         pcl::toROSMsg(*laserCloudFullRes, laserCloudFullRes3);
         laserCloudFullRes3.header.stamp    = stamp;
         laserCloudFullRes3.header.frame_id = _frame_lidar;
+
+        pubLaserCloudCornerLast.publish(laserCloudCornerLast2);
+        pubLaserCloudSurfLast.publish(laserCloudSurfLast2);
         pubLaserCloudFullRes.publish(laserCloudFullRes3);
       }
       /* printf("publication time %f ms \n", t_pub.toc()); */
