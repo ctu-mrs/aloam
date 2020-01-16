@@ -262,8 +262,8 @@ void process() {
       timeLaserOdometry        = odometryBuf.front()->header.stamp.toSec();
 
       if (timeLaserCloudCornerLast != timeLaserOdometry || timeLaserCloudSurfLast != timeLaserOdometry || timeLaserCloudFullRes != timeLaserOdometry) {
-        ROS_INFO_STREAM("time corner %f" << timeLaserCloudCornerLast << " surf %f" << timeLaserCloudSurfLast << " full %f" << timeLaserCloudFullRes
-                                         << " odom %f" << timeLaserOdometry);
+        ROS_INFO_STREAM("time corner " << timeLaserCloudCornerLast << " surf " << timeLaserCloudSurfLast << " full " << timeLaserCloudFullRes
+                                         << " odom " << timeLaserOdometry);
         ROS_INFO_STREAM("unsync messeage!");
         /* printf("time corner %f surf %f full %f odom %f \n", timeLaserCloudCornerLast, timeLaserCloudSurfLast, timeLaserCloudFullRes, timeLaserOdometry); */
         /* printf("unsync messeage!"); */
@@ -857,8 +857,8 @@ int main(int argc, char **argv) {
 
   // Get static transform lidar->fcu
   mrs_lib::TransformStamped tf_mrs;
-  ROS_INFO("Waiting 0.1 second to fill transform buffer.");
-  ros::Duration(0.1).sleep();
+  ROS_INFO("Waiting 0.5 second to fill transform buffer.");
+  ros::Duration(0.5).sleep();
   // TODO: rewrite to timer
   while (!transformer_->getTransform(_frame_lidar, _frame_fcu, ros::Time(0), tf_mrs)) {
     ROS_INFO_THROTTLE(0.5, "Looking for transform from %s to %s", _frame_lidar.c_str(), _frame_fcu.c_str());

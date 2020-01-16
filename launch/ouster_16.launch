@@ -30,31 +30,11 @@
     <param name="lidar_frame" type="string" value="$(arg lidar_frame)"/>
     <param name="fcu_frame" type="string" value="$(arg fcu_frame)"/>
 
-    <!-- Registration node -->
-    <node pkg="aloam_velodyne" type="ascanRegistration" name="aloam_registration" output="screen">
-
-      <!-- Subscribers -->
-      <remap from="/sensor_points" to="os1_cloud_node/points"/>
-
-      <!-- Publishers -->
-      <remap from="/laser_cloud_flat" to="~laser_cloud_flat"/>
-      <remap from="/laser_cloud_less_flat" to="~laser_cloud_less_flat"/>
-      <remap from="/laser_cloud_sharp" to="~laser_cloud_sharp"/>
-      <remap from="/laser_cloud_less_sharp" to="~laser_cloud_less_sharp"/>
-      <remap from="/laser_remove_points" to="~laser_remove_points"/>
-      <remap from="/sensor_cloud_2" to="~sensor_cloud_2"/>
-
-    </node>
-
     <!-- Odometry node -->
     <node pkg="aloam_velodyne" type="alaserOdometry" name="aloam_odometry" output="screen">
 
       <!-- Subscribers -->
-      <remap from="/sensor_cloud_2" to="aloam_registration/sensor_cloud_2"/>
-      <remap from="/laser_cloud_flat" to="aloam_registration/laser_cloud_flat"/>
-      <remap from="/laser_cloud_less_flat" to="aloam_registration/laser_cloud_less_flat"/>
-      <remap from="/laser_cloud_sharp" to="aloam_registration/laser_cloud_sharp"/>
-      <remap from="/laser_cloud_less_sharp" to="aloam_registration/laser_cloud_less_sharp"/>
+      <remap from="/sensor_points" to="os1_cloud_node/points"/>
 
       <!-- Publishers -->
       <remap from="/sensor_cloud_3" to="~sensor_cloud_3"/>
