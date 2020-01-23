@@ -822,7 +822,7 @@ int main(int argc, char **argv) {
 
   std::string uav_name;
   nh.getParam("uav_name", uav_name);
-  transformer_ = new mrs_lib::Transformer("aloamLaserMapping", uav_name, 0.1);
+  transformer_ = new mrs_lib::Transformer("aloamLaserMapping", uav_name);
 
   float lineRes  = 0;
   float planeRes = 0;

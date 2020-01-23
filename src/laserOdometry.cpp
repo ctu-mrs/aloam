@@ -536,7 +536,7 @@ int main(int argc, char **argv) {
 
   std::string uav_name;
   nh.getParam("uav_name", uav_name);
-  transformer_ = new mrs_lib::Transformer("aloamLaserOdometry", uav_name, 0.1);
+  transformer_ = new mrs_lib::Transformer("aloamLaserOdometry", uav_name);
   nh.getParam("lidar_frame", _frame_lidar);
   nh.getParam("fcu_frame", _frame_fcu);
   nh.getParam("map_frame", _frame_map);
