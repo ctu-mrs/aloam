@@ -569,17 +569,22 @@ int main(int argc, char **argv) {
 
   while (ros::ok()) {
     ros::spinOnce();
+    ros::Time stamp;
 
     if (!cornerSharpBuf.empty() && !cornerLessSharpBuf.empty() && !surfFlatBuf.empty() && !surfLessFlatBuf.empty() && !fullPointsBuf.empty()) {
 
       {
         std::scoped_lock lock(mutex_buffer);
-
-        timeCornerPointsSharp     = (double)cornerSharpBuf.front()->header.stamp;
-        timeCornerPointsLessSharp = (double)cornerLessSharpBuf.front()->header.stamp;
-        timeSurfPointsFlat        = (double)surfFlatBuf.front()->header.stamp;
-        timeSurfPointsLessFlat    = (double)surfLessFlatBuf.front()->header.stamp;
-        timeLaserCloudFullRes     = (double)fullPointsBuf.front()->header.stamp;
+        pcl_conversions::fromPCL(cornerSharpBuf.front()->header.stamp, stamp);
+        timeCornerPointsSharp = stamp.toSec();
+        pcl_conversions::fromPCL(cornerLessSharpBuf.front()->header.stamp, stamp);
+        timeCornerPointsLessSharp = stamp.toSec();
+        pcl_conversions::fromPCL(surfFlatBuf.front()->header.stamp, stamp);
+        timeSurfPointsFlat = stamp.toSec();
+        pcl_conversions::fromPCL(fullPointsBuf.front()->header.stamp, stamp);
+        timeLaserCloudFullRes = stamp.toSec();
+        pcl_conversions::fromPCL(surfLessFlatBuf.front()->header.stamp, stamp);
+        timeSurfPointsLessFlat = stamp.toSec();
       }
 
       if (timeCornerPointsSharp != timeLaserCloudFullRes || timeCornerPointsLessSharp != timeLaserCloudFullRes || timeSurfPointsFlat != timeLaserCloudFullRes ||
@@ -825,7 +830,7 @@ int main(int argc, char **argv) {
       nav_msgs::Odometry laserOdometry;
       laserOdometry.header.frame_id      = _frame_map;
       laserOdometry.child_frame_id       = _frame_fcu;
-      laserOdometry.header.stamp         = ros::Time().fromSec(timeSurfPointsLessFlat);
+      laserOdometry.header.stamp         = stamp;
       tf::Vector3 origin                 = tf_odom.getOrigin();
       laserOdometry.pose.pose.position.x = origin.x();
       laserOdometry.pose.pose.position.y = origin.y();
@@ -881,17 +886,17 @@ int main(int argc, char **argv) {
 
         sensor_msgs::PointCloud2 laserCloudCornerLast2;
         pcl::toROSMsg(*laserCloudCornerLast, laserCloudCornerLast2);
-        laserCloudCornerLast2.header.stamp    = ros::Time().fromSec(timeSurfPointsLessFlat);
+        laserCloudCornerLast2.header.stamp    = stamp;
         laserCloudCornerLast2.header.frame_id = _frame_lidar;
 
         sensor_msgs::PointCloud2 laserCloudSurfLast2;
         pcl::toROSMsg(*laserCloudSurfLast, laserCloudSurfLast2);
-        laserCloudSurfLast2.header.stamp    = ros::Time().fromSec(timeSurfPointsLessFlat);;
+        laserCloudSurfLast2.header.stamp = stamp;
         laserCloudSurfLast2.header.frame_id = _frame_lidar;
 
         sensor_msgs::PointCloud2 laserCloudFullRes3;
         pcl::toROSMsg(*laserCloudFullRes, laserCloudFullRes3);
-        laserCloudFullRes3.header.stamp    = ros::Time().fromSec(timeSurfPointsLessFlat);;
+        laserCloudFullRes3.header.stamp = stamp;
         laserCloudFullRes3.header.frame_id = _frame_lidar;
 
         pubLaserCloudCornerLast.publish(laserCloudCornerLast2);
