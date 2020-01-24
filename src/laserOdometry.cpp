@@ -542,14 +542,15 @@ int main(int argc, char **argv) {
   nh.getParam("map_frame", _frame_map);
 
   // Get static transform lidar->fcu
-  mrs_lib::TransformStamped tf_mrs;
   ROS_INFO("Waiting 0.5 second to fill transform buffer.");
   ros::Duration(0.5).sleep();
   // TODO: rewrite to timer
-  while (!transformer_->getTransform(_frame_lidar, _frame_fcu, ros::Time(0), tf_mrs)) {
+  auto tf_mrs = transformer_->getTransform(_frame_lidar, _frame_fcu, ros::Time(0));
+  while (!tf_mrs) {
     ROS_INFO_THROTTLE(0.5, "Looking for transform from %s to %s", _frame_lidar.c_str(), _frame_fcu.c_str());
+    tf_mrs = transformer_->getTransform(_frame_lidar, _frame_fcu, ros::Time(0));
   }
-  tf::transformMsgToTF(tf_mrs.getTransform().transform, transform_lidar_to_fcu_);
+  tf::transformMsgToTF(tf_mrs->getTransform().transform, transform_lidar_to_fcu_);
   delete transformer_;
 
   ROS_INFO_STREAM_THROTTLE(1, "Mapping at %d " << 10 / skipFrameNum << " Hz");

@@ -262,8 +262,8 @@ void process() {
       timeLaserOdometry        = odometryBuf.front()->header.stamp.toSec();
 
       if (timeLaserCloudCornerLast != timeLaserOdometry || timeLaserCloudSurfLast != timeLaserOdometry || timeLaserCloudFullRes != timeLaserOdometry) {
-        ROS_INFO_STREAM("time corner " << timeLaserCloudCornerLast << " surf " << timeLaserCloudSurfLast << " full " << timeLaserCloudFullRes
-                                         << " odom " << timeLaserOdometry);
+        ROS_INFO_STREAM("time corner " << timeLaserCloudCornerLast << " surf " << timeLaserCloudSurfLast << " full " << timeLaserCloudFullRes << " odom "
+                                       << timeLaserOdometry);
         ROS_INFO_STREAM("unsync message!");
         /* printf("time corner %f surf %f full %f odom %f \n", timeLaserCloudCornerLast, timeLaserCloudSurfLast, timeLaserCloudFullRes, timeLaserOdometry); */
         /* printf("unsync messeage!"); */
@@ -789,7 +789,7 @@ void process() {
       br.sendTransform(tf::StampedTransform(transform_lidar_to_fcu_ * transform.inverse(), stamp, _frame_fcu, _frame_map));
 
       // nav_msgs::Odometry msg
-      tf::Transform tf_odom = transform * transform_lidar_to_fcu_.inverse();
+      tf::Transform      tf_odom = transform * transform_lidar_to_fcu_.inverse();
       nav_msgs::Odometry odomAftMapped;
       odomAftMapped.header.frame_id      = _frame_map;
       odomAftMapped.header.stamp         = stamp;
@@ -856,14 +856,15 @@ int main(int argc, char **argv) {
   }
 
   // Get static transform lidar->fcu
-  mrs_lib::TransformStamped tf_mrs;
   ROS_INFO("Waiting 0.5 second to fill transform buffer.");
   ros::Duration(0.5).sleep();
   // TODO: rewrite to timer
-  while (!transformer_->getTransform(_frame_lidar, _frame_fcu, ros::Time(0), tf_mrs)) {
+  auto tf_mrs = transformer_->getTransform(_frame_lidar, _frame_fcu, ros::Time(0));
+  while (!tf_mrs) {
     ROS_INFO_THROTTLE(0.5, "Looking for transform from %s to %s", _frame_lidar.c_str(), _frame_fcu.c_str());
+    tf_mrs = transformer_->getTransform(_frame_lidar, _frame_fcu, ros::Time(0));
   }
-  tf::transformMsgToTF(tf_mrs.getTransform().transform, transform_lidar_to_fcu_);
+  tf::transformMsgToTF(tf_mrs->getTransform().transform, transform_lidar_to_fcu_);
 
   std::thread mapping_process{process};
 
