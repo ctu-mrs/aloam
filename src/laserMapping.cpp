@@ -131,7 +131,7 @@ std::queue<sensor_msgs::PointCloud2ConstPtr> cornerLastBuf;
 std::queue<sensor_msgs::PointCloud2ConstPtr> surfLastBuf;
 std::queue<sensor_msgs::PointCloud2ConstPtr> fullResBuf;
 std::queue<nav_msgs::Odometry::ConstPtr>     odometryBuf;
-std::mutex                                   mBuf;
+std::mutex                                   mutex_buffer;
 
 pcl::VoxelGrid<PointType> downSizeFilterCorner;
 pcl::VoxelGrid<PointType> downSizeFilterSurf;
@@ -176,28 +176,24 @@ void pointAssociateTobeMapped(PointType const *const pi, PointType *const po) {
 }
 
 void laserCloudCornerLastHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudCornerLast2) {
-  mBuf.lock();
+  std::scoped_lock lock(mutex_buffer);
   cornerLastBuf.push(laserCloudCornerLast2);
-  mBuf.unlock();
 }
 
 void laserCloudSurfLastHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudSurfLast2) {
-  mBuf.lock();
+  std::scoped_lock lock(mutex_buffer);
   surfLastBuf.push(laserCloudSurfLast2);
-  mBuf.unlock();
 }
 
 void laserCloudFullResHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudFullRes2) {
-  mBuf.lock();
+  std::scoped_lock lock(mutex_buffer);
   fullResBuf.push(laserCloudFullRes2);
-  mBuf.unlock();
 }
 
 // receive odometry
 void laserOdometryHandler(const nav_msgs::Odometry::ConstPtr &laserOdometry) {
-  mBuf.lock();
+  std::scoped_lock lock(mutex_buffer);
   odometryBuf.push(laserOdometry);
-  mBuf.unlock();
 
   // high frequence publish
   /* Eigen::Quaterniond q_wodom_curr; */
@@ -234,72 +230,75 @@ void laserOdometryHandler(const nav_msgs::Odometry::ConstPtr &laserOdometry) {
 void process() {
   while (1) {
     while (!cornerLastBuf.empty() && !surfLastBuf.empty() && !fullResBuf.empty() && !odometryBuf.empty()) {
-      mBuf.lock();
-      while (!odometryBuf.empty() && odometryBuf.front()->header.stamp.toSec() < cornerLastBuf.front()->header.stamp.toSec())
-        odometryBuf.pop();
-      if (odometryBuf.empty()) {
-        mBuf.unlock();
-        break;
-      }
+      {
+        std::scoped_lock lock(mutex_buffer);
+        while (!odometryBuf.empty() && odometryBuf.front()->header.stamp.toSec() < cornerLastBuf.front()->header.stamp.toSec())
+          odometryBuf.pop();
+        if (odometryBuf.empty()) {
+          break;
+        }
 
-      while (!surfLastBuf.empty() && surfLastBuf.front()->header.stamp.toSec() < cornerLastBuf.front()->header.stamp.toSec())
-        surfLastBuf.pop();
-      if (surfLastBuf.empty()) {
-        mBuf.unlock();
-        break;
-      }
+        while (!surfLastBuf.empty() && surfLastBuf.front()->header.stamp.toSec() < cornerLastBuf.front()->header.stamp.toSec())
+          surfLastBuf.pop();
+        if (surfLastBuf.empty()) {
+          break;
+        }
 
-      while (!fullResBuf.empty() && fullResBuf.front()->header.stamp.toSec() < cornerLastBuf.front()->header.stamp.toSec())
-        fullResBuf.pop();
-      if (fullResBuf.empty()) {
-        mBuf.unlock();
-        break;
-      }
+        while (!fullResBuf.empty() && fullResBuf.front()->header.stamp.toSec() < cornerLastBuf.front()->header.stamp.toSec())
+          fullResBuf.pop();
+        if (fullResBuf.empty()) {
+          break;
+        }
 
-      timeLaserCloudCornerLast = cornerLastBuf.front()->header.stamp.toSec();
-      timeLaserCloudSurfLast   = surfLastBuf.front()->header.stamp.toSec();
-      timeLaserCloudFullRes    = fullResBuf.front()->header.stamp.toSec();
-      timeLaserOdometry        = odometryBuf.front()->header.stamp.toSec();
+        timeLaserCloudCornerLast = cornerLastBuf.front()->header.stamp.toSec();
+        timeLaserCloudSurfLast   = surfLastBuf.front()->header.stamp.toSec();
+        timeLaserCloudFullRes    = fullResBuf.front()->header.stamp.toSec();
+        timeLaserOdometry        = odometryBuf.front()->header.stamp.toSec();
 
-      if (timeLaserCloudCornerLast != timeLaserOdometry || timeLaserCloudSurfLast != timeLaserOdometry || timeLaserCloudFullRes != timeLaserOdometry) {
-        ROS_INFO_STREAM("time corner " << timeLaserCloudCornerLast << " surf " << timeLaserCloudSurfLast << " full " << timeLaserCloudFullRes << " odom "
-                                       << timeLaserOdometry);
-        ROS_INFO_STREAM("unsync message!");
-        /* printf("time corner %f surf %f full %f odom %f \n", timeLaserCloudCornerLast, timeLaserCloudSurfLast, timeLaserCloudFullRes, timeLaserOdometry); */
-        /* printf("unsync messeage!"); */
-        mBuf.unlock();
-        break;
-      }
+        if (timeLaserCloudCornerLast != timeLaserOdometry || timeLaserCloudSurfLast != timeLaserOdometry || timeLaserCloudFullRes != timeLaserOdometry) {
+          ROS_WARN_STREAM("Unsync message (should happen just once): time corner " << timeLaserCloudCornerLast << " surf " << timeLaserCloudSurfLast << " full " << timeLaserCloudFullRes << " odom "
+                                         << timeLaserOdometry);
 
-      laserCloudCornerLast->clear();
-      pcl::fromROSMsg(*cornerLastBuf.front(), *laserCloudCornerLast);
-      cornerLastBuf.pop();
+          std::queue<sensor_msgs::PointCloud2ConstPtr> empty_pcl;
+          std::queue<nav_msgs::Odometry::ConstPtr>     empty_odom;
+          std::swap(cornerLastBuf, empty_pcl);
+          std::swap(surfLastBuf, empty_pcl);
+          std::swap(fullResBuf, empty_pcl);
+          std::swap(odometryBuf, empty_odom);
+          /* printf("time corner %f surf %f full %f odom %f \n", timeLaserCloudCornerLast, timeLaserCloudSurfLast, timeLaserCloudFullRes, timeLaserOdometry); */
+          /* printf("unsync messeage!"); */
+          break;
+        }
 
-      laserCloudSurfLast->clear();
-      pcl::fromROSMsg(*surfLastBuf.front(), *laserCloudSurfLast);
-      surfLastBuf.pop();
-
-      laserCloudFullRes->clear();
-      pcl::fromROSMsg(*fullResBuf.front(), *laserCloudFullRes);
-      fullResBuf.pop();
-
-      q_wodom_curr.x() = odometryBuf.front()->pose.pose.orientation.x;
-      q_wodom_curr.y() = odometryBuf.front()->pose.pose.orientation.y;
-      q_wodom_curr.z() = odometryBuf.front()->pose.pose.orientation.z;
-      q_wodom_curr.w() = odometryBuf.front()->pose.pose.orientation.w;
-      t_wodom_curr.x() = odometryBuf.front()->pose.pose.position.x;
-      t_wodom_curr.y() = odometryBuf.front()->pose.pose.position.y;
-      t_wodom_curr.z() = odometryBuf.front()->pose.pose.position.z;
-      odometryBuf.pop();
-
-      while (!cornerLastBuf.empty()) {
+        laserCloudCornerLast->clear();
+        pcl::fromROSMsg(*cornerLastBuf.front(), *laserCloudCornerLast);
         cornerLastBuf.pop();
-        /* printf("drop lidar frame in mapping for real time performance \n"); */
-        ROS_INFO_STREAM("drop lidar frame in mapping for real time performance");
+
+        laserCloudSurfLast->clear();
+        pcl::fromROSMsg(*surfLastBuf.front(), *laserCloudSurfLast);
+        surfLastBuf.pop();
+
+        laserCloudFullRes->clear();
+        pcl::fromROSMsg(*fullResBuf.front(), *laserCloudFullRes);
+        fullResBuf.pop();
+
+        q_wodom_curr.x() = odometryBuf.front()->pose.pose.orientation.x;
+        q_wodom_curr.y() = odometryBuf.front()->pose.pose.orientation.y;
+        q_wodom_curr.z() = odometryBuf.front()->pose.pose.orientation.z;
+        q_wodom_curr.w() = odometryBuf.front()->pose.pose.orientation.w;
+        t_wodom_curr.x() = odometryBuf.front()->pose.pose.position.x;
+        t_wodom_curr.y() = odometryBuf.front()->pose.pose.position.y;
+        t_wodom_curr.z() = odometryBuf.front()->pose.pose.position.z;
+        odometryBuf.pop();
+
+        while (!cornerLastBuf.empty()) {
+          cornerLastBuf.pop();
+          /* printf("drop lidar frame in mapping for real time performance \n"); */
+          ROS_INFO_STREAM("drop lidar frame in mapping for real time performance");
+        }
       }
 
-      mBuf.unlock();
-
+      /*//{*/
       TicToc t_whole;
 
       transformAssociateToMap();
@@ -475,6 +474,7 @@ void process() {
           }
         }
       }
+      /*//}*/
 
       laserCloudCornerFromMap->clear();
       laserCloudSurfFromMap->clear();
@@ -485,7 +485,7 @@ void process() {
       int laserCloudCornerFromMapNum = laserCloudCornerFromMap->points.size();
       int laserCloudSurfFromMapNum   = laserCloudSurfFromMap->points.size();
 
-
+      /*//{*/
       pcl::PointCloud<PointType>::Ptr laserCloudCornerStack(new pcl::PointCloud<PointType>());
       downSizeFilterCorner.setInputCloud(laserCloudCornerLast);
       downSizeFilterCorner.filter(*laserCloudCornerStack);
@@ -667,6 +667,7 @@ void process() {
         ROS_WARN("time Map corner and surf num are not enough");
       }
       transformUpdate();
+      /*//}*/
 
       TicToc t_add;
       for (int i = 0; i < laserCloudCornerStackNum; i++) {
@@ -729,7 +730,8 @@ void process() {
       /* printf("filter time %f ms \n", t_filter.toc()); */
       ROS_INFO_STREAM_THROTTLE(1, "filter time " << t_filter.toc() << " ms");
 
-      TicToc t_pub;
+      TicToc    t_pub;
+      ros::Time stamp = ros::Time().fromSec(timeLaserOdometry);
       // publish surround map for every 5 frame
       if (frameCount % 5 == 0) {
         laserCloudSurround->clear();
@@ -741,7 +743,7 @@ void process() {
 
         sensor_msgs::PointCloud2 laserCloudSurround3;
         pcl::toROSMsg(*laserCloudSurround, laserCloudSurround3);
-        laserCloudSurround3.header.stamp    = ros::Time().fromSec(timeLaserOdometry);
+        laserCloudSurround3.header.stamp    = stamp;
         laserCloudSurround3.header.frame_id = _frame_map;
         pubLaserCloudSurround.publish(laserCloudSurround3);
       }
@@ -754,7 +756,7 @@ void process() {
         }
         sensor_msgs::PointCloud2 laserCloudMsg;
         pcl::toROSMsg(laserCloudMap, laserCloudMsg);
-        laserCloudMsg.header.stamp    = ros::Time().fromSec(timeLaserOdometry);
+        laserCloudMsg.header.stamp    = stamp;
         laserCloudMsg.header.frame_id = _frame_map;
         pubLaserCloudMap.publish(laserCloudMsg);
       }
@@ -766,7 +768,7 @@ void process() {
 
       sensor_msgs::PointCloud2 laserCloudFullRes3;
       pcl::toROSMsg(*laserCloudFullRes, laserCloudFullRes3);
-      laserCloudFullRes3.header.stamp    = ros::Time().fromSec(timeLaserOdometry);
+      laserCloudFullRes3.header.stamp    = stamp;
       laserCloudFullRes3.header.frame_id = _frame_map;
       pubLaserCloudFullRes.publish(laserCloudFullRes3);
 
@@ -776,7 +778,6 @@ void process() {
       ROS_INFO_STREAM_THROTTLE(1, "whole mapping time " << t_whole.toc() << " ms");
 
       // TF fcu -> aloam origin (t_w_curr and q_w_curr is in origin -> fcu frame, hence inversion)
-      ros::Time                       stamp = ros::Time().fromSec(timeLaserOdometry);
       static tf::TransformBroadcaster br;
       tf::Transform                   transform;
       tf::Quaternion                  q;

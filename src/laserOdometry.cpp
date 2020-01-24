@@ -142,7 +142,7 @@ std::queue<pcl::PointCloud<PointType>::Ptr> cornerLessSharpBuf;
 std::queue<pcl::PointCloud<PointType>::Ptr> surfFlatBuf;
 std::queue<pcl::PointCloud<PointType>::Ptr> surfLessFlatBuf;
 std::queue<pcl::PointCloud<PointType>::Ptr> fullPointsBuf;
-std::mutex                                  mBuf;
+std::mutex                                  mutex_buffer;
 /*//}*/
 
 /*//{ Functions scanRegistration */
@@ -445,13 +445,14 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) {
   surfPointsFlat.header.stamp        = stamp;
   surfPointsLessFlat.header.stamp    = stamp;
 
-  mBuf.lock();
-  fullPointsBuf.push(laserCloud);
-  cornerSharpBuf.push(cornerPointsSharp.makeShared());
-  cornerLessSharpBuf.push(cornerPointsLessSharp.makeShared());
-  surfFlatBuf.push(surfPointsFlat.makeShared());
-  surfLessFlatBuf.push(surfPointsLessFlat.makeShared());
-  mBuf.unlock();
+  {
+    std::scoped_lock lock(mutex_buffer);
+    fullPointsBuf.push(laserCloud);
+    cornerSharpBuf.push(cornerPointsSharp.makeShared());
+    cornerLessSharpBuf.push(cornerPointsLessSharp.makeShared());
+    surfFlatBuf.push(surfPointsFlat.makeShared());
+    surfLessFlatBuf.push(surfPointsLessFlat.makeShared());
+  }
 
   /* printf("scan registration time %f ms *************\n", t_whole.toc()); */
   ROS_INFO_STREAM_THROTTLE(1, "scan registration time " << t_whole.toc() << " ms");
@@ -525,7 +526,7 @@ int main(int argc, char **argv) {
   ray_vert_delta = vertical_fov_half / float(N_SCANS - 1);
   vertical_fov_half /= 2.0;
   ROS_INFO_STREAM("vertical fov delta step" << ray_vert_delta);
-  
+
   nh.param<double>("frequency", scanPeriod, 10.0);
   ROS_INFO_STREAM("frequency" << scanPeriod);
   scanPeriod = 1.0 / scanPeriod;
@@ -569,18 +570,17 @@ int main(int argc, char **argv) {
   while (ros::ok()) {
     ros::spinOnce();
 
-    ros::Time stamp;
     if (!cornerSharpBuf.empty() && !cornerLessSharpBuf.empty() && !surfFlatBuf.empty() && !surfLessFlatBuf.empty() && !fullPointsBuf.empty()) {
-      pcl_conversions::fromPCL(cornerSharpBuf.front()->header.stamp, stamp);
-      timeCornerPointsSharp = stamp.toSec();
-      pcl_conversions::fromPCL(cornerLessSharpBuf.front()->header.stamp, stamp);
-      timeCornerPointsLessSharp = stamp.toSec();
-      pcl_conversions::fromPCL(surfFlatBuf.front()->header.stamp, stamp);
-      timeSurfPointsFlat = stamp.toSec();
-      pcl_conversions::fromPCL(fullPointsBuf.front()->header.stamp, stamp);
-      timeLaserCloudFullRes = stamp.toSec();
-      pcl_conversions::fromPCL(surfLessFlatBuf.front()->header.stamp, stamp);
-      timeSurfPointsLessFlat = stamp.toSec();
+
+      {
+        std::scoped_lock lock(mutex_buffer);
+
+        timeCornerPointsSharp     = (double)cornerSharpBuf.front()->header.stamp;
+        timeCornerPointsLessSharp = (double)cornerLessSharpBuf.front()->header.stamp;
+        timeSurfPointsFlat        = (double)surfFlatBuf.front()->header.stamp;
+        timeSurfPointsLessFlat    = (double)surfLessFlatBuf.front()->header.stamp;
+        timeLaserCloudFullRes     = (double)fullPointsBuf.front()->header.stamp;
+      }
 
       if (timeCornerPointsSharp != timeLaserCloudFullRes || timeCornerPointsLessSharp != timeLaserCloudFullRes || timeSurfPointsFlat != timeLaserCloudFullRes ||
           timeSurfPointsLessFlat != timeLaserCloudFullRes) {
@@ -588,28 +588,29 @@ int main(int argc, char **argv) {
         ROS_BREAK();
       }
 
-      mBuf.lock();
-      cornerPointsSharp = cornerSharpBuf.front();
-      cornerSharpBuf.pop();
+      {
+        std::scoped_lock lock(mutex_buffer);
+        cornerPointsSharp = cornerSharpBuf.front();
+        cornerSharpBuf.pop();
 
-      cornerPointsLessSharp = cornerLessSharpBuf.front();
-      cornerLessSharpBuf.pop();
+        cornerPointsLessSharp = cornerLessSharpBuf.front();
+        cornerLessSharpBuf.pop();
 
-      surfPointsFlat = surfFlatBuf.front();
-      surfFlatBuf.pop();
+        surfPointsFlat = surfFlatBuf.front();
+        surfFlatBuf.pop();
 
-      surfPointsLessFlat = surfLessFlatBuf.front();
-      surfLessFlatBuf.pop();
+        surfPointsLessFlat = surfLessFlatBuf.front();
+        surfLessFlatBuf.pop();
 
-      laserCloudFullRes = fullPointsBuf.front();
-      fullPointsBuf.pop();
-      mBuf.unlock();
+        laserCloudFullRes = fullPointsBuf.front();
+        fullPointsBuf.pop();
+      }
 
       TicToc t_whole;
       // initializing
       if (!systemOdometryInited) {
         systemOdometryInited = true;
-        std::cout << "Initialization finished \n";
+        ROS_INFO_STREAM("Initialization finished.");
       } else {
         int cornerPointsSharpNum = cornerPointsSharp->points.size();
         int surfPointsFlatNum    = surfPointsFlat->points.size();
@@ -824,7 +825,7 @@ int main(int argc, char **argv) {
       nav_msgs::Odometry laserOdometry;
       laserOdometry.header.frame_id      = _frame_map;
       laserOdometry.child_frame_id       = _frame_fcu;
-      laserOdometry.header.stamp         = stamp;
+      laserOdometry.header.stamp         = ros::Time().fromSec(timeSurfPointsLessFlat);
       tf::Vector3 origin                 = tf_odom.getOrigin();
       laserOdometry.pose.pose.position.x = origin.x();
       laserOdometry.pose.pose.position.y = origin.y();
@@ -880,17 +881,17 @@ int main(int argc, char **argv) {
 
         sensor_msgs::PointCloud2 laserCloudCornerLast2;
         pcl::toROSMsg(*laserCloudCornerLast, laserCloudCornerLast2);
-        laserCloudCornerLast2.header.stamp    = stamp;
+        laserCloudCornerLast2.header.stamp    = ros::Time().fromSec(timeSurfPointsLessFlat);
         laserCloudCornerLast2.header.frame_id = _frame_lidar;
 
         sensor_msgs::PointCloud2 laserCloudSurfLast2;
         pcl::toROSMsg(*laserCloudSurfLast, laserCloudSurfLast2);
-        laserCloudSurfLast2.header.stamp    = stamp;
+        laserCloudSurfLast2.header.stamp    = ros::Time().fromSec(timeSurfPointsLessFlat);;
         laserCloudSurfLast2.header.frame_id = _frame_lidar;
 
         sensor_msgs::PointCloud2 laserCloudFullRes3;
         pcl::toROSMsg(*laserCloudFullRes, laserCloudFullRes3);
-        laserCloudFullRes3.header.stamp    = stamp;
+        laserCloudFullRes3.header.stamp    = ros::Time().fromSec(timeSurfPointsLessFlat);;
         laserCloudFullRes3.header.frame_id = _frame_lidar;
 
         pubLaserCloudCornerLast.publish(laserCloudCornerLast2);
