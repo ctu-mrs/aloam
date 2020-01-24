@@ -45,6 +45,7 @@
 
       <!-- Subscribers -->
       <remap from="/sensor_points" to="os1_cloud_node/points"/>
+      <remap from="/mavros_odom_in" to="mavros_interface/converted_mavros_odom"/>
 
       <!-- Publishers -->
       <remap from="/sensor_cloud_3" to="~sensor_cloud_3"/>
