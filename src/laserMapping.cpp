@@ -59,6 +59,7 @@
 #include <string>
 #include <mrs_lib/transformer.h>
 #include <eigen_conversions/eigen_msg.h>
+#include <tf_conversions/tf_eigen.h>
 
 #include "lidarFactor.hpp"
 #include "aloam_velodyne/common.h"
@@ -68,7 +69,8 @@ std::string           _frame_lidar;
 std::string           _frame_fcu;
 std::string           _frame_map;
 mrs_lib::Transformer *transformer_;
-tf::Transform         transform_lidar_to_fcu_;
+tf::Transform         tf_fcu_in_lidar_frame_;
+bool                  debug = false;
 
 int frameCount = 0;
 
@@ -141,7 +143,12 @@ std::vector<float> pointSearchSqDis;
 
 PointType pointOri, pointSel;
 
-ros::Publisher pubLaserCloudSurround, pubLaserCloudMap, pubLaserCloudFullRes, pubOdomAftMapped, pubOdomAftMappedHighFrec, pubLaserAfterMappedPath;
+ros::Publisher pubLaserCloudSurround;
+ros::Publisher pubLaserCloudMap;
+ros::Publisher pubLaserCloudFullRes;
+ros::Publisher pubOdomAftMapped;
+ros::Publisher pubOdomAftMappedHighFrec;
+ros::Publisher pubLaserAfterMappedPath;
 
 nav_msgs::Path laserAfterMappedPath;
 
@@ -232,20 +239,23 @@ void process() {
     while (!cornerLastBuf.empty() && !surfLastBuf.empty() && !fullResBuf.empty() && !odometryBuf.empty()) {
       {
         std::scoped_lock lock(mutex_buffer);
-        while (!odometryBuf.empty() && odometryBuf.front()->header.stamp.toSec() < cornerLastBuf.front()->header.stamp.toSec())
+        while (!odometryBuf.empty() && odometryBuf.front()->header.stamp.toSec() < cornerLastBuf.front()->header.stamp.toSec()) {
           odometryBuf.pop();
+        }
         if (odometryBuf.empty()) {
           break;
         }
 
-        while (!surfLastBuf.empty() && surfLastBuf.front()->header.stamp.toSec() < cornerLastBuf.front()->header.stamp.toSec())
+        while (!surfLastBuf.empty() && surfLastBuf.front()->header.stamp.toSec() < cornerLastBuf.front()->header.stamp.toSec()) {
           surfLastBuf.pop();
+        }
         if (surfLastBuf.empty()) {
           break;
         }
 
-        while (!fullResBuf.empty() && fullResBuf.front()->header.stamp.toSec() < cornerLastBuf.front()->header.stamp.toSec())
+        while (!fullResBuf.empty() && fullResBuf.front()->header.stamp.toSec() < cornerLastBuf.front()->header.stamp.toSec()) {
           fullResBuf.pop();
+        }
         if (fullResBuf.empty()) {
           break;
         }
@@ -256,17 +266,16 @@ void process() {
         timeLaserOdometry        = odometryBuf.front()->header.stamp.toSec();
 
         if (timeLaserCloudCornerLast != timeLaserOdometry || timeLaserCloudSurfLast != timeLaserOdometry || timeLaserCloudFullRes != timeLaserOdometry) {
-          ROS_WARN_STREAM("Unsync message (should happen just once): time corner " << timeLaserCloudCornerLast << " surf " << timeLaserCloudSurfLast << " full " << timeLaserCloudFullRes << " odom "
-                                         << timeLaserOdometry);
+          ROS_WARN_STREAM("Unsync message (should happen just once): time corner " << timeLaserCloudCornerLast << " surf " << timeLaserCloudSurfLast << " full "
+                                                                                   << timeLaserCloudFullRes << " odom " << timeLaserOdometry);
 
+          // Clear queues
           std::queue<sensor_msgs::PointCloud2ConstPtr> empty_pcl;
           std::queue<nav_msgs::Odometry::ConstPtr>     empty_odom;
           std::swap(cornerLastBuf, empty_pcl);
           std::swap(surfLastBuf, empty_pcl);
           std::swap(fullResBuf, empty_pcl);
           std::swap(odometryBuf, empty_odom);
-          /* printf("time corner %f surf %f full %f odom %f \n", timeLaserCloudCornerLast, timeLaserCloudSurfLast, timeLaserCloudFullRes, timeLaserOdometry); */
-          /* printf("unsync messeage!"); */
           break;
         }
 
@@ -782,24 +791,22 @@ void process() {
       tf::Transform                   transform;
       tf::Quaternion                  q;
       transform.setOrigin(tf::Vector3(t_w_curr(0), t_w_curr(1), t_w_curr(2)));
-      q.setW(q_w_curr.w());
-      q.setX(q_w_curr.x());
-      q.setY(q_w_curr.y());
-      q.setZ(q_w_curr.z());
+      tf::quaternionEigenToTF(q_w_curr, q);
       transform.setRotation(q);
-      br.sendTransform(tf::StampedTransform(transform_lidar_to_fcu_ * transform.inverse(), stamp, _frame_fcu, _frame_map));
+
+      tf::Transform tf_fcu = transform * tf_fcu_in_lidar_frame_;
+      br.sendTransform(tf::StampedTransform(tf_fcu.inverse(), stamp, _frame_fcu, _frame_map));
 
       // nav_msgs::Odometry msg
-      tf::Transform      tf_odom = transform * transform_lidar_to_fcu_.inverse();
       nav_msgs::Odometry odomAftMapped;
       odomAftMapped.header.frame_id      = _frame_map;
       odomAftMapped.header.stamp         = stamp;
       odomAftMapped.child_frame_id       = _frame_fcu;
-      tf::Vector3 origin                 = tf_odom.getOrigin();
+      tf::Vector3 origin                 = tf_fcu.getOrigin();
       odomAftMapped.pose.pose.position.x = origin.x();
       odomAftMapped.pose.pose.position.y = origin.y();
       odomAftMapped.pose.pose.position.z = origin.z();
-      tf::quaternionTFToMsg(tf_odom.getRotation(), odomAftMapped.pose.pose.orientation);
+      tf::quaternionTFToMsg(tf_fcu.getRotation(), odomAftMapped.pose.pose.orientation);
       pubOdomAftMapped.publish(odomAftMapped);
 
       // Odometry path
@@ -820,6 +827,8 @@ void process() {
 int main(int argc, char **argv) {
   ros::init(argc, argv, "laserMapping");
   ros::NodeHandle nh;
+  
+  nh.param<bool>("debug", debug, false);
 
   std::string uav_name;
   nh.getParam("uav_name", uav_name);
@@ -848,8 +857,10 @@ int main(int argc, char **argv) {
   pubLaserCloudMap         = nh.advertise<sensor_msgs::PointCloud2>("/laser_cloud_map", 100);
   pubLaserCloudFullRes     = nh.advertise<sensor_msgs::PointCloud2>("/sensor_cloud_registered", 100);
   pubOdomAftMapped         = nh.advertise<nav_msgs::Odometry>("/aft_mapped_to_init", 100);
-  pubOdomAftMappedHighFrec = nh.advertise<nav_msgs::Odometry>("/aft_mapped_to_init_high_frec", 100);
   pubLaserAfterMappedPath  = nh.advertise<nav_msgs::Path>("/aft_mapped_path", 100);
+  if (debug) {
+    pubOdomAftMappedHighFrec = nh.advertise<nav_msgs::Odometry>("/aft_mapped_to_init_high_frec", 100);
+  }
 
   for (int i = 0; i < laserCloudNum; i++) {
     laserCloudCornerArray[i].reset(new pcl::PointCloud<PointType>());
@@ -860,12 +871,12 @@ int main(int argc, char **argv) {
   ROS_INFO("Waiting 0.5 second to fill transform buffer.");
   ros::Duration(0.5).sleep();
   // TODO: rewrite to timer
-  auto tf_mrs = transformer_->getTransform(_frame_lidar, _frame_fcu, ros::Time(0));
+  auto tf_mrs = transformer_->getTransform(_frame_fcu, _frame_lidar, ros::Time(0));
   while (!tf_mrs) {
-    ROS_INFO_THROTTLE(0.5, "Looking for transform from %s to %s", _frame_lidar.c_str(), _frame_fcu.c_str());
-    tf_mrs = transformer_->getTransform(_frame_lidar, _frame_fcu, ros::Time(0));
+    ROS_INFO_THROTTLE(0.5, "Looking for transform from %s to %s", _frame_fcu.c_str(), _frame_lidar.c_str());
+    tf_mrs = transformer_->getTransform(_frame_fcu, _frame_lidar, ros::Time(0));
   }
-  tf::transformMsgToTF(tf_mrs->getTransform().transform, transform_lidar_to_fcu_);
+  tf::transformMsgToTF(tf_mrs->getTransform().transform, tf_fcu_in_lidar_frame_);
 
   std::thread mapping_process{process};
 
