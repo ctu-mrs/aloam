@@ -60,6 +60,7 @@
 #include "aloam_velodyne/common.h"
 #include "aloam_velodyne/tic_toc.h"
 #include "lidarFactor.hpp"
+#include <eigen_conversions/eigen_msg.h>
 
 #include <mrs_lib/transformer.h>
 /*//}*/
@@ -72,6 +73,7 @@ using std::cos;
 using std::sin;
 
 bool   systemRegistrationInited = false;
+bool   debug                    = false;
 double scanPeriod;
 
 const int systemDelay     = 0;
@@ -91,10 +93,7 @@ double max_range_sq;
 
 /*//{ Variables laserOdometry */
 std::string           _frame_lidar;
-std::string           _frame_fcu;
 std::string           _frame_map;
-mrs_lib::Transformer *transformer_;
-tf::Transform         transform_lidar_to_fcu_;
 
 int corner_correspondence = 0, plane_correspondence = 0;
 
@@ -506,6 +505,8 @@ int main(int argc, char **argv) {
   ros::init(argc, argv, "laserOdometry");
   ros::NodeHandle nh;
 
+  nh.param<bool>("debug", debug, false);
+
   nh.param<int>("scan_line", N_SCANS, 16);
   if (N_SCANS != 16 && N_SCANS != 32 && N_SCANS != 64) {
     /* printf("only support velodyne with 16, 32 or 64 scan line!"); */
@@ -537,22 +538,9 @@ int main(int argc, char **argv) {
 
   std::string uav_name;
   nh.getParam("uav_name", uav_name);
-  transformer_ = new mrs_lib::Transformer("aloamLaserOdometry", uav_name);
   nh.getParam("lidar_frame", _frame_lidar);
-  nh.getParam("fcu_frame", _frame_fcu);
   nh.getParam("map_frame", _frame_map);
 
-  // Get static transform lidar->fcu
-  ROS_INFO("Waiting 0.5 second to fill transform buffer.");
-  ros::Duration(0.5).sleep();
-  // TODO: rewrite to timer
-  auto tf_mrs = transformer_->getTransform(_frame_lidar, _frame_fcu, ros::Time(0));
-  while (!tf_mrs) {
-    ROS_INFO_THROTTLE(0.5, "Looking for transform from %s to %s", _frame_lidar.c_str(), _frame_fcu.c_str());
-    tf_mrs = transformer_->getTransform(_frame_lidar, _frame_fcu, ros::Time(0));
-  }
-  tf::transformMsgToTF(tf_mrs->getTransform().transform, transform_lidar_to_fcu_);
-  delete transformer_;
 
   ROS_INFO_STREAM_THROTTLE(1, "Mapping at %d " << 10 / skipFrameNum << " Hz");
 
@@ -560,9 +548,13 @@ int main(int argc, char **argv) {
   ros::Publisher pubLaserCloudSurfLast   = nh.advertise<sensor_msgs::PointCloud2>("/laser_cloud_surf_last", 100);
   ros::Publisher pubLaserCloudFullRes    = nh.advertise<sensor_msgs::PointCloud2>("/sensor_cloud_3", 100);
   ros::Publisher pubLaserOdometry        = nh.advertise<nav_msgs::Odometry>("/laser_odom_to_init", 100);
-  ros::Publisher pubLaserPath            = nh.advertise<nav_msgs::Path>("/laser_odom_path", 100);
+  ros::Publisher pubLaserPath;
+  if (debug) {
+    pubLaserPath = nh.advertise<nav_msgs::Path>("/laser_odom_path", 100);
+  }
 
   nav_msgs::Path laserPath;
+  laserPath.header.frame_id = _frame_map;
 
   int       frameCount = 0;
   ros::Rate rate(100);
@@ -815,37 +807,28 @@ int main(int argc, char **argv) {
 
       TicToc t_pub;
 
-      // publish odometry
-      tf::Transform  transform;
-      tf::Quaternion q;
-      transform.setOrigin(tf::Vector3(t_w_curr(0), t_w_curr(1), t_w_curr(2)));
-      q.setW(q_w_curr.w());
-      q.setX(q_w_curr.x());
-      q.setY(q_w_curr.y());
-      q.setZ(q_w_curr.z());
-      transform.setRotation(q);
-      tf::Transform tf_odom = transform * transform_lidar_to_fcu_.inverse();
-
-      // nav_msgs::Odometry msg
+      // Publish odometry as PoseStamped
       nav_msgs::Odometry laserOdometry;
-      laserOdometry.header.frame_id      = _frame_map;
-      laserOdometry.child_frame_id       = _frame_fcu;
-      laserOdometry.header.stamp         = stamp;
-      tf::Vector3 origin                 = tf_odom.getOrigin();
-      laserOdometry.pose.pose.position.x = origin.x();
-      laserOdometry.pose.pose.position.y = origin.y();
-      laserOdometry.pose.pose.position.z = origin.z();
-      tf::quaternionTFToMsg(tf_odom.getRotation(), laserOdometry.pose.pose.orientation);
+      laserOdometry.header.frame_id = _frame_map;
+      laserOdometry.header.stamp    = stamp;
+      laserOdometry.child_frame_id = _frame_lidar;
+
+      tf::pointEigenToMsg(t_w_curr, laserOdometry.pose.pose.position);
+      tf::quaternionEigenToMsg(q_w_curr, laserOdometry.pose.pose.orientation);
+
       pubLaserOdometry.publish(laserOdometry);
 
-      // geometry_msgs::PoseStamped and Path
-      geometry_msgs::PoseStamped laserPose;
-      laserPose.header       = laserOdometry.header;
-      laserPose.pose         = laserOdometry.pose.pose;
-      laserPath.header.stamp = laserOdometry.header.stamp;
-      laserPath.poses.push_back(laserPose);
-      laserPath.header.frame_id = _frame_map;
-      pubLaserPath.publish(laserPath);
+      if (debug) {
+        // geometry_msgs::PoseStamped and Path
+        geometry_msgs::PoseStamped pose;
+        pose.pose = laserOdometry.pose.pose;
+        pose.header.frame_id = _frame_lidar;
+        pose.header.stamp = stamp;
+        laserPath.header.stamp = laserOdometry.header.stamp;
+        laserPath.poses.push_back(pose);
+
+        pubLaserPath.publish(laserPath);
+      }
 
       // transform corner features and plane features to the scan end point
       if (0) {
@@ -891,12 +874,12 @@ int main(int argc, char **argv) {
 
         sensor_msgs::PointCloud2 laserCloudSurfLast2;
         pcl::toROSMsg(*laserCloudSurfLast, laserCloudSurfLast2);
-        laserCloudSurfLast2.header.stamp = stamp;
+        laserCloudSurfLast2.header.stamp    = stamp;
         laserCloudSurfLast2.header.frame_id = _frame_lidar;
 
         sensor_msgs::PointCloud2 laserCloudFullRes3;
         pcl::toROSMsg(*laserCloudFullRes, laserCloudFullRes3);
-        laserCloudFullRes3.header.stamp = stamp;
+        laserCloudFullRes3.header.stamp    = stamp;
         laserCloudFullRes3.header.frame_id = _frame_lidar;
 
         pubLaserCloudCornerLast.publish(laserCloudCornerLast2);

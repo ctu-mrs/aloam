@@ -8,6 +8,7 @@
   <arg name="map_frame" default="$(arg uav_name)/aloam_origin"/>
   <arg name="rviz" default="false" />
   <arg name="map_builder" default="true" />
+  <arg name="publish_debug_topics" default="false" />
 
   <arg name="min_range" default="0.4" />
   <arg name="max_range" default="40.0" />
@@ -39,6 +40,8 @@
     <param name="max_range" type="double" value="$(arg max_range)"/>
     <param name="vertical_fov" type="double" value="$(arg vertical_fov)"/>
     <param name="frequency" type="double" value="$(arg frequency)"/>
+
+    <param name="debug" type="bool" value="$(arg publish_debug_topics)"/>
 
     <!-- Odometry node -->
     <node pkg="aloam_velodyne" type="alaserOdometry" name="aloam_odometry" output="screen">
