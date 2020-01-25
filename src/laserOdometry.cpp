@@ -89,11 +89,18 @@ int       cloudLabel[400000];
 double min_range_sq;
 double max_range_sq;
 
+std::mutex         mutex_odom_mavros;
+bool               got_mavros_odom;
+nav_msgs::Odometry mavros_odom;
+
 /*//}*/
 
 /*//{ Variables laserOdometry */
 std::string           _frame_lidar;
+std::string           _frame_fcu;
 std::string           _frame_map;
+mrs_lib::Transformer *transformer_;
+tf::Transform         tf_lidar_in_fcu_frame_;
 
 int corner_correspondence = 0, plane_correspondence = 0;
 
@@ -500,6 +507,19 @@ void TransformToEnd(PointType const *const pi, PointType *const po) {
 }
 /*//}*/
 
+/* //{ callbackMavrosOdometry() */
+void callbackMavrosOdometry(const nav_msgs::OdometryConstPtr &msg) {
+  if (!systemOdometryInited) {
+    return;
+  }
+
+  std::scoped_lock lock(mutex_odom_mavros);
+  got_mavros_odom = true;
+  mavros_odom     = *msg;
+}
+
+//}
+
 /*//{ main */
 int main(int argc, char **argv) {
   ros::init(argc, argv, "laserOdometry");
@@ -532,13 +552,16 @@ int main(int argc, char **argv) {
   ROS_INFO_STREAM("frequency" << scanPeriod);
   scanPeriod = 1.0 / scanPeriod;
 
-  ros::Subscriber subLaserCloud = nh.subscribe<sensor_msgs::PointCloud2>("/sensor_points", 100, laserCloudHandler);
+  ros::Subscriber subLaserCloud = nh.subscribe<sensor_msgs::PointCloud2>("/sensor_points", 100, laserCloudHandler, ros::TransportHints().tcpNoDelay());
+  ros::Subscriber sub_mavros    = nh.subscribe("/mavros_odom_in", 1, &callbackMavrosOdometry, ros::TransportHints().tcpNoDelay());
 
   nh.param<int>("mapping_skip_frame", skipFrameNum, 2);
 
   std::string uav_name;
   nh.getParam("uav_name", uav_name);
+  transformer_ = new mrs_lib::Transformer("aloamLaserOdometry", uav_name);
   nh.getParam("lidar_frame", _frame_lidar);
+  nh.getParam("fcu_frame", _frame_fcu);
   nh.getParam("map_frame", _frame_map);
 
 
@@ -555,6 +578,18 @@ int main(int argc, char **argv) {
 
   nav_msgs::Path laserPath;
   laserPath.header.frame_id = _frame_map;
+
+  // Get static transform lidar->fcu
+  ROS_INFO("Waiting 0.5 second to fill transform buffer.");
+  ros::Duration(0.5).sleep();
+  // TODO: rewrite to timer
+  auto tf_mrs = transformer_->getTransform(_frame_lidar, _frame_fcu, ros::Time(0));
+  while (!tf_mrs) {
+    ROS_INFO_THROTTLE(0.5, "Looking for transform from %s to %s", _frame_lidar.c_str(), _frame_fcu.c_str());
+    tf_mrs = transformer_->getTransform(_frame_lidar, _frame_fcu, ros::Time(0));
+  }
+  tf::transformMsgToTF(tf_mrs->getTransform().transform, tf_lidar_in_fcu_frame_);
+  delete transformer_;
 
   int       frameCount = 0;
   ros::Rate rate(100);
@@ -807,23 +842,55 @@ int main(int argc, char **argv) {
 
       TicToc t_pub;
 
+      geometry_msgs::Quaternion ori;
+      bool                      got_mavros = false;
+      {
+        std::scoped_lock lock(mutex_odom_mavros);
+        if (got_mavros_odom &&  mavros_odom.header.stamp.toSec() - stamp.toSec() < 1.0) {
+          got_mavros = true;
+          ori        = mavros_odom.pose.pose.orientation;
+        }
+      }
+
+      if (got_mavros) {
+        tf::Quaternion q_mavros;
+        tf::Quaternion q_odom;
+
+        tf::quaternionMsgToTF(ori, q_mavros);
+        tf::quaternionEigenToTF(q_w_curr, q_odom);
+
+        // Parse roll and pitch from mavros and yaw from odometry
+        double roll, pitch, yaw;
+        double r, p, y;
+        tf::Matrix3x3(q_mavros).getRPY(roll, pitch, y);
+        tf::Matrix3x3(q_odom).getRPY(r, p, yaw);
+
+        // Transform mavros fcu orientation to lidar orientation
+        tf::Vector3 rpy = tf::quatRotate(tf_lidar_in_fcu_frame_.getRotation(), tf::Vector3(roll, pitch, 0));
+
+        /* ROS_WARN("Lidar orientation: (%0.2f, %0.2f, %0.2f), odom orientation: (%0.2f, %0.2f, %0.2f)", rpy.x(), rpy.y(), rpy.z(), r, p, yaw); */
+        ori = tf::createQuaternionMsgFromRollPitchYaw(rpy.x(), rpy.y(), yaw);
+      } else {
+        tf::quaternionEigenToMsg(q_w_curr, ori);
+      }
+
       // Publish odometry as PoseStamped
       nav_msgs::Odometry laserOdometry;
       laserOdometry.header.frame_id = _frame_map;
       laserOdometry.header.stamp    = stamp;
-      laserOdometry.child_frame_id = _frame_lidar;
+      laserOdometry.child_frame_id  = _frame_lidar;
 
       tf::pointEigenToMsg(t_w_curr, laserOdometry.pose.pose.position);
-      tf::quaternionEigenToMsg(q_w_curr, laserOdometry.pose.pose.orientation);
+      laserOdometry.pose.pose.orientation = ori;
 
       pubLaserOdometry.publish(laserOdometry);
 
       if (debug) {
         // geometry_msgs::PoseStamped and Path
         geometry_msgs::PoseStamped pose;
-        pose.pose = laserOdometry.pose.pose;
-        pose.header.frame_id = _frame_lidar;
-        pose.header.stamp = stamp;
+        pose.pose              = laserOdometry.pose.pose;
+        pose.header.frame_id   = _frame_lidar;
+        pose.header.stamp      = stamp;
         laserPath.header.stamp = laserOdometry.header.stamp;
         laserPath.poses.push_back(pose);
 

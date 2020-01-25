@@ -877,6 +877,7 @@ int main(int argc, char **argv) {
     tf_mrs = transformer_->getTransform(_frame_fcu, _frame_lidar, ros::Time(0));
   }
   tf::transformMsgToTF(tf_mrs->getTransform().transform, tf_fcu_in_lidar_frame_);
+  delete transformer_;
 
   std::thread mapping_process{process};
 
