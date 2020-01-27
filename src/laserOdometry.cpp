@@ -74,6 +74,7 @@ using std::sin;
 
 bool   systemRegistrationInited = false;
 bool   debug                    = false;
+bool   perform_scan_preprocessing;
 double scanPeriod;
 
 const int systemDelay     = 0;
@@ -199,8 +200,10 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) {
   pcl::fromROSMsg(*laserCloudMsg, laserCloudIn);
   std::vector<int> indices;
 
-  pcl::removeNaNFromPointCloud(laserCloudIn, laserCloudIn, indices);
-  removeCloseAndFarPointCloud(laserCloudIn, laserCloudIn);
+  if (perform_scan_preprocessing) {
+    pcl::removeNaNFromPointCloud(laserCloudIn, laserCloudIn, indices);
+    removeCloseAndFarPointCloud(laserCloudIn, laserCloudIn);
+  }
 
   int   cloudSize = laserCloudIn.points.size();
   float startOri  = -atan2(laserCloudIn.points[0].y, laserCloudIn.points[0].x);
@@ -528,28 +531,33 @@ int main(int argc, char **argv) {
   nh.param<bool>("debug", debug, false);
 
   nh.param<int>("scan_line", N_SCANS, 16);
-  if (N_SCANS != 16 && N_SCANS != 32 && N_SCANS != 64) {
+  /* if (N_SCANS != 16 && N_SCANS != 32 && N_SCANS != 64) { */
+  if (N_SCANS == 32 && N_SCANS == 64) {
+    ROS_ERROR("MRS version of aloam does not work properly for %d rows. Function laserCloudHandler() needs to be updated.", N_SCANS);
+    return 0;
+  } else if (N_SCANS != 16) {
     /* printf("only support velodyne with 16, 32 or 64 scan line!"); */
-    ROS_ERROR_STREAM("only support velodyne with 16, 32 or 64 scan line!");
+    ROS_ERROR_STREAM("MRS version of aloam curently supports only 3D lidar with 16 scan lines!");
     return 0;
   }
   ROS_INFO_STREAM("scan line number " << N_SCANS);
 
+  nh.param<bool>("perform_scan_preprocessing", perform_scan_preprocessing, true);
   nh.param<double>("min_range", min_range_sq, 0.0);
   nh.param<double>("max_range", max_range_sq, 1000.0);
-  ROS_INFO_STREAM("min range" << min_range_sq);
-  ROS_INFO_STREAM("max range" << max_range_sq);
+  ROS_INFO_STREAM("min range " << min_range_sq);
+  ROS_INFO_STREAM("max range " << max_range_sq);
   min_range_sq *= min_range_sq;
   max_range_sq *= max_range_sq;
 
   nh.param<float>("vertical_fov", vertical_fov_half, 30.0);
-  ROS_INFO_STREAM("vertical fov" << vertical_fov_half);
+  ROS_INFO_STREAM("vertical fov " << vertical_fov_half);
   ray_vert_delta = vertical_fov_half / float(N_SCANS - 1);
   vertical_fov_half /= 2.0;
-  ROS_INFO_STREAM("vertical fov delta step" << ray_vert_delta);
+  ROS_INFO_STREAM("vertical fov delta step " << ray_vert_delta);
 
   nh.param<double>("frequency", scanPeriod, 10.0);
-  ROS_INFO_STREAM("frequency" << scanPeriod);
+  ROS_INFO_STREAM("frequency " << scanPeriod);
   scanPeriod = 1.0 / scanPeriod;
 
   ros::Subscriber subLaserCloud = nh.subscribe<sensor_msgs::PointCloud2>("/sensor_points", 100, laserCloudHandler, ros::TransportHints().tcpNoDelay());
@@ -846,7 +854,7 @@ int main(int argc, char **argv) {
       bool                      got_mavros = false;
       {
         std::scoped_lock lock(mutex_odom_mavros);
-        if (got_mavros_odom &&  mavros_odom.header.stamp.toSec() - stamp.toSec() < 1.0) {
+        if (got_mavros_odom && mavros_odom.header.stamp.toSec() - stamp.toSec() < 1.0) {
           got_mavros = true;
           ori        = mavros_odom.pose.pose.orientation;
         }

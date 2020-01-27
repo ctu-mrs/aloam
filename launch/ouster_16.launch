@@ -10,6 +10,10 @@
   <arg name="map_builder" default="true" />
   <arg name="publish_debug_topics" default="false" />
 
+  <!-- Sensor parameters -->
+
+  <!-- If true, aloam does not preprocess input scan -->
+  <arg name="external_preprocessing" default="false" />
   <arg name="min_range" default="0.4" />
   <arg name="max_range" default="40.0" />
   <arg name="vertical_fov" default="33.2" />
@@ -36,6 +40,7 @@
     <param name="lidar_frame" type="string" value="$(arg lidar_frame)"/>
     <param name="fcu_frame" type="string" value="$(arg fcu_frame)"/>
 
+    <param name="perform_scan_preprocessing" value="$(arg external_preprocessing)" />
     <param name="min_range" type="double" value="$(arg min_range)"/>
     <param name="max_range" type="double" value="$(arg max_range)"/>
     <param name="vertical_fov" type="double" value="$(arg vertical_fov)"/>
