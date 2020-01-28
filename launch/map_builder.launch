@@ -6,7 +6,7 @@
   <arg name="pointcloud2_in" default="/$(arg uav_name)/aloam_mapping/laser_cloud_map" />
 
   <arg name="resolution" default="0.2" />
-  <arg name="sensor_max_range" default="100.0" />
+  <arg name="sensor_max_range" default="20.0" />
 
 	<node pkg="octomap_server" type="octomap_server_node" name="octomap_server">
 		<param name="resolution" value="$(arg resolution)" />
