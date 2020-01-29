@@ -266,7 +266,7 @@ void process() {
         timeLaserOdometry        = odometryBuf.front()->header.stamp.toSec();
 
         if (timeLaserCloudCornerLast != timeLaserOdometry || timeLaserCloudSurfLast != timeLaserOdometry || timeLaserCloudFullRes != timeLaserOdometry) {
-          ROS_WARN_STREAM("Unsync message (should happen just once): time corner " << timeLaserCloudCornerLast << " surf " << timeLaserCloudSurfLast << " full "
+          ROS_WARN_STREAM("[LaserMapping] Unsync message (should happen just once): time corner " << timeLaserCloudCornerLast << " surf " << timeLaserCloudSurfLast << " full "
                                                                                    << timeLaserCloudFullRes << " odom " << timeLaserOdometry);
 
           // Clear queues
@@ -303,7 +303,7 @@ void process() {
         while (!cornerLastBuf.empty()) {
           cornerLastBuf.pop();
           /* printf("drop lidar frame in mapping for real time performance \n"); */
-          ROS_INFO_STREAM("drop lidar frame in mapping for real time performance");
+          ROS_INFO_STREAM("[LaserMapping] drop lidar frame in mapping for real time performance");
         }
       }
 
@@ -507,15 +507,15 @@ void process() {
 
       /* printf("map prepare time %f ms\n", t_shift.toc()); */
       /* printf("map corner num %d  surf num %d \n", laserCloudCornerFromMapNum, laserCloudSurfFromMapNum); */
-      ROS_INFO_STREAM_THROTTLE(1, "map prepare time " << t_shift.toc() << " ms");
-      ROS_INFO_STREAM_THROTTLE(1, "map corner num " << laserCloudCornerFromMapNum << " surf num " << laserCloudSurfFromMapNum);
+      ROS_INFO_STREAM_THROTTLE(1, "[LaserMapping] map prepare time " << t_shift.toc() << " ms");
+      ROS_INFO_STREAM_THROTTLE(1, "[LaserMapping] map corner num " << laserCloudCornerFromMapNum << " surf num " << laserCloudSurfFromMapNum);
       if (laserCloudCornerFromMapNum > 10 && laserCloudSurfFromMapNum > 50) {
         TicToc t_opt;
         TicToc t_tree;
         kdtreeCornerFromMap->setInputCloud(laserCloudCornerFromMap);
         kdtreeSurfFromMap->setInputCloud(laserCloudSurfFromMap);
         /* printf("build tree time %f ms \n", t_tree.toc()); */
-        ROS_INFO_STREAM_THROTTLE(1, "build tree time " << t_tree.toc() << " ms");
+        ROS_INFO_STREAM_THROTTLE(1, "[LaserMapping] build tree time " << t_tree.toc() << " ms");
 
         for (int iterCount = 0; iterCount < 2; iterCount++) {
           // ceres::LossFunction *loss_function = NULL;
@@ -651,7 +651,7 @@ void process() {
           // printf("surf num %d used surf num %d \n", laserCloudSurfStackNum, surf_num);
 
           /* printf("mapping data assosiation time %f ms \n", t_data.toc()); */
-          ROS_INFO_STREAM_THROTTLE(1, "mapping data association time " << t_data.toc() << " ms");
+          ROS_INFO_STREAM_THROTTLE(1, "[LaserMapping] mapping data association time " << t_data.toc() << " ms");
 
           TicToc                 t_solver;
           ceres::Solver::Options options;
@@ -663,7 +663,7 @@ void process() {
           ceres::Solver::Summary summary;
           ceres::Solve(options, &problem, &summary);
           /* printf("mapping solver time %f ms \n", t_solver.toc()); */
-          ROS_INFO_STREAM_THROTTLE(1, "mapping solver time " << t_solver.toc() << " ms");
+          ROS_INFO_STREAM_THROTTLE(1, "[LaserMapping] mapping solver time " << t_solver.toc() << " ms");
 
           // printf("time %f \n", timeLaserOdometry);
           // printf("corner factor num %d surf factor num %d\n", corner_num, surf_num);
@@ -671,9 +671,9 @@ void process() {
           //	   parameters[4], parameters[5], parameters[6]);
         }
         /* printf("mapping optimization time %f \n", t_opt.toc()); */
-        ROS_INFO_STREAM_THROTTLE(1, "mapping optimization time " << t_opt.toc() << " ms");
+        ROS_INFO_STREAM_THROTTLE(1, "[LaserMapping] mapping optimization time " << t_opt.toc() << " ms");
       } else {
-        ROS_WARN("time Map corner and surf num are not enough");
+        ROS_WARN("[LaserMapping] time Map corner and surf num are not enough");
       }
       transformUpdate();
       /*//}*/
@@ -719,7 +719,7 @@ void process() {
         }
       }
       /* printf("add points time %f ms\n", t_add.toc()); */
-      ROS_INFO_STREAM_THROTTLE(1, "add points time " << t_add.toc() << " ms");
+      ROS_INFO_STREAM_THROTTLE(1, "[LaserMapping] add points time " << t_add.toc() << " ms");
 
 
       TicToc t_filter;
@@ -737,7 +737,7 @@ void process() {
         laserCloudSurfArray[ind] = tmpSurf;
       }
       /* printf("filter time %f ms \n", t_filter.toc()); */
-      ROS_INFO_STREAM_THROTTLE(1, "filter time " << t_filter.toc() << " ms");
+      ROS_INFO_STREAM_THROTTLE(1, "[LaserMapping] filter time " << t_filter.toc() << " ms");
 
       TicToc    t_pub;
       ros::Time stamp = ros::Time().fromSec(timeLaserOdometry);
@@ -783,8 +783,8 @@ void process() {
 
       /* printf("mapping pub time %f ms \n", t_pub.toc()); */
       /* printf("whole mapping time %f ms +++++\n", t_whole.toc()); */
-      ROS_INFO_STREAM_THROTTLE(1, "mapping pub time " << t_pub.toc() << " ms");
-      ROS_INFO_STREAM_THROTTLE(1, "whole mapping time " << t_whole.toc() << " ms");
+      ROS_INFO_STREAM_THROTTLE(1, "[LaserMapping] mapping pub time " << t_pub.toc() << " ms");
+      ROS_INFO_STREAM_THROTTLE(1, "[LaserMapping] whole mapping time " << t_whole.toc() << " ms");
 
       // TF fcu -> aloam origin (t_w_curr and q_w_curr is in origin -> fcu frame, hence inversion)
       static tf::TransformBroadcaster br;
@@ -844,7 +844,7 @@ int main(int argc, char **argv) {
   nh.getParam("map_frame", _frame_map);
 
   /* printf("line resolution %f plane resolution %f \n", lineRes, planeRes); */
-  ROS_INFO_STREAM("line resolution " << lineRes << " plane resolution " << planeRes);
+  ROS_INFO_STREAM("[LaserMapping] line resolution " << lineRes << " plane resolution " << planeRes);
   downSizeFilterCorner.setLeafSize(lineRes, lineRes, lineRes);
   downSizeFilterSurf.setLeafSize(planeRes, planeRes, planeRes);
 
@@ -868,16 +868,17 @@ int main(int argc, char **argv) {
   }
 
   // Get static transform lidar->fcu
-  ROS_INFO("Waiting 0.5 second to fill transform buffer.");
+  ROS_INFO("[LaserMapping] Waiting 0.5 second to fill transform buffer.");
   ros::Duration(0.5).sleep();
   // TODO: rewrite to timer
   auto tf_mrs = transformer_->getTransform(_frame_fcu, _frame_lidar, ros::Time(0));
   while (!tf_mrs) {
-    ROS_INFO_THROTTLE(0.5, "Looking for transform from %s to %s", _frame_fcu.c_str(), _frame_lidar.c_str());
+    ROS_INFO_THROTTLE(0.5, "[LaserMapping] Looking for transform from %s to %s", _frame_fcu.c_str(), _frame_lidar.c_str());
     tf_mrs = transformer_->getTransform(_frame_fcu, _frame_lidar, ros::Time(0));
   }
   tf::transformMsgToTF(tf_mrs->getTransform().transform, tf_fcu_in_lidar_frame_);
   delete transformer_;
+  ROS_INFO("[LaserMapping] Successfully found transformation from %s to %s.", _frame_fcu.c_str(), _frame_lidar.c_str());
 
   std::thread mapping_process{process};
 

@@ -255,7 +255,7 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) {
       }
     } else {
       /* printf("wrong scan number\n"); */
-      ROS_ERROR_STREAM("wrong scan number");
+      ROS_ERROR_STREAM("[laserOdometry] wrong scan number");
       ROS_BREAK();
     }
     // printf("angle %f scanID %d \n", angle, scanID);
@@ -287,7 +287,7 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) {
 
   cloudSize = count;
   /* printf("points size %d \n", cloudSize); */
-  ROS_INFO_STREAM_THROTTLE(1, "points size " << cloudSize);
+  ROS_INFO_STREAM_THROTTLE(1, "[laserOdometry] points size " << cloudSize);
 
   pcl::PointCloud<PointType>::Ptr laserCloud(new pcl::PointCloud<PointType>());
   /* ROS_ERROR("Cloud:"); */
@@ -299,7 +299,7 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) {
   }
 
   /* printf("prepare time %f \n", t_prepare.toc()); */
-  ROS_INFO_STREAM_THROTTLE(1, "prepare time " << t_prepare.toc() << " ms");
+  ROS_INFO_STREAM_THROTTLE(1, "[laserOdometry] prepare time " << t_prepare.toc() << " ms");
 
   for (int i = 5; i < cloudSize - 5; i++) {
     float diffX = laserCloud->points[i - 5].x + laserCloud->points[i - 4].x + laserCloud->points[i - 3].x + laserCloud->points[i - 2].x +
@@ -437,8 +437,8 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) {
   }
   /* printf("sort q time %f \n", t_q_sort); */
   /* printf("seperate points time %f \n", t_pts.toc()); */
-  ROS_INFO_STREAM_THROTTLE(1, "sort q time " << t_q_sort << " ms");
-  ROS_INFO_STREAM_THROTTLE(1, "separate points time " << t_pts.toc() << " ms");
+  ROS_INFO_STREAM_THROTTLE(1, "[laserOdometry] sort q time " << t_q_sort << " ms");
+  ROS_INFO_STREAM_THROTTLE(1, "[laserOdometry] separate points time " << t_pts.toc() << " ms");
 
   laserCloud->header.frame_id           = _frame_map;
   cornerPointsSharp.header.frame_id     = _frame_map;
@@ -464,9 +464,9 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) {
   }
 
   /* printf("scan registration time %f ms *************\n", t_whole.toc()); */
-  ROS_INFO_STREAM_THROTTLE(1, "scan registration time " << t_whole.toc() << " ms");
+  ROS_INFO_STREAM_THROTTLE(1, "[laserOdometry] scan registration time " << t_whole.toc() << " ms");
   if (t_whole.toc() > 100)
-    ROS_WARN("scan registration process over 100ms");
+    ROS_WARN("[laserOdometry] scan registration process over 100ms");
 }
 /*//}*/
 
@@ -533,31 +533,31 @@ int main(int argc, char **argv) {
   nh.param<int>("scan_line", N_SCANS, 16);
   /* if (N_SCANS != 16 && N_SCANS != 32 && N_SCANS != 64) { */
   if (N_SCANS == 32 && N_SCANS == 64) {
-    ROS_ERROR("MRS version of aloam does not work properly for %d rows. Function laserCloudHandler() needs to be updated.", N_SCANS);
+    ROS_ERROR("[laserOdometry] MRS version of aloam does not work properly for %d rows. Function laserCloudHandler() needs to be updated.", N_SCANS);
     return 0;
   } else if (N_SCANS != 16) {
     /* printf("only support velodyne with 16, 32 or 64 scan line!"); */
-    ROS_ERROR_STREAM("MRS version of aloam curently supports only 3D lidar with 16 scan lines!");
+    ROS_ERROR_STREAM("[laserOdometry] MRS version of aloam curently supports only 3D lidar with 16 scan lines!");
     return 0;
   }
-  ROS_INFO_STREAM("scan line number " << N_SCANS);
+  ROS_INFO_STREAM("[laserOdometry] scan line number " << N_SCANS);
 
   nh.param<bool>("perform_scan_preprocessing", perform_scan_preprocessing, true);
   nh.param<double>("min_range", min_range_sq, 0.0);
   nh.param<double>("max_range", max_range_sq, 1000.0);
-  ROS_INFO_STREAM("min range " << min_range_sq);
-  ROS_INFO_STREAM("max range " << max_range_sq);
+  ROS_INFO_STREAM("[laserOdometry] min range " << min_range_sq);
+  ROS_INFO_STREAM("[laserOdometry] max range " << max_range_sq);
   min_range_sq *= min_range_sq;
   max_range_sq *= max_range_sq;
 
   nh.param<float>("vertical_fov", vertical_fov_half, 30.0);
-  ROS_INFO_STREAM("vertical fov " << vertical_fov_half);
+  ROS_INFO_STREAM("[laserOdometry] vertical fov " << vertical_fov_half);
   ray_vert_delta = vertical_fov_half / float(N_SCANS - 1);
   vertical_fov_half /= 2.0;
-  ROS_INFO_STREAM("vertical fov delta step " << ray_vert_delta);
+  ROS_INFO_STREAM("[laserOdometry] vertical fov delta step " << ray_vert_delta);
 
   nh.param<double>("frequency", scanPeriod, 10.0);
-  ROS_INFO_STREAM("frequency " << scanPeriod);
+  ROS_INFO_STREAM("[laserOdometry] frequency " << scanPeriod);
   scanPeriod = 1.0 / scanPeriod;
 
   ros::Subscriber subLaserCloud = nh.subscribe<sensor_msgs::PointCloud2>("/sensor_points", 100, laserCloudHandler, ros::TransportHints().tcpNoDelay());
@@ -573,7 +573,7 @@ int main(int argc, char **argv) {
   nh.getParam("map_frame", _frame_map);
 
 
-  ROS_INFO_STREAM_THROTTLE(1, "Mapping at %d " << 10 / skipFrameNum << " Hz");
+  ROS_INFO_STREAM_THROTTLE(1, "[laserOdometry] Mapping at " << 10 / skipFrameNum << " Hz");
 
   ros::Publisher pubLaserCloudCornerLast = nh.advertise<sensor_msgs::PointCloud2>("/laser_cloud_corner_last", 100);
   ros::Publisher pubLaserCloudSurfLast   = nh.advertise<sensor_msgs::PointCloud2>("/laser_cloud_surf_last", 100);
@@ -588,16 +588,17 @@ int main(int argc, char **argv) {
   laserPath.header.frame_id = _frame_map;
 
   // Get static transform lidar->fcu
-  ROS_INFO("Waiting 0.5 second to fill transform buffer.");
+  ROS_INFO("[LaserOdometry] Waiting 0.5 second to fill transform buffer.");
   ros::Duration(0.5).sleep();
   // TODO: rewrite to timer
   auto tf_mrs = transformer_->getTransform(_frame_lidar, _frame_fcu, ros::Time(0));
   while (!tf_mrs) {
-    ROS_INFO_THROTTLE(0.5, "Looking for transform from %s to %s", _frame_lidar.c_str(), _frame_fcu.c_str());
+    ROS_INFO_THROTTLE(0.5, "[LaserOdometry] Looking for transform from %s to %s", _frame_lidar.c_str(), _frame_fcu.c_str());
     tf_mrs = transformer_->getTransform(_frame_lidar, _frame_fcu, ros::Time(0));
   }
   tf::transformMsgToTF(tf_mrs->getTransform().transform, tf_lidar_in_fcu_frame_);
   delete transformer_;
+  ROS_INFO("[LaserOdometry] Successfully found transformation from %s to %s.", _frame_lidar.c_str(), _frame_fcu.c_str());
 
   int       frameCount = 0;
   ros::Rate rate(100);
@@ -624,7 +625,7 @@ int main(int argc, char **argv) {
 
       if (timeCornerPointsSharp != timeLaserCloudFullRes || timeCornerPointsLessSharp != timeLaserCloudFullRes || timeSurfPointsFlat != timeLaserCloudFullRes ||
           timeSurfPointsLessFlat != timeLaserCloudFullRes) {
-        ROS_ERROR_STREAM("unsync message!");
+        ROS_ERROR_STREAM("[laserOdometry] unsync message!");
         ROS_BREAK();
       }
 
@@ -825,10 +826,10 @@ int main(int argc, char **argv) {
           }
 
           // printf("coner_correspondance %d, plane_correspondence %d \n", corner_correspondence, plane_correspondence);
-          ROS_INFO_STREAM_THROTTLE(1, "data association time " << t_data.toc() << " ms");
+          ROS_INFO_STREAM_THROTTLE(1, "[laserOdometry] data association time " << t_data.toc() << " ms");
 
           if ((corner_correspondence + plane_correspondence) < 10) {
-            ROS_INFO_STREAM("less correspondence! *************************************************");
+            ROS_INFO_STREAM("[laserOdometry] less correspondence! *************************************************");
           }
 
           TicToc                 t_solver;
@@ -839,10 +840,10 @@ int main(int argc, char **argv) {
           ceres::Solver::Summary summary;
           ceres::Solve(options, &problem, &summary);
           /* printf("solver time %f ms \n", t_solver.toc()); */
-          ROS_INFO_STREAM_THROTTLE(1, "solver time " << t_solver.toc() << " ms");
+          ROS_INFO_STREAM_THROTTLE(1, "[laserOdometry] solver time " << t_solver.toc() << " ms");
         }
         /* printf("optimization twice time %f \n", t_opt.toc()); */
-        ROS_INFO_STREAM_THROTTLE(1, "optimization twice time " << t_opt.toc() << " ms");
+        ROS_INFO_STREAM_THROTTLE(1, "[laserOdometry] optimization twice time " << t_opt.toc() << " ms");
 
         t_w_curr = t_w_curr + q_w_curr * t_last_curr;
         q_w_curr = q_w_curr * q_last_curr;
@@ -963,10 +964,10 @@ int main(int argc, char **argv) {
       }
       /* printf("publication time %f ms \n", t_pub.toc()); */
       /* printf("whole laserOdometry time %f ms \n \n", t_whole.toc()); */
-      ROS_INFO_STREAM_THROTTLE(1, "publication time " << t_pub.toc() << " ms");
-      ROS_INFO_STREAM_THROTTLE(1, "whole laserOdometry time " << t_whole.toc() << " ms");
+      ROS_INFO_STREAM_THROTTLE(1, "[laserOdometry] publication time " << t_pub.toc() << " ms");
+      ROS_INFO_STREAM_THROTTLE(1, "[laserOdometry] whole laserOdometry time " << t_whole.toc() << " ms");
       if (t_whole.toc() > 100)
-        ROS_WARN("odometry process over 100ms");
+        ROS_WARN("[laserOdometry] odometry process over 100ms");
 
       frameCount++;
     }
