@@ -1,5 +1,5 @@
 <launch>
-  
+
   <arg name="uav_name" default="$(optenv UAV_NAME)" />
   <arg name="map_frame" default="$(arg uav_name)/origin_aloam" />
   <!-- <arg name="pointcloud2_in" default="/$(arg uav_name)/aloam_mapping/sensor_cloud_registered" /> -->
@@ -8,16 +8,21 @@
   <arg name="resolution" default="0.2" />
   <arg name="sensor_max_range" default="20.0" />
 
-	<node pkg="octomap_server" type="octomap_server_node" name="octomap_server">
-		<param name="publish_free_space" value="true" />
-		<param name="resolution" value="$(arg resolution)" />
-		<param name="frame_id" type="string" value="$(arg map_frame)" />
-		<param name="sensor_model/max_range" value="$(arg sensor_max_range)" />
-		<param name="sensor_model/hit" value="0.55" />
+  <arg name="add_free_space_ray_len" default="$(arg sensor_max_range)" />
+  <arg name="pointcloud2_over_max_range_in" default="/$(arg uav_name)/os1_cloud_node/points_over_max_range" />
 
-		<param name="latch" value="false" />
-		<param name="filter_ground" value="false" />
-		
+  <node pkg="octomap_server" type="octomap_server_node" name="octomap_server">
+    <param name="publish_free_space" type="bool" value="true" />
+    <param name="resolution" type="double" value="$(arg resolution)" />
+    <param name="frame_id" type="string" value="$(arg map_frame)" />
+    <param name="add_free_space_ray_len" type="double" value="$(arg add_free_space_ray_len)" />
+    <param name="sensor_model/max_range" type="double" value="$(arg sensor_max_range)" />
+    <param name="sensor_model/hit" type="double" value="0.55" />
+
+    <param name="latch" type="bool" value="false" />
+    <param name="filter_ground" type="bool" value="false" />
+
     <remap from="cloud_in" to="$(arg pointcloud2_in)" />
-	</node>
+    <remap from="cloud_over_max_range_in" to="$(arg pointcloud2_over_max_range_in)" />
+  </node>
 </launch>
