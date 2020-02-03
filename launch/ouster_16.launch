@@ -20,11 +20,13 @@
 
   <!-- Map builder parameters -->
   <arg name="map_builder" default="true" />
-  <arg name="map_builder/add_free_space_ray_len" default="5.0" />
+  <arg name="map_builder/add_free_space_ray_len" default="5" />
   <arg name="map_builder/resolution" default="0.3" />
   <arg name="map_builder/color/alpha" default="0.7" />
-  <arg name="map_builder/sensor_model/p_hit" default="0.85" />
-  <arg name="map_builder/sensor_model/p_miss" default="0.49" />
+  <arg name="map_builder/sensor_model/p_hit" default="0.99" />
+  <arg name="map_builder/sensor_model/p_miss" default="0.4999" />
+  <arg name="map_builder/sensor_model/clamp_min" default="0.15" />
+  <arg name="map_builder/sensor_model/clamp_max" default="0.9" />
 
   <!-- ALOAM parameters -->
   <arg name="publish_debug_topics" default="false" />
@@ -115,6 +117,8 @@
         <arg name="resolution" value="$(arg map_builder/resolution)" />
         <arg name="sensor_model_hit" value="$(arg map_builder/sensor_model/p_hit)" />
         <arg name="sensor_model_miss" value="$(arg map_builder/sensor_model/p_miss)" />
+        <arg name="sensor_model_min" value="$(arg map_builder/sensor_model/clamp_min)" />
+        <arg name="sensor_model_max" value="$(arg map_builder/sensor_model/clamp_max)" />
         <arg name="color_alpha" value="$(arg map_builder/color/alpha)" />
       </include>
     </group>
