@@ -8,6 +8,8 @@
   <arg name="add_free_space_ray_len" default="10.0" />
   <arg name="sensor_model_hit" default="0.85" />
   <arg name="sensor_model_miss" default="0.49" />
+  <arg name="sensor_model_min" default="0.15" />
+  <arg name="sensor_model_max" default="0.90" />
   <arg name="color_alpha" default="0.7" />
 
   <!-- Topics -->
@@ -24,6 +26,8 @@
     <param name="sensor_model/max_range" type="double" value="-1.0" /> 
     <param name="sensor_model/hit" type="double" value="$(arg sensor_model_hit)" />
     <param name="sensor_model/miss" type="double" value="$(arg sensor_model_miss)" />
+    <param name="sensor_model/min" type="double" value="$(arg sensor_model_min)" />
+    <param name="sensor_model/max" type="double" value="$(arg sensor_model_max)" />
     <param name="color_alpha" type="double" value="$(arg color_alpha)" />
 
     <param name="latch" type="bool" value="false" />
