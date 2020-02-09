@@ -36,6 +36,7 @@ include_directories(
 
 catkin_package(
   CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs mrs_lib eigen_conversions tf_conversions
+  LIBRARIES alaserOdometry alaserMapping
   DEPENDS EIGEN3 PCL 
   INCLUDE_DIRS include
 )

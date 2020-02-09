@@ -526,7 +526,7 @@ void callbackMavrosOdometry(const nav_msgs::OdometryConstPtr &msg) {
 /*//{ main */
 int main(int argc, char **argv) {
   ros::init(argc, argv, "laserOdometry");
-  ros::NodeHandle nh;
+  ros::NodeHandle nh("~");
 
   nh.param<bool>("debug", debug, false);
 
@@ -591,9 +591,9 @@ int main(int argc, char **argv) {
   ROS_INFO("[LaserOdometry] Waiting 0.5 second to fill transform buffer.");
   ros::Duration(0.5).sleep();
   // TODO: rewrite to timer
+  ROS_INFO_ONCE("[LaserOdometry] Looking for transform from %s to %s", _frame_lidar.c_str(), _frame_fcu.c_str());
   auto tf_mrs = transformer_->getTransform(_frame_lidar, _frame_fcu, ros::Time(0));
   while (!tf_mrs) {
-    ROS_INFO_THROTTLE(0.5, "[LaserOdometry] Looking for transform from %s to %s", _frame_lidar.c_str(), _frame_fcu.c_str());
     tf_mrs = transformer_->getTransform(_frame_lidar, _frame_fcu, ros::Time(0));
   }
   tf::transformMsgToTF(tf_mrs->getTransform().transform, tf_lidar_in_fcu_frame_);

@@ -826,7 +826,7 @@ void process() {
 
 int main(int argc, char **argv) {
   ros::init(argc, argv, "laserMapping");
-  ros::NodeHandle nh;
+  ros::NodeHandle nh("~");
   
   nh.param<bool>("debug", debug, false);
 
@@ -871,9 +871,9 @@ int main(int argc, char **argv) {
   ROS_INFO("[LaserMapping] Waiting 0.5 second to fill transform buffer.");
   ros::Duration(0.5).sleep();
   // TODO: rewrite to timer
+  ROS_INFO_ONCE("[LaserMapping] Looking for transform from %s to %s", _frame_fcu.c_str(), _frame_lidar.c_str());
   auto tf_mrs = transformer_->getTransform(_frame_fcu, _frame_lidar, ros::Time(0));
   while (!tf_mrs) {
-    ROS_INFO_THROTTLE(0.5, "[LaserMapping] Looking for transform from %s to %s", _frame_fcu.c_str(), _frame_lidar.c_str());
     tf_mrs = transformer_->getTransform(_frame_fcu, _frame_lidar, ros::Time(0));
   }
   tf::transformMsgToTF(tf_mrs->getTransform().transform, tf_fcu_in_lidar_frame_);
