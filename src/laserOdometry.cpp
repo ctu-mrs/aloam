@@ -77,7 +77,7 @@ bool   debug                    = false;
 bool   perform_scan_preprocessing;
 double scanPeriod;
 
-const int systemDelay     = 0;
+const int systemDelay     = 10;
 int       systemInitCount = 0;
 int       N_SCANS         = 0;
 float     vertical_fov_half;
