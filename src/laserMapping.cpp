@@ -93,8 +93,8 @@ const int laserCloudDepth     = 11;
 const int laserCloudNum = laserCloudWidth * laserCloudHeight * laserCloudDepth;  // 4851
 
 
-int laserCloudValidInd[125];
-int laserCloudSurroundInd[125];
+std::vector<int> laserCloudValidInd(125);
+std::vector<int> laserCloudSurroundInd(125);
 
 // input: from odom
 pcl::PointCloud<PointType>::Ptr laserCloudCornerLast(new pcl::PointCloud<PointType>());
@@ -160,18 +160,41 @@ bool callbackResetMap([[maybe_unused]] std_srvs::Trigger::Request &req, std_srvs
     std::scoped_lock lock(mutex_process);
     {
       std::scoped_lock lock(mutex_buffer);
-      laserCloudCornerLast->clear();
-      laserCloudSurfLast->clear();
-      laserCloudSurround->clear();
-      laserCloudCornerFromMap->clear();
-      laserCloudSurfFromMap->clear();
-      laserCloudFullRes->clear();
-      kdtreeCornerFromMap.reset();
-      kdtreeSurfFromMap.reset();
-    }
-    for (int i = 0; i < laserCloudNum; i++) {
-      laserCloudCornerArray[i].reset(new pcl::PointCloud<PointType>());
-      laserCloudSurfArray[i].reset(new pcl::PointCloud<PointType>());
+
+      timeLaserCloudCornerLast = 0;
+      timeLaserCloudSurfLast   = 0;
+      timeLaserCloudFullRes    = 0;
+      timeLaserOdometry        = 0;
+
+      laserCloudCenWidth  = 10;
+      laserCloudCenHeight = 10;
+      laserCloudCenDepth  = 5;
+
+      laserCloudValidInd.resize(125);
+      laserCloudSurroundInd.resize(125);
+
+      laserCloudCornerLast.reset(new pcl::PointCloud<PointType>());
+      laserCloudSurfLast.reset(new pcl::PointCloud<PointType>());
+      laserCloudSurround.reset(new pcl::PointCloud<PointType>());
+      laserCloudCornerFromMap.reset(new pcl::PointCloud<PointType>());
+      laserCloudSurfFromMap.reset(new pcl::PointCloud<PointType>());
+      laserCloudFullRes.reset(new pcl::PointCloud<PointType>());
+      kdtreeCornerFromMap.reset(new pcl::KdTreeFLANN<PointType>());
+      kdtreeSurfFromMap.reset(new pcl::KdTreeFLANN<PointType>());
+
+      std::queue<sensor_msgs::PointCloud2ConstPtr> empty_pcl;
+      std::queue<nav_msgs::Odometry::ConstPtr>     empty_odom;
+      std::swap(cornerLastBuf, empty_pcl);
+      std::swap(surfLastBuf, empty_pcl);
+      std::swap(fullResBuf, empty_pcl);
+      std::swap(odometryBuf, empty_odom);
+      for (int i = 0; i < laserCloudNum; i++) {
+        laserCloudCornerArray[i].reset(new pcl::PointCloud<PointType>());
+        laserCloudSurfArray[i].reset(new pcl::PointCloud<PointType>());
+      }
+
+      pointSearchInd.clear();
+      pointSearchSqDis.clear();
     }
   }
   res.message = "Map reset successfuly.";
