@@ -912,7 +912,7 @@ int main(int argc, char **argv) {
   ros::Subscriber subLaserOdometry        = nh.subscribe<nav_msgs::Odometry>("/laser_odom_to_init", 100, laserOdometryHandler);
   ros::Subscriber subLaserCloudFullRes    = nh.subscribe<sensor_msgs::PointCloud2>("/sensor_cloud_3", 100, laserCloudFullResHandler);
 
-  ros::ServiceServer ser_reset_map_ = nh.advertiseService("reset_map_in", &callbackResetMap);
+  ros::ServiceServer ser_reset_map_ = nh.advertiseService("/reset_map_in", &callbackResetMap);
 
   pubLaserCloudSurround   = nh.advertise<sensor_msgs::PointCloud2>("/laser_cloud_surround", 100);
   pubLaserCloudMap        = nh.advertise<sensor_msgs::PointCloud2>("/laser_cloud_map", 100);

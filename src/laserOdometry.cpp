@@ -91,8 +91,11 @@ double min_range_sq;
 double max_range_sq;
 
 std::mutex         mutex_odom_mavros;
+std::mutex         mutex_odom_main;
 bool               got_mavros_odom;
+bool               got_odom_z;
 nav_msgs::Odometry mavros_odom;
+double             odom_main_z;
 
 /*//}*/
 
@@ -523,6 +526,19 @@ void callbackMavrosOdometry(const nav_msgs::OdometryConstPtr &msg) {
 
 //}
 
+/* //{ callbackMainOdom() */
+void callbackMainOdom(const nav_msgs::OdometryConstPtr &msg) {
+  if (!systemOdometryInited) {
+    return;
+  }
+
+  std::scoped_lock lock(mutex_odom_main);
+  got_odom_z  = true;
+  odom_main_z = msg->pose.pose.position.z;
+}
+
+//}
+
 /*//{ main */
 int main(int argc, char **argv) {
   ros::init(argc, argv, "laserOdometry");
@@ -562,6 +578,7 @@ int main(int argc, char **argv) {
 
   ros::Subscriber subLaserCloud = nh.subscribe<sensor_msgs::PointCloud2>("/sensor_points", 100, laserCloudHandler, ros::TransportHints().tcpNoDelay());
   ros::Subscriber sub_mavros    = nh.subscribe("/mavros_odom_in", 1, &callbackMavrosOdometry, ros::TransportHints().tcpNoDelay());
+  ros::Subscriber sub_odom_main    = nh.subscribe("/main_odom_in", 1, &callbackMainOdom, ros::TransportHints().tcpNoDelay());
 
   nh.param<int>("mapping_skip_frame", skipFrameNum, 2);
 
@@ -853,11 +870,19 @@ int main(int argc, char **argv) {
 
       geometry_msgs::Quaternion ori;
       bool                      got_mavros = false;
+      bool                      got_odom_z = false;
       {
         std::scoped_lock lock(mutex_odom_mavros);
         if (got_mavros_odom && mavros_odom.header.stamp.toSec() - stamp.toSec() < 1.0) {
           got_mavros = true;
           ori        = mavros_odom.pose.pose.orientation;
+        }
+      }
+      {
+        std::scoped_lock lock(mutex_odom_main);
+        if (got_odom_z) {
+          got_odom_z = true;
+          t_w_curr(2) = odom_main_z;
         }
       }
 
@@ -879,8 +904,7 @@ int main(int argc, char **argv) {
 
         /* ROS_WARN("Lidar orientation: (%0.2f, %0.2f, %0.2f), odom orientation: (%0.2f, %0.2f, %0.2f)", rpy.x(), rpy.y(), rpy.z(), r, p, yaw); */
         ori = tf::createQuaternionMsgFromRollPitchYaw(rpy.x(), rpy.y(), yaw);
-      } else {
-        tf::quaternionEigenToMsg(q_w_curr, ori);
+        tf::quaternionMsgToEigen(ori, q_w_curr);
       }
 
       // Publish odometry as PoseStamped
@@ -890,7 +914,7 @@ int main(int argc, char **argv) {
       laserOdometry.child_frame_id  = _frame_lidar;
 
       tf::pointEigenToMsg(t_w_curr, laserOdometry.pose.pose.position);
-      laserOdometry.pose.pose.orientation = ori;
+      tf::quaternionEigenToMsg(q_w_curr, laserOdometry.pose.pose.orientation);
 
       pubLaserOdometry.publish(laserOdometry);
 
