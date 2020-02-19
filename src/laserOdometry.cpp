@@ -1705,7 +1705,7 @@ int main(int argc, char **argv) {
   ROS_INFO_STREAM("[laserOdometry] frequency " << scanPeriod);
   scanPeriod = 1.0 / scanPeriod;
 
-  ros::Subscriber o_subLaserCloud = nh.subscribe<sensor_msgs::PointCloud2>("/sensor_points", 100, laserCloudHandler, ros::TransportHints().tcpNoDelay());
+  ros::Subscriber o_subLaserCloud = nh.subscribe("/sensor_points", 100, &laserCloudHandler, ros::TransportHints().tcpNoDelay());
   ros::Subscriber o_sub_mavros    = nh.subscribe("/mavros_odom_in", 1, &callbackMavrosOdometry, ros::TransportHints().tcpNoDelay());
 
   nh.param<int>("mapping_skip_frame", skipFrameNum, 2);
