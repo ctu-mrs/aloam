@@ -137,7 +137,6 @@ pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr kdtreeCornerLast(new pcl::KdTreeFLANN<pcl:
 pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr kdtreeSurfLast(new pcl::KdTreeFLANN<pcl::PointXYZI>());
 pcl::PointCloud<PointType>::Ptr       laserCloudCornerLast(new pcl::PointCloud<PointType>());
 pcl::PointCloud<PointType>::Ptr       laserCloudSurfLast(new pcl::PointCloud<PointType>());
-pcl::PointCloud<PointType>::Ptr       laserCloudFullRes(new pcl::PointCloud<PointType>());
 
 int laserCloudCornerLastNum = 0;
 int laserCloudSurfLastNum   = 0;
@@ -220,7 +219,6 @@ PointType m_pointOri, m_pointSel;
 ros::Publisher m_pubLaserCloudMap;
 ros::Publisher m_pubLaserCloudFullRes;
 ros::Publisher m_pubOdomAftMapped;
-/* ros::Publisher m_pubOdomAftMappedHighFrec; */
 ros::Publisher m_pubLaserAfterMappedPath;
 
 nav_msgs::Path m_laserAfterMappedPath;
@@ -746,10 +744,10 @@ void m_process(nav_msgs::Odometry odometry, pcl::PointCloud<PointType>::Ptr m_la
     m_pointAssociateToMap(&m_laserCloudFullRes->points[i], &m_laserCloudFullRes->points[i]);
   }
 
-  sensor_msgs::PointCloud2 laserCloudFullRes3;
-  pcl::toROSMsg(*m_laserCloudFullRes, laserCloudFullRes3);
-  laserCloudFullRes3.header.stamp    = stamp;
-  laserCloudFullRes3.header.frame_id = _frame_map;
+  sensor_msgs::PointCloud2::Ptr laserCloudFullRes3 = boost::make_shared<sensor_msgs::PointCloud2>();
+  pcl::toROSMsg(*m_laserCloudFullRes, *laserCloudFullRes3);
+  laserCloudFullRes3->header.stamp    = stamp;
+  laserCloudFullRes3->header.frame_id = _frame_map;
   m_pubLaserCloudFullRes.publish(laserCloudFullRes3);
 
   /* printf("mapping pub time %f ms \n", t_pub.toc()); */
@@ -832,7 +830,7 @@ void TransformToEnd(PointType const *const pi, PointType *const po) {
 }
 
 void o_process(pcl::PointCloud<PointType>::Ptr cornerPointsSharp, pcl::PointCloud<PointType>::Ptr cornerPointsLessSharp,
-               pcl::PointCloud<PointType>::Ptr surfPointsFlat, pcl::PointCloud<PointType>::Ptr surfPointsLessFlat, pcl::PointCloud<PointType>::Ptr fullPoints) {
+               pcl::PointCloud<PointType>::Ptr surfPointsFlat, pcl::PointCloud<PointType>::Ptr surfPointsLessFlat, pcl::PointCloud<PointType>::Ptr laserCloudFullRes) {
   int frameCount = 0;
 
   ros::Time stamp;
@@ -842,7 +840,7 @@ void o_process(pcl::PointCloud<PointType>::Ptr cornerPointsSharp, pcl::PointClou
   timeCornerPointsLessSharp = stamp.toSec();
   pcl_conversions::fromPCL(surfPointsFlat->header.stamp, stamp);
   timeSurfPointsFlat = stamp.toSec();
-  pcl_conversions::fromPCL(fullPoints->header.stamp, stamp);
+  pcl_conversions::fromPCL(laserCloudFullRes->header.stamp, stamp);
   timeLaserCloudFullRes = stamp.toSec();
   pcl_conversions::fromPCL(surfPointsLessFlat->header.stamp, stamp);
   timeSurfPointsLessFlat = stamp.toSec();
@@ -1156,12 +1154,6 @@ void o_process(pcl::PointCloud<PointType>::Ptr cornerPointsSharp, pcl::PointClou
     laserCloudSurfLast->header.frame_id   = _frame_lidar;
     laserCloudFullRes->header.stamp       = pcl_stamp;
     laserCloudFullRes->header.frame_id    = _frame_lidar;
-    /* { */
-    /*   std::scoped_lock lock(mutex_buffers); */
-    /*   m_cornerLastBuf.push(*laserCloudCornerLast); */
-    /*   m_surfLastBuf.push(*laserCloudSurfLast); */
-    /*   m_fullResBuf.push(*laserCloudFullRes); */
-    /* } */
 
     /* printf("publication time %f ms \n", t_pub.toc()); */
     /* printf("whole laserOdometry time %f ms \n \n", t_whole.toc()); */
