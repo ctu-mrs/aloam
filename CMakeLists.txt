@@ -65,9 +65,6 @@ add_definitions(
   ${PCL_DEFINITIONS}
 )
 
-# add_executable(ascanRegistration src/scanRegistration.cpp)
-# target_link_libraries(ascanRegistration ${catkin_LIBRARIES} ${PCL_LIBRARIES})
-
 add_executable(aloamOdometry src/laserOdometry.cpp src/lidarFactor.hpp)
 target_link_libraries(aloamOdometry ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${Eigen_LIBRARIES} ${CERES_LIBRARIES})
 add_dependencies(aloamOdometry
@@ -76,6 +73,4 @@ add_dependencies(aloamOdometry
 )
 target_include_directories(aloamOdometry SYSTEM PRIVATE ${PCL_INCLUDE_DIRS})
 
-# add_executable(alaserMapping src/laserMapping.cpp)
-# target_link_libraries(alaserMapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${CERES_LIBRARIES})
 

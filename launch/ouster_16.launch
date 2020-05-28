@@ -1,132 +1,62 @@
 <launch>
 
-  <!-- Default parameters and frames -->
-  <arg name="uav_name" default="$(optenv UAV_NAME)" />
-  <arg name="debug" default="false" />
-  <arg name="fcu_frame" default="$(arg uav_name)/fcu"/>
-  <arg name="sensor_frame" default="$(arg uav_name)/os1_sensor"/>
-  <arg name="lidar_frame" default="$(arg uav_name)/os1_lidar"/>
-  <arg name="map_frame" default="$(arg uav_name)/aloam_origin"/>
-  <arg name="rviz" default="false" />
+  <!-- DEFAULT PARAMETERS AND FRAMES -->
+  <arg name="uav_name" />
+  <arg name="fcu_frame" />
+  <arg name="lidar_frame" />
+  <arg name="map_frame" />
 
-  <!-- Sensor parameters -->
-  <arg name="vertical_fov" default="33.2" />
-  <arg name="frequency" default="10.0" />
+    <!-- SENSOR PARAMETERS -->
+  <arg name="vertical_fov" />
+  <arg name="frequency" />
 
-  <!-- Filtration parameters -->
-  <arg name="custom_preprocessing" default="true" />
-  <arg name="min_range" default="0.4" />
-  <arg name="max_range" default="15.0" />
-
-  <!-- Map builder parameters -->
-  <arg name="map_builder" default="true" />
-  <arg name="map_builder/add_free_space_ray_len" default="5" />
-  <arg name="map_builder/resolution" default="0.3" />
-  <arg name="map_builder/color/alpha" default="0.7" />
-  <arg name="map_builder/sensor_model/p_hit" default="0.99" />
-  <arg name="map_builder/sensor_model/p_miss" default="0.4999" />
-  <arg name="map_builder/sensor_model/clamp_min" default="0.15" />
-  <arg name="map_builder/sensor_model/clamp_max" default="0.9" />
-
-  <!-- ALOAM parameters -->
-  <arg name="publish_debug_topics" default="false" />
-
-  <arg unless="$(arg debug)" name="launch_prefix" value=""/>
-  <arg     if="$(arg debug)" name="launch_prefix" value="gdb -ex run --args"/>
+    <!-- FILTRATION PARAMETERS -->
+  <arg name="custom_preprocessing" />
+  <arg name="min_range" />
+  <arg name="max_range" />
+  
+  <arg name="nodelet" default="standalone" />
+  <arg name="nodelet_manager" default="" />
+  <arg name="launch_prefix" default="" />
 
   <group ns="$(arg uav_name)">
 
-    <param name="scan_line" type="int" value="16" />
+    <!-- Odometry -->
+    <!-- <node pkg="nodelet" type="nodelet" name="aloam_odometry" args="$(arg nodelet) aloam_velodyne/aloamOdometry $(arg nodelet_manager)" output="screen" launch-prefix=""> -->
+    <node pkg="aloam_velodyne" type="aloamOdometry" name="aloam_odometry" output="screen">
+      <param name="debug" type="bool" value="$(optenv DEBUG false)" />
+      <param name="scan_line" type="int" value="16" />
 
-      <!-- if 1, do mapping 10 Hz, if 2, do mapping 5 Hz. Suggest to use 1, it will adjust frequence automaticlly -->
-    <param name="mapping_skip_frame" type="int" value="1" />
+      <param name="uav_name" type="string" value="$(arg uav_name)"/>
+      <param name="map_frame" type="string" value="$(arg map_frame)"/>
+      <param name="lidar_frame" type="string" value="$(arg lidar_frame)"/>
+      <param name="fcu_frame" type="string" value="$(arg fcu_frame)"/>
 
-      <!-- remove too closed points -->
-    <param name="minimum_range" type="double" value="0.5"/>
+        <!-- if 1, do mapping 10 Hz, if 2, do mapping 5 Hz. Suggest to use 1, it will adjust frequence automaticlly -->
+      <param name="mapping_skip_frame" type="int" value="1" />
 
-    <param name="mapping_line_resolution" type="double" value="0.2"/>
-    <param name="mapping_plane_resolution" type="double" value="0.4"/>
-
-    <param name="uav_name" type="string" value="$(arg uav_name)"/>
-    <param name="map_frame" type="string" value="$(arg map_frame)"/>
-    <param name="lidar_frame" type="string" value="$(arg lidar_frame)"/>
-    <param name="fcu_frame" type="string" value="$(arg fcu_frame)"/>
-
-    <param name="perform_scan_preprocessing" value="$(arg custom_preprocessing)" />
-    <param name="min_range" type="double" value="$(arg min_range)"/>
-    <param name="max_range" type="double" value="$(arg max_range)"/>
-    <param name="vertical_fov" type="double" value="$(arg vertical_fov)"/>
-    <param name="frequency" type="double" value="$(arg frequency)"/>
-
-    <param name="debug" type="bool" value="$(arg publish_debug_topics)"/>
-
-    <!-- Data preprocessing node -->
-    <group if="$(arg custom_preprocessing)">
-      <include file="$(find cartographer_tools)/launch/pointcloud_filtration.launch">
-        <arg name="ouster_republish" default="true" />
-        <arg name="ouster_min_range" default="$(arg min_range)" />
-        <arg name="ouster_max_range" default="$(arg max_range)" />
-        <arg name="realsense_republish" default="false" />
-        <arg name="rplidar_republish" default="false" />
-      </include>
-    </group>
-
-    <!-- Odometry node -->
-    <node pkg="aloam_velodyne" type="alaserOdometry" name="aloam_odometry" output="screen">
+      <param name="perform_scan_preprocessing" type="bool" value="$(arg custom_preprocessing)" />
+      <param name="min_range" type="double" value="$(arg min_range)"/>
+      <param name="max_range" type="double" value="$(arg max_range)"/>
+      <param name="vertical_fov" type="double" value="$(arg vertical_fov)"/>
+      <param name="frequency" type="double" value="$(arg frequency)"/>
 
       <!-- Subscribers -->
       <remap if="$(arg custom_preprocessing)" from="/sensor_points" to="os1_cloud_node/points_processed"/>
       <remap unless="$(arg custom_preprocessing)" from="/sensor_points" to="os1_cloud_node/points"/>
+
       <remap from="/mavros_odom_in" to="mavros_interface/converted_mavros_odom"/>
+      <remap from="/main_odom_in" to="odometry/odom_main"/>
 
-        <!-- Publishers -->
-      <remap from="/sensor_cloud_3" to="~sensor_cloud_3"/>
+      <!-- Publishers -->
       <remap from="/laser_odom_to_init" to="~laser_odom_to_init"/>
-      <remap from="/laser_odom_path" to="~laser_odom_path"/>
-      <remap from="/laser_cloud_corner_last" to="~laser_cloud_corner_last"/>
-      <remap from="/laser_cloud_surf_last" to="~laser_cloud_surf_last"/>
 
+      <remap from="/aft_mapped_path" to="aloam_mapping/aft_mapped_path"/> 
+      <remap from="/aft_mapped_to_init" to="aloam_mapping/aft_mapped_to_init"/> 
+      <remap from="/laser_cloud_map" to="aloam_mapping/laser_cloud_map"/> 
+      <remap from="/sensor_cloud_registered" to="aloam_mapping/sensor_cloud_registered"/> 
+      
     </node>
-
-    <!-- Mapping node -->
-    <node pkg="aloam_velodyne" type="alaserMapping" name="aloam_mapping" output="screen">
-
-      <!-- Subscribers -->
-      <remap from="/sensor_cloud_3" to="aloam_odometry/sensor_cloud_3"/>
-      <remap from="/laser_odom_to_init" to="aloam_odometry/laser_odom_to_init"/>
-      <remap from="/laser_cloud_corner_last" to="aloam_odometry/laser_cloud_corner_last"/>
-      <remap from="/laser_cloud_surf_last" to="aloam_odometry/laser_cloud_surf_last"/>
-
-        <!-- Publishers -->
-      <remap from="/sensor_cloud_registered" to="~sensor_cloud_registered"/>
-      <remap from="/laser_cloud_map" to="~laser_cloud_map"/>
-      <remap from="/laser_cloud_surround" to="~laser_cloud_surround"/>
-      <remap from="/aft_mapped_path" to="~aft_mapped_path"/>
-      <remap from="/aft_mapped_to_init" to="~aft_mapped_to_init"/>
-      <remap from="/aft_mapped_to_init_high_frec" to="~aft_mapped_to_init_high_frec"/>
-
-    </node>
-
-    <!-- Map Builder node -->
-    <group if="$(arg map_builder)">
-      <include file="$(find aloam_velodyne)/launch/map_builder.launch">
-        <arg name="uav_name" value="$(arg uav_name)" />
-        <arg name="map_frame" value="$(arg map_frame)" />
-
-        <arg name="add_free_space_ray_len" value="$(arg map_builder/add_free_space_ray_len)" />
-        <arg name="resolution" value="$(arg map_builder/resolution)" />
-        <arg name="sensor_model_hit" value="$(arg map_builder/sensor_model/p_hit)" />
-        <arg name="sensor_model_miss" value="$(arg map_builder/sensor_model/p_miss)" />
-        <arg name="sensor_model_min" value="$(arg map_builder/sensor_model/clamp_min)" />
-        <arg name="sensor_model_max" value="$(arg map_builder/sensor_model/clamp_max)" />
-        <arg name="color_alpha" value="$(arg map_builder/color/alpha)" />
-      </include>
-    </group>
-
-    <group if="$(arg rviz)">
-      <node launch-prefix="nice" pkg="rviz" type="rviz" name="rviz" args="-d $(find aloam_velodyne)/rviz/uav3.rviz" />
-    </group>
-
   </group>
 
 </launch>
