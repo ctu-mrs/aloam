@@ -12,6 +12,7 @@
   <arg name="vertical_fov" default="33.2" />
   <arg name="frequency" default="10.0" />
   <arg name="publish_lidar_2d" default="false" />
+  <arg name="cable_front" default="false"/>
 
   <!-- DATA PROCESSING PARAMETERS -->
   <arg name="custom_preprocessing" default="false" />
@@ -68,6 +69,8 @@
     <arg name="sensor_frame" value="$(arg sensor_frame)" />
 
     <arg name="publish_lidar_2d" value="$(arg publish_lidar_2d)" />
+
+    <arg name="cable_front" value="$(arg cable_front)" />
   </include>
 
   <!-- DATA PROCESSING NODE -->
