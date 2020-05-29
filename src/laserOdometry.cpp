@@ -74,15 +74,19 @@
 #include <mrs_lib/param_loader.h>
 /*//}*/
 
+std::string _uav_name;
+
 ros::Subscriber o_subLaserCloud;
 ros::Subscriber o_sub_mavros;
-ros::Publisher o_pubLaserOdometry;
-ros::Publisher m_pubLaserCloudMap;
-ros::Publisher m_pubLaserCloudFullRes;
-ros::Publisher m_pubOdomAftMapped;
-ros::Publisher m_pubLaserAfterMappedPath;
+ros::Publisher  o_pubLaserOdometry;
+ros::Publisher  m_pubLaserCloudMap;
+ros::Publisher  m_pubLaserCloudFullRes;
+ros::Publisher  m_pubOdomAftMapped;
+ros::Publisher  m_pubLaserAfterMappedPath;
 
 nav_msgs::Path laserPath;
+
+long int frame_count_ = 0;
 
 /*//{ Variables scanRegistration */
 
@@ -91,7 +95,7 @@ const float ROS_THROTTLE_PERIOD = 2.0;
 
 bool   is_initialized_          = false;
 bool   systemRegistrationInited = false;
-bool   perform_scan_preprocessing;
+bool   external_preprocessing;
 double scanPeriod;
 
 const int systemDelay     = 10;
@@ -128,7 +132,7 @@ int plane_correspondence  = 0;
 constexpr double DISTANCE_SQ_THRESHOLD = 25;
 constexpr double NEARBY_SCAN           = 2.5;
 
-int  skipFrameNum         = 5;
+int  skipFrameNum         = 1;
 bool systemOdometryInited = false;
 
 double timeCornerPointsSharp     = 0;
@@ -789,11 +793,12 @@ void mapping_process(nav_msgs::Odometry odometry, pcl::PointCloud<PointType>::Pt
 void TransformToStart(PointType const *const pi, PointType *const po) {
   // interpolation ratio
   double s;
-  if (DISTORTION)
+  if (DISTORTION) {
     s = (pi->intensity - int(pi->intensity)) / scanPeriod;
-  else
+  } else {
     s = 1.0;
-  // s = 1;
+    // s = 1;
+  }
   Eigen::Quaterniond q_point_last = Eigen::Quaterniond::Identity().slerp(s, q_last_curr);
   Eigen::Vector3d    t_point_last = s * t_last_curr;
   Eigen::Vector3d    point(pi->x, pi->y, pi->z);
@@ -826,7 +831,6 @@ void TransformToEnd(PointType const *const pi, PointType *const po) {
 void odometry_process(pcl::PointCloud<PointType>::Ptr cornerPointsSharp, pcl::PointCloud<PointType>::Ptr cornerPointsLessSharp,
                       pcl::PointCloud<PointType>::Ptr surfPointsFlat, pcl::PointCloud<PointType>::Ptr surfPointsLessFlat,
                       pcl::PointCloud<PointType>::Ptr laserCloudFullRes) {
-  int frameCount = 0;
 
   ros::Time stamp;
   pcl_conversions::fromPCL(cornerPointsSharp->header.stamp, stamp);
@@ -909,12 +913,14 @@ void odometry_process(pcl::PointCloud<PointType>::Ptr cornerPointsSharp, pcl::Po
           // search in the direction of decreasing scan line
           for (int j = closestPointInd - 1; j >= 0; --j) {
             // if in the same scan line, continue
-            if (int(laserCloudCornerLast->points[j].intensity) >= closestPointScanID)
+            if (int(laserCloudCornerLast->points[j].intensity) >= closestPointScanID) {
               continue;
+          }
 
             // if not in nearby scans, end the loop
-            if (int(laserCloudCornerLast->points[j].intensity) < (closestPointScanID - NEARBY_SCAN))
+            if (int(laserCloudCornerLast->points[j].intensity) < (closestPointScanID - NEARBY_SCAN)) {
               break;
+            }
 
             double pointSqDis = (laserCloudCornerLast->points[j].x - pointSel.x) * (laserCloudCornerLast->points[j].x - pointSel.x) +
                                 (laserCloudCornerLast->points[j].y - pointSel.y) * (laserCloudCornerLast->points[j].y - pointSel.y) +
@@ -1126,8 +1132,7 @@ void odometry_process(pcl::PointCloud<PointType>::Ptr cornerPointsSharp, pcl::Po
   kdtreeCornerLast->setInputCloud(laserCloudCornerLast);
   kdtreeSurfLast->setInputCloud(laserCloudSurfLast);
 
-  if (frameCount % skipFrameNum == 0) {
-    frameCount = 0;
+  if (frame_count_++ % skipFrameNum == 0) {
 
     uint64_t pcl_stamp;
     pcl_conversions::toPCL(stamp, pcl_stamp);
@@ -1142,13 +1147,13 @@ void odometry_process(pcl::PointCloud<PointType>::Ptr cornerPointsSharp, pcl::Po
     /* printf("whole laserOdometry time %f ms \n \n", t_whole.toc()); */
     ROS_INFO_STREAM_THROTTLE(ROS_THROTTLE_PERIOD, "[aloamOdometry] publication time " << t_pub.toc() << " ms");
     ROS_INFO_STREAM_THROTTLE(ROS_THROTTLE_PERIOD, "[aloamOdometry] whole laserOdometry time " << t_whole.toc() << " ms");
-    if (t_whole.toc() > 100) {
-      ROS_WARN("[aloamOdometry] odometry process over 100ms");
+    if (t_whole.toc() > scanPeriod * 1000) {
+      ROS_WARN("[aloamOdometry] odometry process over %0.2f ms", scanPeriod * 1000);
     }
+    
+    std::thread mapping_process_thread(mapping_process, laserOdometry, laserCloudCornerLast, laserCloudSurfLast, laserCloudFullRes);
+    mapping_process_thread.detach();
 
-    mapping_process(laserOdometry, laserCloudCornerLast, laserCloudSurfLast, laserCloudFullRes);
-
-    frameCount++;
   }
 }
 
@@ -1159,6 +1164,7 @@ bool comp(int i, int j) {
   return (cloudCurvature[i] < cloudCurvature[j]);
 }
 
+/*//{ removeCloseAndFarPointCloud() */
 void removeCloseAndFarPointCloud(const pcl::PointCloud<PointType> &cloud_in, pcl::PointCloud<PointType> &cloud_out) {
   if (&cloud_in != &cloud_out) {
     cloud_out.header = cloud_in.header;
@@ -1183,8 +1189,11 @@ void removeCloseAndFarPointCloud(const pcl::PointCloud<PointType> &cloud_in, pcl
   cloud_out.width    = static_cast<uint32_t>(j);
   cloud_out.is_dense = true;
 }
+/*//}*/
 
+/*//{ laserCloudHandler */
 void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) {
+  ROS_ERROR("[%s]: RECEIVED LASER MSG", ros::this_node::getName().c_str());
   if (!is_initialized_) {
     return;
   }
@@ -1205,7 +1214,7 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) {
   pcl::fromROSMsg(*laserCloudMsg, laserCloudIn);
   std::vector<int> indices;
 
-  if (perform_scan_preprocessing) {
+  if (!external_preprocessing) {
     pcl::removeNaNFromPointCloud(laserCloudIn, laserCloudIn, indices);
     removeCloseAndFarPointCloud(laserCloudIn, laserCloudIn);
   }
@@ -1324,7 +1333,6 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) {
     cloudNeighborPicked[i] = 0;
     cloudLabel[i]          = 0;
   }
-
 
   TicToc t_pts;
 
@@ -1463,11 +1471,15 @@ void laserCloudHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) {
 
   /* printf("scan registration time %f ms *************\n", t_whole.toc()); */
   ROS_INFO_STREAM_THROTTLE(ROS_THROTTLE_PERIOD, "[aloamOdometry] scan registration time " << t_whole.toc() << " ms");
-  if (t_whole.toc() > 100) {
-    ROS_WARN("[aloamOdometry] scan registration process over 100ms");
+  if (t_whole.toc() > scanPeriod * 1000) {
+    ROS_WARN("[aloamOdometry] scan registration process over %0.2f ms", scanPeriod * 1000);
   }
-  odometry_process(cornerPointsSharp, cornerPointsLessSharp, surfPointsFlat, surfPointsLessFlat, laserCloud);
+  
+  std::thread odometry_process_thread(odometry_process, cornerPointsSharp, cornerPointsLessSharp, surfPointsFlat, surfPointsLessFlat, laserCloud);
+  odometry_process_thread.detach();
 }
+/*//}*/
+
 /*//}*/
 
 /* //{ callbackMavrosOdometry() */
@@ -1493,23 +1505,25 @@ int main(int argc, char **argv) {
   mrs_lib::ParamLoader param_loader(nh, "ALOAM");
 
   // UAV specific params
-  param_loader.load_param("uav_name", uav_name);
-  param_loader.load_param("lidar_frame", _frame_lidar);
-  param_loader.load_param("fcu_frame", _frame_fcu);
-  param_loader.load_param("map_frame", _frame_map);
+  param_loader.loadParam("uav_name", _uav_name);
+  param_loader.loadParam("lidar_frame", _frame_lidar);
+  param_loader.loadParam("fcu_frame", _frame_fcu);
+  param_loader.loadParam("map_frame", _frame_map);
 
   // Sensor params
-  param_loader.load_param("scan_line", N_SCANS);
-  param_loader.load_param("min_range", min_range_sq);
-  param_loader.load_param("max_range", max_range_sq);
-  param_loader.load_param("vertical_fov", vertical_fov_half);
-  param_loader.load_param("frequency", scanPeriod);
-  param_loader.load_param("perform_scan_preprocessing", perform_scan_preprocessing);
+  param_loader.loadParam("scan_line", N_SCANS);
+  param_loader.loadParam("min_range", min_range_sq);
+  param_loader.loadParam("max_range", max_range_sq);
+  param_loader.loadParam("vertical_fov", vertical_fov_half);
+  param_loader.loadParam("frequency", scanPeriod);
+  param_loader.loadParam("external_preprocessing", external_preprocessing);
 
   // Mapping params
-  param_loader.load_param("mapping_skip_frame", skipFrameNum);
-  param_loader.load_param("mapping_line_resolution", lineRes);
-  param_loader.load_param("mapping_plane_resolution", planeRes);
+  float line_resolution;
+  float plane_resolution;
+  param_loader.loadParam("mapping_skip_frame", skipFrameNum, 1);
+  param_loader.loadParam("mapping_line_resolution", line_resolution, 0.2f);
+  param_loader.loadParam("mapping_plane_resolution", plane_resolution, 0.4f);
 
   if (!param_loader.loadedSuccessfully()) {
     ROS_ERROR("[aloamOdometry]: failed to load non-optional parameters!");
@@ -1522,8 +1536,8 @@ int main(int argc, char **argv) {
   vertical_fov_half /= 2.0;                                 // get half fov
   scanPeriod = 1.0 / scanPeriod;                            // frequency to period
 
-  m_downSizeFilterCorner.setLeafSize(lineRes, lineRes, lineRes);
-  m_downSizeFilterSurf.setLeafSize(planeRes, planeRes, planeRes);
+  m_downSizeFilterCorner.setLeafSize(line_resolution, line_resolution, line_resolution);
+  m_downSizeFilterSurf.setLeafSize(plane_resolution, plane_resolution, plane_resolution);
 
   if (N_SCANS == 32 && N_SCANS == 64) {
     ROS_ERROR("[aloamOdometry] MRS version of aloam does not work properly for %d rows. Function laserCloudHandler() needs to be updated.", N_SCANS);
@@ -1544,7 +1558,7 @@ int main(int argc, char **argv) {
   laserPath.header.frame_id = _frame_map;
 
   // Get static transforms lidar<->fcu
-  transformer_ = new mrs_lib::Transformer("ALOAM", uav_name);
+  transformer_ = new mrs_lib::Transformer("ALOAM", _uav_name);
   ROS_INFO("[aloamOdometry] Waiting 0.5 second to fill transform buffer.");
   ros::Duration(0.5).sleep();
   // TODO: no need for mrs_lib transformer for this simple task
@@ -1564,14 +1578,21 @@ int main(int argc, char **argv) {
   ROS_INFO("[aloamOdometry] Successfully found transformation from %s to %s.", _frame_lidar.c_str(), _frame_fcu.c_str());
   ROS_INFO("[aloamMapping] Successfully found transformation from %s to %s.", _frame_fcu.c_str(), _frame_lidar.c_str());
 
-  o_subLaserCloud = nh.subscribe("sensor_points_in", 100, &laserCloudHandler, ros::TransportHints().tcpNoDelay());
-  o_sub_mavros    = nh.subscribe("mavros_odom_in", 1, &callbackMavrosOdometry, ros::TransportHints().tcpNoDelay());
+  o_subLaserCloud = nh.subscribe("sensor_points_in", 1, &laserCloudHandler, ros::TransportHints().tcpNoDelay());
+  o_sub_mavros    = nh.subscribe("mavros_odom_in", 5, &callbackMavrosOdometry, ros::TransportHints().tcpNoDelay());
 
-  o_pubLaserOdometry        = nh.advertise<nav_msgs::Odometry>("odom_local_out", 100);
-  m_pubLaserCloudMap        = nh.advertise<sensor_msgs::PointCloud2>("map_out", 100);
-  m_pubLaserCloudFullRes    = nh.advertise<sensor_msgs::PointCloud2>("scan_registered_out", 100);
-  m_pubOdomAftMapped        = nh.advertise<nav_msgs::Odometry>("odom_global_out", 100);
-  m_pubLaserAfterMappedPath = nh.advertise<nav_msgs::Path>("path_out", 100);
+  o_pubLaserOdometry        = nh.advertise<nav_msgs::Odometry>("odom_local_out", 10);
+  m_pubLaserCloudMap        = nh.advertise<sensor_msgs::PointCloud2>("map_out", 1);
+  m_pubLaserCloudFullRes    = nh.advertise<sensor_msgs::PointCloud2>("scan_registered_out", 1);
+  m_pubOdomAftMapped        = nh.advertise<nav_msgs::Odometry>("odom_global_out", 10);
+  m_pubLaserAfterMappedPath = nh.advertise<nav_msgs::Path>("path_out", 5);
+
+  ROS_INFO("[%s]: %s", ros::this_node::getName().c_str(), o_subLaserCloud.getTopic().c_str());
+  ROS_INFO("[%s]: %s", ros::this_node::getName().c_str(), o_sub_mavros.getTopic().c_str());
+  ROS_INFO("[%s]: %s", ros::this_node::getName().c_str(), m_pubLaserCloudMap.getTopic().c_str());
+  ROS_INFO("[%s]: %s", ros::this_node::getName().c_str(), m_pubLaserCloudFullRes.getTopic().c_str());
+  ROS_INFO("[%s]: %s", ros::this_node::getName().c_str(), m_pubOdomAftMapped.getTopic().c_str());
+  ROS_INFO("[%s]: %s", ros::this_node::getName().c_str(), m_pubLaserAfterMappedPath.getTopic().c_str());
 
   is_initialized_ = true;
 
