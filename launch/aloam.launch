@@ -15,15 +15,20 @@
   <arg name="min_range" default="0.25" />
   <arg name="max_range" default="30.0" />
 
-  <arg name="nodelet" default="standalone" />
-  <arg name="nodelet_manager" default="" />
-  <arg name="launch_prefix" default="" />
+  <arg name="standalone" default="$(optenv STANDALONE_LOCALIZATION true)" />
+  <arg name="debug" default="$(optenv DEBUG false)" />
+  <arg     if="$(eval arg('standalone') or arg('debug'))" name="nodelet" value="standalone" />
+  <arg unless="$(eval arg('standalone') or arg('debug'))" name="nodelet" value="load" />
+  <arg     if="$(eval arg('standalone') or arg('debug'))" name="nodelet_manager" value="" />
+  <arg unless="$(eval arg('standalone') or arg('debug'))" name="nodelet_manager" value="$(arg uav_name)_ouster_nodelet_manager" />
+  <arg unless="$(arg debug)" name="launch_prefix" value=""/>
+  <arg     if="$(arg debug)" name="launch_prefix" value="gdb -ex run --args"/>
 
   <group ns="$(arg uav_name)">
 
     <!-- Odometry -->
-    <!-- <node pkg="nodelet" type="nodelet" name="aloam_odometry" args="$(arg nodelet) aloam_velodyne/aloamOdometry $(arg nodelet_manager)" output="screen" launch-prefix=""> -->
-    <node pkg="aloam_velodyne" type="aloamOdometry" name="aloam_odometry" output="screen" launch-prefix="$(arg launch_prefix)">
+    <node pkg="nodelet" type="nodelet" name="aloam_slam" args="$(arg nodelet) aloam_slam/AloamSlam $(arg nodelet_manager)" output="screen" launch-prefix="$(arg launch_prefix)">
+    <!-- <node pkg="aloam_slam" type="aloamOdometry" name="aloam_odometry" output="screen" launch-prefix="$(arg launch_prefix)"> -->
       <param name="scan_line" type="int" value="16" />
 
       <param name="uav_name" type="string" value="$(arg uav_name)"/>
@@ -42,9 +47,8 @@
       <param name="frequency" type="double" value="$(arg frequency)"/>
 
       <!-- Subscribers -->
-      <remap if="$(arg external_preprocessing)" from="~sensor_points_in" to="os1_cloud_node/points_processed"/>
-      <remap unless="$(arg external_preprocessing)" from="~sensor_points_in" to="os1_cloud_node/points"/>
-
+      <remap if="$(arg external_preprocessing)" from="~laser_cloud_in" to="os1_cloud_node/points_processed"/>
+      <remap unless="$(arg external_preprocessing)" from="~laser_cloud_in" to="os1_cloud_node/points"/>
       <remap from="~mavros_odom_in" to="mavros_interface/converted_mavros_odom"/>
 
       <!-- Publishers -->

@@ -12,7 +12,7 @@ FeatureExtractor::FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::Pa
                                    std::string map_frame, float scan_period_sec)
     : _odometry(odometry), _frame_map(map_frame), _scan_period_sec(scan_period_sec) {
 
-  ros::NodeHandle nh_(parent_nh, "AloamFeatureExtractor");
+  ros::NodeHandle nh_(parent_nh);
 
   param_loader.loadParam("vertical_fov", _vertical_fov_half);
   param_loader.loadParam("scan_line", _number_of_rings);
@@ -21,7 +21,7 @@ FeatureExtractor::FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::Pa
   param_loader.loadParam("external_preprocessing", _external_preprocessing);
 
   if (_number_of_rings != 16) {
-    ROS_ERROR_STREAM("[aloamOdometry] MRS version of Aloam curently supports only 3D lidar with 16 scan rings. To be implemented for 32, 64 and 128 rings.");
+    ROS_ERROR_STREAM("[AloamFeatureExtractor] MRS version of Aloam curently supports only 3D lidar with 16 scan rings. To be implemented for 32, 64 and 128 rings.");
     ros::shutdown();
   }
 
@@ -33,14 +33,17 @@ FeatureExtractor::FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::Pa
   _initialization_frames_delay = int(1.0 / scan_period_sec);
 
   _sub_laser_cloud = nh_.subscribe("laser_cloud_in", 1, &FeatureExtractor::callbackLaserCloud, this, ros::TransportHints().tcpNoDelay());
+
+  ROS_INFO("[AloamFeatureExtractor]: Listening laser cloud at topic: %s", _sub_laser_cloud.getTopic().c_str());
 }
 /*//}*/
 
-/*//{ TODO: laserCloudHandler */
+/*//{ laserCloudHandler */
 void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg) {
   if (!is_initialized) {
     return;
   }
+  ROS_INFO_ONCE("[AloamFeatureExtractor]: Received first laser cloud msg.");
   if (_frame_count++ < _initialization_frames_delay) {
     return;
   }
@@ -110,7 +113,7 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
       }
     } else {
       /* printf("wrong scan number\n"); */
-      ROS_ERROR_STREAM("[aloamOdometry] wrong scan number");
+      ROS_ERROR_STREAM("[AloamFeatureExtractor] wrong scan number");
       ROS_BREAK();
     }
     // printf("angle %f scanID %d \n", angle, scanID);
@@ -142,7 +145,7 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
 
   cloudSize = count;
   /* printf("points size %d \n", cloudSize); */
-  ROS_INFO_STREAM_THROTTLE(1.0, "[aloamOdometry] points size " << cloudSize);
+  ROS_INFO_STREAM_THROTTLE(1.0, "[AloamFeatureExtractor] points size " << cloudSize);
 
   pcl::PointCloud<PointType>::Ptr laserCloud(new pcl::PointCloud<PointType>());
   /* ROS_ERROR("Cloud:"); */
@@ -154,7 +157,7 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
   }
 
   /* printf("prepare time %f \n", t_prepare.toc()); */
-  ROS_INFO_STREAM_THROTTLE(1.0, "[aloamOdometry] prepare time " << t_prepare.toc() << " ms");
+  ROS_INFO_STREAM_THROTTLE(1.0, "[AloamFeatureExtractor] prepare time " << t_prepare.toc() << " ms");
 
   for (int i = 5; i < cloudSize - 5; i++) {
     float diffX = laserCloud->points[i - 5].x + laserCloud->points[i - 4].x + laserCloud->points[i - 3].x + laserCloud->points[i - 2].x +
@@ -292,8 +295,8 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
   }
   /* printf("sort q time %f \n", t_q_sort); */
   /* printf("seperate points time %f \n", t_pts.toc()); */
-  ROS_INFO_STREAM_THROTTLE(1.0, "[aloamOdometry] sort q time " << t_q_sort << " ms");
-  ROS_INFO_STREAM_THROTTLE(1.0, "[aloamOdometry] separate points time " << t_pts.toc() << " ms");
+  ROS_INFO_STREAM_THROTTLE(1.0, "[AloamFeatureExtractor] sort q time " << t_q_sort << " ms");
+  ROS_INFO_STREAM_THROTTLE(1.0, "[AloamFeatureExtractor] separate points time " << t_pts.toc() << " ms");
 
   laserCloud->header.frame_id            = _frame_map;
   cornerPointsSharp->header.frame_id     = _frame_map;
@@ -310,9 +313,9 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
   surfPointsLessFlat->header.stamp    = stamp;
 
   /* printf("scan registration time %f ms *************\n", t_whole.toc()); */
-  ROS_INFO_STREAM_THROTTLE(1.0, "[aloamOdometry] scan registration time " << t_whole.toc() << " ms");
+  ROS_INFO_STREAM_THROTTLE(1.0, "[AloamFeatureExtractor] scan registration time " << t_whole.toc() << " ms");
   if (t_whole.toc() > _scan_period_sec * 1000) {
-    ROS_WARN("[aloamOdometry] scan registration process over %0.2f ms", _scan_period_sec * 1000);
+    ROS_WARN("[AloamFeatureExtractor] scan registration process over %0.2f ms", _scan_period_sec * 1000);
   }
 
   _odometry->compute_local_odometry(cornerPointsSharp, cornerPointsLessSharp, surfPointsFlat, surfPointsLessFlat, laserCloud);

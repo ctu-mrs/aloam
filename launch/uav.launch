@@ -74,7 +74,7 @@
   </include>
 
   <!-- DATA PROCESSING NODE -->
-  <include if="$(arg custom_preprocessing)" file="$(find aloam_velodyne)/launch/data_processing.launch">
+  <include if="$(arg custom_preprocessing)" file="$(find aloam_slam)/launch/data_processing.launch">
     <arg name="nodelet" value="$(arg nodelet)" />
     <arg name="nodelet_manager" value="$(arg nodelet_manager)" />
     <arg name="launch_prefix" value="$(arg launch_prefix)" />
@@ -95,7 +95,7 @@
   </include>
 
   <!-- MAP BUILDER -->
-  <include if="$(arg map_builder)" file="$(find aloam_velodyne)/launch/map_builder.launch">
+  <include if="$(arg map_builder)" file="$(find aloam_slam)/launch/map_builder.launch">
     <arg name="nodelet" value="$(arg nodelet)" />
     <arg name="nodelet_manager" value="$(arg nodelet_manager)" />
     <arg name="launch_prefix" value="$(arg launch_prefix)" />
@@ -117,7 +117,7 @@
   </include>
 
   <!-- ALOAM NODE -->
-  <include file="$(find aloam_velodyne)/launch/aloam.launch">
+  <include file="$(find aloam_slam)/launch/aloam.launch">
     <arg name="nodelet" value="$(arg nodelet)" />
     <arg name="nodelet_manager" value="$(arg nodelet_manager)" />
     <arg name="launch_prefix" value="$(arg launch_prefix)" />

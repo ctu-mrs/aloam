@@ -9,9 +9,9 @@
 namespace aloam_slam
 {
 
-/* //{ class Aloam */
+/* //{ class AloamSlam */
 
-class Aloam : public nodelet::Nodelet {
+class AloamSlam : public nodelet::Nodelet {
 
 public:
   virtual void onInit();
@@ -21,7 +21,7 @@ public:
 
 /* //{ onInit() */
 
-void Aloam::onInit() {
+void AloamSlam::onInit() {
   ros::NodeHandle nh_ = nodelet::Nodelet::getMTPrivateNodeHandle();
 
   ros::Time::waitForValid();
@@ -55,27 +55,25 @@ void Aloam::onInit() {
   // | --------------------- tf transformer --------------------- |
 
   std::shared_ptr<mrs_lib::Transformer> transformer_ = std::make_shared<mrs_lib::Transformer>("Aloam", uav_name);
-  ROS_INFO("[Aloam] Waiting 0.5 second to fill transform buffer.");
+  ROS_INFO("[Aloam]: Waiting 0.5 second to fill transform buffer.");
   ros::Duration(0.5).sleep();
   // TODO: no need for mrs_lib transformer for this simple task
-  ROS_INFO_ONCE("[Aloam] Looking for transform from %s to %s", frame_lidar.c_str(), frame_fcu.c_str());
+  ROS_INFO_ONCE("[Aloam]: Looking for transform from %s to %s", frame_lidar.c_str(), frame_fcu.c_str());
   auto tf_lidar_fcu = transformer_->getTransform(frame_lidar, frame_fcu, ros::Time(0));
   while (!tf_lidar_fcu) {
     tf_lidar_fcu = transformer_->getTransform(frame_lidar, frame_fcu, ros::Time(0));
   }
   tf::transformMsgToTF(tf_lidar_fcu->getTransform().transform, tf_lidar_in_fcu_frame);
-  ROS_INFO("[Aloam] Successfully found transformation from %s to %s.", frame_lidar.c_str(), frame_fcu.c_str());
+  ROS_INFO("[Aloam]: Successfully found transformation from %s to %s.", frame_lidar.c_str(), frame_fcu.c_str());
 
   // | ----------------------- SLAM handlers  ------------------- |
 
-  std::shared_ptr<AloamMapping> aloam_mapping =
-      std::make_shared<AloamMapping>(nh_, param_loader, frame_fcu, frame_map, tf_lidar_in_fcu_frame.inverse());
+  std::shared_ptr<AloamMapping> aloam_mapping = std::make_shared<AloamMapping>(nh_, param_loader, frame_fcu, frame_map, tf_lidar_in_fcu_frame.inverse());
 
   std::shared_ptr<AloamOdometry> aloam_odometry =
       std::make_shared<AloamOdometry>(nh_, param_loader, aloam_mapping, frame_lidar, frame_map, 1.0f / frequency, tf_lidar_in_fcu_frame);
 
-  std::shared_ptr<FeatureExtractor> feature_extractor =
-      std::make_shared<FeatureExtractor>(nh_, param_loader, aloam_odometry, frame_map, 1.0f / frequency);
+  std::shared_ptr<FeatureExtractor> feature_extractor = std::make_shared<FeatureExtractor>(nh_, param_loader, aloam_odometry, frame_map, 1.0f / frequency);
 
   // | ------------------------ profiler ------------------------ |
   // TODO: Add Profiler to all methods
@@ -86,6 +84,7 @@ void Aloam::onInit() {
   aloam_mapping->is_initialized     = true;
 
   ROS_INFO("[Aloam]: initialized");
+  ros::spin();
 }
 
 //}
@@ -93,4 +92,4 @@ void Aloam::onInit() {
 }  // namespace aloam_slam
 
 #include <pluginlib/class_list_macros.h>
-PLUGINLIB_EXPORT_CLASS(aloam_slam::Aloam, nodelet::Nodelet)
+PLUGINLIB_EXPORT_CLASS(aloam_slam::AloamSlam, nodelet::Nodelet)

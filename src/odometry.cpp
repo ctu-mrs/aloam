@@ -15,7 +15,7 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoa
       q_last_curr(para_q),
       t_last_curr(para_t) {
 
-  ros::NodeHandle nh_(parent_nh, "AloamOdometry");
+  ros::NodeHandle nh_(parent_nh);
 
   param_loader.loadParam("mapping_skip_frame", _skip_mapping_frame_num, 1);
 
@@ -267,12 +267,13 @@ void AloamOdometry::compute_local_odometry(pcl::PointCloud<PointType>::Ptr corne
   bool                      got_mavros = false;
   {
     std::scoped_lock lock(_mutex_odom_mavros);
-    if (_got_mavros_odom && _mavros_odom.header.stamp.toSec() - stamp.toSec() < 1.0) {
+    if (_got_mavros_odom && (_mavros_odom.header.stamp - stamp).toSec() < 0.5) {
       got_mavros = true;
       ori        = _mavros_odom.pose.pose.orientation;
     }
   }
 
+  ROS_WARN("A");
   if (got_mavros) {
     tf::Quaternion q_mavros;
     tf::Quaternion q_odom;
@@ -294,6 +295,7 @@ void AloamOdometry::compute_local_odometry(pcl::PointCloud<PointType>::Ptr corne
   } else {
     tf::quaternionEigenToMsg(q_w_curr, ori);
   }
+  ROS_WARN("B");
 
   // Publish odometry as PoseStamped
   nav_msgs::Odometry laserOdometry;
