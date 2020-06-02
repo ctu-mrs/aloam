@@ -1,0 +1,5 @@
+<library path="lib/libAloamSlam">
+  <class name="aloam_slam/AloamManager" type="aloam_slam::AloamManager" base_class_type="nodelet::Nodelet">
+    <description>AloamManager nodelet</description>
+  </class>
+</library>

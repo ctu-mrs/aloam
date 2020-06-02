@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(aloam_velodyne)
+project(aloam_slam)
 
 
 set(CMAKE_CXX_FLAGS "-g -O3 -DEIGEN_INITIALIZE_MATRICES_BY_NAN -DDISABLE_PARALLELIZATION -DDEBUG_PARAMS")
@@ -32,6 +32,7 @@ find_package(catkin REQUIRED COMPONENTS
   mrs_lib
   eigen_conversions
   tf_conversions
+  nodelet
 )
 
 find_package(PCL REQUIRED COMPONENTS)
@@ -65,12 +66,27 @@ add_definitions(
   ${PCL_DEFINITIONS}
 )
 
-add_executable(aloamOdometry src/laserOdometry.cpp src/lidarFactor.hpp)
-target_link_libraries(aloamOdometry ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${Eigen_LIBRARIES} ${CERES_LIBRARIES})
-add_dependencies(aloamOdometry
+add_library(AloamSlam src/aloam.cpp src/odometry.cpp src/mapping.cpp src/feature_extractor.cpp)
+
+add_dependencies(AloamSlam
   ${${PROJECT_NAME}_EXPORTED_TARGETS}
   ${catkin_EXPORTED_TARGETS}
-)
-target_include_directories(aloamOdometry SYSTEM PRIVATE ${PCL_INCLUDE_DIRS})
+  )
+
+target_link_libraries(AloamSlam
+  ${catkin_LIBRARIES}
+  ${catkin_LIBRARIES}
+  ${PCL_LIBRARIES}
+  ${Eigen_LIBRARIES}
+  ${CERES_LIBRARIES}
+  )
+
+# add_executable(aloamOdometry src/laserOdometry.cpp src/lidarFactor.hpp)
+# target_link_libraries(aloamOdometry ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${Eigen_LIBRARIES} ${CERES_LIBRARIES})
+# add_dependencies(aloamOdometry
+#   ${${PROJECT_NAME}_EXPORTED_TARGETS}
+#   ${catkin_EXPORTED_TARGETS}
+# )
+# target_include_directories(aloamOdometry SYSTEM PRIVATE ${PCL_INCLUDE_DIRS})
 
 
