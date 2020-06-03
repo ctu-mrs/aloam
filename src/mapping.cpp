@@ -44,7 +44,7 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
 /*//}*/
 
 /*//{ compute_mapping() */
-void AloamMapping::compute_mapping(nav_msgs::Odometry odometry, pcl::PointCloud<PointType>::Ptr laserCloudCornerLast,
+void AloamMapping::compute_mapping(double time_feature_extraction, double time_odometry, nav_msgs::Odometry odometry, pcl::PointCloud<PointType>::Ptr laserCloudCornerLast,
                                    pcl::PointCloud<PointType>::Ptr laserCloudSurfLast, pcl::PointCloud<PointType>::Ptr laserCloudFullRes) {
 
   ros::Time stamp_cornerLastBuf;
@@ -263,8 +263,8 @@ void AloamMapping::compute_mapping(nav_msgs::Odometry odometry, pcl::PointCloud<
 
   /* printf("map prepare time %f ms\n", t_shift.toc()); */
   /* printf("map corner num %d  surf num %d \n", laserCloudCornerFromMapNum, laserCloudSurfFromMapNum); */
-  ROS_INFO_STREAM_THROTTLE(1.0, "[AloamMapping] map prepare time " << t_shift.toc() << " ms");
-  ROS_INFO_STREAM_THROTTLE(1.0, "[AloamMapping] map corner num " << laserCloudCornerFromMapNum << " surf num " << laserCloudSurfFromMapNum);
+  ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamMapping] map prepare time " << t_shift.toc() << " ms");
+  ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamMapping] map corner num " << laserCloudCornerFromMapNum << " surf num " << laserCloudSurfFromMapNum);
   if (laserCloudCornerFromMapNum > 10 && laserCloudSurfFromMapNum > 50) {
     TicToc                           t_opt;
     TicToc                           t_tree;
@@ -273,7 +273,7 @@ void AloamMapping::compute_mapping(nav_msgs::Odometry odometry, pcl::PointCloud<
     kdtreeCornerFromMap->setInputCloud(m_laserCloudCornerFromMap);
     kdtreeSurfFromMap->setInputCloud(m_laserCloudSurfFromMap);
     /* printf("build tree time %f ms \n", t_tree.toc()); */
-    ROS_INFO_STREAM_THROTTLE(1.0, "[AloamMapping] build tree time " << t_tree.toc() << " ms");
+    ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamMapping] build tree time " << t_tree.toc() << " ms");
 
     for (int iterCount = 0; iterCount < 2; iterCount++) {
       // ceres::LossFunction *loss_function = NULL;
@@ -409,7 +409,7 @@ void AloamMapping::compute_mapping(nav_msgs::Odometry odometry, pcl::PointCloud<
       // printf("surf num %d used surf num %d \n", laserCloudSurfStackNum, surf_num);
 
       /* printf("mapping data assosiation time %f ms \n", t_data.toc()); */
-      ROS_INFO_STREAM_THROTTLE(1.0, "[AloamMapping] mapping data association time " << t_data.toc() << " ms");
+      ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamMapping] mapping data association time " << t_data.toc() << " ms");
 
       TicToc                 t_solver;
       ceres::Solver::Options options;
@@ -421,7 +421,7 @@ void AloamMapping::compute_mapping(nav_msgs::Odometry odometry, pcl::PointCloud<
       ceres::Solver::Summary summary;
       ceres::Solve(options, &problem, &summary);
       /* printf("mapping solver time %f ms \n", t_solver.toc()); */
-      ROS_INFO_STREAM_THROTTLE(1.0, "[AloamMapping] mapping solver time " << t_solver.toc() << " ms");
+      ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamMapping] mapping solver time " << t_solver.toc() << " ms");
 
       // printf("time %f \n", timeLaserOdometry);
       // printf("corner factor num %d surf factor num %d\n", corner_num, surf_num);
@@ -429,12 +429,12 @@ void AloamMapping::compute_mapping(nav_msgs::Odometry odometry, pcl::PointCloud<
       //	   _parameters[4], _parameters[5], _parameters[6]);
     }
     /* printf("mapping optimization time %f \n", t_opt.toc()); */
-    ROS_INFO_STREAM_THROTTLE(1.0, "[AloamMapping] mapping optimization time " << t_opt.toc() << " ms");
+    ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamMapping] mapping optimization time " << t_opt.toc() << " ms");
   } else {
-    ROS_WARN("[AloamMapping] time Map corner and surf num are not enough");
+    ROS_WARN("[AloamMapping] Not enough map correspondences. Skipping mapping frame.");
   }
-  transformUpdate();
   /*//}*/
+  transformUpdate();
 
   TicToc t_add;
   for (int i = 0; i < laserCloudCornerStackNum; i++) {
@@ -477,7 +477,7 @@ void AloamMapping::compute_mapping(nav_msgs::Odometry odometry, pcl::PointCloud<
     }
   }
   /* printf("add points time %f ms\n", t_add.toc()); */
-  ROS_INFO_STREAM_THROTTLE(1.0, "[AloamMapping] add points time " << t_add.toc() << " ms");
+  ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamMapping] add points time " << t_add.toc() << " ms");
 
 
   TicToc t_filter;
@@ -495,7 +495,7 @@ void AloamMapping::compute_mapping(nav_msgs::Odometry odometry, pcl::PointCloud<
     laserCloudSurfArray[ind] = tmpSurf;
   }
   /* printf("filter time %f ms \n", t_filter.toc()); */
-  ROS_INFO_STREAM_THROTTLE(1.0, "[AloamMapping] filter time " << t_filter.toc() << " ms");
+  ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamMapping] filter time " << t_filter.toc() << " ms");
 
   TicToc    t_pub;
   ros::Time stamp = ros::Time().fromSec(timeLaserOdometry);
@@ -526,8 +526,10 @@ void AloamMapping::compute_mapping(nav_msgs::Odometry odometry, pcl::PointCloud<
 
   /* printf("mapping pub time %f ms \n", t_pub.toc()); */
   /* printf("whole mapping time %f ms +++++\n", t_whole.toc()); */
-  ROS_INFO_STREAM_THROTTLE(1.0, "[AloamMapping] mapping pub time " << t_pub.toc() << " ms");
-  ROS_INFO_STREAM_THROTTLE(1.0, "[AloamMapping] whole mapping time " << t_whole.toc() << " ms");
+  double t = t_whole.toc();
+  ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamMapping] mapping pub time " << t_pub.toc() << " ms");
+  ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamMapping] Mapping run time: " << t << " ms");
+  ROS_INFO_THROTTLE(1.0, "[Aloam]: Run time: %0.2f ms (feature extraction: %0.2f ms, odometry: %0.2f ms, mapping: %0.2f ms)", t + time_feature_extraction + time_odometry, time_feature_extraction, time_odometry, t);
 
   // TF fcu -> aloam origin (_t_w_curr and _q_w_curr is in origin -> fcu frame, hence inversion)
   static tf::TransformBroadcaster br;

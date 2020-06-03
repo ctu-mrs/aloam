@@ -145,7 +145,7 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
 
   cloudSize = count;
   /* printf("points size %d \n", cloudSize); */
-  ROS_INFO_STREAM_THROTTLE(1.0, "[AloamFeatureExtractor] points size " << cloudSize);
+  ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamFeatureExtractor] points size " << cloudSize);
 
   pcl::PointCloud<PointType>::Ptr laserCloud(new pcl::PointCloud<PointType>());
   /* ROS_ERROR("Cloud:"); */
@@ -157,7 +157,7 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
   }
 
   /* printf("prepare time %f \n", t_prepare.toc()); */
-  ROS_INFO_STREAM_THROTTLE(1.0, "[AloamFeatureExtractor] prepare time " << t_prepare.toc() << " ms");
+  ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamFeatureExtractor] prepare time " << t_prepare.toc() << " ms");
 
   for (int i = 5; i < cloudSize - 5; i++) {
     float diffX = laserCloud->points[i - 5].x + laserCloud->points[i - 4].x + laserCloud->points[i - 3].x + laserCloud->points[i - 2].x +
@@ -295,8 +295,8 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
   }
   /* printf("sort q time %f \n", t_q_sort); */
   /* printf("seperate points time %f \n", t_pts.toc()); */
-  ROS_INFO_STREAM_THROTTLE(1.0, "[AloamFeatureExtractor] sort q time " << t_q_sort << " ms");
-  ROS_INFO_STREAM_THROTTLE(1.0, "[AloamFeatureExtractor] separate points time " << t_pts.toc() << " ms");
+  ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamFeatureExtractor] sort q time " << t_q_sort << " ms");
+  ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamFeatureExtractor] separate points time " << t_pts.toc() << " ms");
 
   laserCloud->header.frame_id            = _frame_map;
   cornerPointsSharp->header.frame_id     = _frame_map;
@@ -313,12 +313,11 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
   surfPointsLessFlat->header.stamp    = stamp;
 
   /* printf("scan registration time %f ms *************\n", t_whole.toc()); */
-  ROS_INFO_STREAM_THROTTLE(1.0, "[AloamFeatureExtractor] scan registration time " << t_whole.toc() << " ms");
-  if (t_whole.toc() > _scan_period_sec * 1000) {
-    ROS_WARN("[AloamFeatureExtractor] scan registration process over %0.2f ms", _scan_period_sec * 1000);
-  }
+  double t = t_whole.toc();
+  ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamFeatureExtractor] Feature extraction run time: " << t << " ms");
+  ROS_WARN_COND(t > _scan_period_sec * 1000, "[AloamFeatureExtractor] scan registration process over %0.2f ms", _scan_period_sec * 1000);
 
-  _odometry->compute_local_odometry(cornerPointsSharp, cornerPointsLessSharp, surfPointsFlat, surfPointsLessFlat, laserCloud);
+  _odometry->compute_local_odometry(t, cornerPointsSharp, cornerPointsLessSharp, surfPointsFlat, surfPointsLessFlat, laserCloud);
 }
 /*//}*/
 

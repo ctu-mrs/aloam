@@ -47,7 +47,6 @@
 #include <mrs_lib/param_loader.h>
 #include <mrs_lib/mutex.h>
 #include <mrs_lib/transformer.h>
-#include <mrs_lib/attitude_converter.h>
 
 #include "aloam_slam/common.h"
 #include "aloam_slam/tic_toc.h"
@@ -65,8 +64,8 @@ public:
 
   bool is_initialized = false;
 
-  void compute_mapping(nav_msgs::Odometry odometry, pcl::PointCloud<PointType>::Ptr laserCloudCornerLast, pcl::PointCloud<PointType>::Ptr laserCloudSurfLast,
-                       pcl::PointCloud<PointType>::Ptr laserCloudFullRes);
+  void compute_mapping(double time_feature_extraction, double time_odometry, nav_msgs::Odometry odometry, pcl::PointCloud<PointType>::Ptr laserCloudCornerLast,
+                       pcl::PointCloud<PointType>::Ptr laserCloudSurfLast, pcl::PointCloud<PointType>::Ptr laserCloudFullRes);
 
 private:
   // member objects
@@ -94,7 +93,7 @@ private:
   // member variables
   std::string _frame_fcu;
   std::string _frame_map;
-  
+
   tf::Transform _tf_fcu_to_lidar;
 
   double                         _parameters[7] = {0, 0, 0, 1, 0, 0, 0};

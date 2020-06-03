@@ -13,14 +13,14 @@ public:
 
   bool is_initialized = false;
 
-  void compute_local_odometry(pcl::PointCloud<PointType>::Ptr cornerPointsSharp, pcl::PointCloud<PointType>::Ptr cornerPointsLessSharp,
+  void compute_local_odometry(double time_feature_extraction, pcl::PointCloud<PointType>::Ptr cornerPointsSharp, pcl::PointCloud<PointType>::Ptr cornerPointsLessSharp,
                               pcl::PointCloud<PointType>::Ptr surfPointsFlat, pcl::PointCloud<PointType>::Ptr surfPointsLessFlat,
                               pcl::PointCloud<PointType>::Ptr laserCloudFullRes);
 
 private:
   // member objects
   std::shared_ptr<AloamMapping> _mapper;
-  ros::Subscriber               _sub_mavros_odom;
+  ros::Subscriber               _sub_orientation_meas;
 
   // TODO: make these objects local
   pcl::PointCloud<PointType>::Ptr       laserCloudCornerLast;
@@ -35,10 +35,10 @@ private:
   ros::Publisher _pub_odometry_local;  // o_pubLaserOdometry
 
   // mutexes
-  std::mutex _mutex_odom_mavros;
+  std::mutex _mutex_orientation_meas;
 
   // ROS msgs
-  nav_msgs::Odometry _mavros_odom;
+  nav_msgs::Odometry _orientation_meas;
 
   // member variables
   std::string _frame_lidar;
@@ -58,7 +58,7 @@ private:
 
   tf::Transform _tf_lidar_to_fcu;
 
-  bool _got_mavros_odom;
+  bool _got_orientation_meas = false;
 
   double                         para_q[4] = {0, 0, 0, 1};
   double                         para_t[3] = {0, 0, 0};
@@ -75,7 +75,7 @@ private:
   void TransformToEnd(PointType const *const pi, PointType *const po);
 
   // callbacks
-  void callbackMavrosOdom(const nav_msgs::OdometryConstPtr &msg);
+  void callbackOrientationMeas(const nav_msgs::OdometryConstPtr &msg);
 };
 }  // namespace aloam_slam
 #endif

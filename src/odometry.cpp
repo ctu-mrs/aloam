@@ -31,7 +31,7 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoa
   /* q_last_curr = Eigen::Map<Eigen::Quaterniond>(para_q); */
   /* t_last_curr = Eigen::Map<Eigen::Vector3d>(para_t); */
 
-  _sub_mavros_odom = nh_.subscribe("mavros_odom_in", 1, &AloamOdometry::callbackMavrosOdom, this, ros::TransportHints().tcpNoDelay());
+  _sub_orientation_meas = nh_.subscribe("orientation_in", 1, &AloamOdometry::callbackOrientationMeas, this, ros::TransportHints().tcpNoDelay());
 
   _pub_odometry_local = nh_.advertise<nav_msgs::Odometry>("odom_local_out", 1);
 
@@ -40,7 +40,7 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoa
 //}
 
 /*//{ TODO: compute_local_odometry() */
-void AloamOdometry::compute_local_odometry(pcl::PointCloud<PointType>::Ptr cornerPointsSharp, pcl::PointCloud<PointType>::Ptr cornerPointsLessSharp,
+void AloamOdometry::compute_local_odometry(double time_feature_extraction, pcl::PointCloud<PointType>::Ptr cornerPointsSharp, pcl::PointCloud<PointType>::Ptr cornerPointsLessSharp,
                                            pcl::PointCloud<PointType>::Ptr surfPointsFlat, pcl::PointCloud<PointType>::Ptr surfPointsLessFlat,
                                            pcl::PointCloud<PointType>::Ptr laserCloudFullRes) {
 
@@ -238,10 +238,10 @@ void AloamOdometry::compute_local_odometry(pcl::PointCloud<PointType>::Ptr corne
       }
 
       // printf("coner_correspondance %d, plane_correspondence %d \n", corner_correspondence, plane_correspondence);
-      ROS_INFO_STREAM_THROTTLE(1.0, "[AloamOdometry] data association time " << t_data.toc() << " ms");
+      ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamOdometry] data association time " << t_data.toc() << " ms");
 
       if ((corner_correspondence + plane_correspondence) < 10) {
-        ROS_INFO_STREAM("[AloamOdometry] less correspondence! *************************************************");
+        ROS_WARN_STREAM("[AloamOdometry] low number of correspondence!");
       }
 
       TicToc                 t_solver;
@@ -252,10 +252,10 @@ void AloamOdometry::compute_local_odometry(pcl::PointCloud<PointType>::Ptr corne
       ceres::Solver::Summary summary;
       ceres::Solve(options, &problem, &summary);
       /* printf("solver time %f ms \n", t_solver.toc()); */
-      ROS_INFO_STREAM_THROTTLE(1.0, "[AloamOdometry] solver time " << t_solver.toc() << " ms");
+      ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamOdometry] solver time " << t_solver.toc() << " ms");
     }
     /* printf("optimization twice time %f \n", t_opt.toc()); */
-    ROS_INFO_STREAM_THROTTLE(1.0, "[AloamOdometry] optimization twice time " << t_opt.toc() << " ms");
+    ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamOdometry] optimization twice time " << t_opt.toc() << " ms");
 
     t_w_curr = t_w_curr + q_w_curr * t_last_curr;
     q_w_curr = q_w_curr * q_last_curr;
@@ -264,17 +264,17 @@ void AloamOdometry::compute_local_odometry(pcl::PointCloud<PointType>::Ptr corne
   TicToc t_pub;
 
   geometry_msgs::Quaternion ori;
-  bool                      got_mavros = false;
+  bool                      got_orientation_meas = false;
   {
-    std::scoped_lock lock(_mutex_odom_mavros);
-    if (_got_mavros_odom && (_mavros_odom.header.stamp - stamp).toSec() < 0.5) {
-      got_mavros = true;
-      ori        = _mavros_odom.pose.pose.orientation;
+    std::scoped_lock lock(_mutex_orientation_meas);
+    if (_got_orientation_meas && (_orientation_meas.header.stamp - stamp).toSec() < 0.5) {
+      got_orientation_meas = true;
+      ori        = _orientation_meas.pose.pose.orientation;
     }
   }
 
-  ROS_WARN("A");
-  if (got_mavros) {
+  if (got_orientation_meas) {
+    // TODO: AttitudeConverter
     tf::Quaternion q_mavros;
     tf::Quaternion q_odom;
 
@@ -295,7 +295,6 @@ void AloamOdometry::compute_local_odometry(pcl::PointCloud<PointType>::Ptr corne
   } else {
     tf::quaternionEigenToMsg(q_w_curr, ori);
   }
-  ROS_WARN("B");
 
   // Publish odometry as PoseStamped
   nav_msgs::Odometry laserOdometry;
@@ -349,13 +348,13 @@ void AloamOdometry::compute_local_odometry(pcl::PointCloud<PointType>::Ptr corne
 
     /* printf("publication time %f ms \n", t_pub.toc()); */
     /* printf("whole laserOdometry time %f ms \n \n", t_whole.toc()); */
-    ROS_INFO_STREAM_THROTTLE(1.0, "[AloamOdometry] publication time " << t_pub.toc() << " ms");
-    ROS_INFO_STREAM_THROTTLE(1.0, "[AloamOdometry] whole laserOdometry time " << t_whole.toc() << " ms");
-    if (t_whole.toc() > _scan_period_sec * 1000) {
-      ROS_WARN("[AloamOdometry] odometry process over %0.2f ms", _scan_period_sec * 1000);
-    }
+    ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamOdometry] publication time " << t_pub.toc() << " ms");
 
-    _mapper->compute_mapping(laserOdometry, laserCloudCornerLast, laserCloudSurfLast, laserCloudFullRes);
+    double t = t_whole.toc();
+    ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamOdometry] Odometry run time: " << t << " ms");
+    ROS_WARN_COND(t > _scan_period_sec * 1000, "[AloamOdometry] odometry process over %0.2f ms", _scan_period_sec * 1000);
+
+    _mapper->compute_mapping(time_feature_extraction, t, laserOdometry, laserCloudCornerLast, laserCloudSurfLast, laserCloudFullRes);
   }
 
   _frame_count++;
@@ -401,15 +400,16 @@ void AloamOdometry::TransformToEnd(PointType const *const pi, PointType *const p
 }
 /*//}*/
 
-/*//{ callbackMavrosOdom() */
-void AloamOdometry::callbackMavrosOdom(const nav_msgs::OdometryConstPtr &msg) {
+/*//{ callbackOrientationMeas() */
+void AloamOdometry::callbackOrientationMeas(const nav_msgs::OdometryConstPtr &msg) {
   if (!is_initialized) {
     return;
   }
+  ROS_INFO_ONCE("[AloamOdometry] Received first message with orientation measurement.");
 
-  std::scoped_lock lock(_mutex_odom_mavros);
-  _got_mavros_odom = true;
-  _mavros_odom     = *msg;
+  std::scoped_lock lock(_mutex_orientation_meas);
+  _got_orientation_meas = true;
+  _orientation_meas     = *msg;
 }
 /*//}*/
 

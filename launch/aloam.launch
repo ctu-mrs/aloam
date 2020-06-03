@@ -49,7 +49,7 @@
       <!-- Subscribers -->
       <remap if="$(arg external_preprocessing)" from="~laser_cloud_in" to="os1_cloud_node/points_processed"/>
       <remap unless="$(arg external_preprocessing)" from="~laser_cloud_in" to="os1_cloud_node/points"/>
-      <remap from="~mavros_odom_in" to="mavros_interface/converted_mavros_odom"/>
+      <remap from="~orientation_in" to="odometry/orientation"/>
 
       <!-- Publishers -->
       <remap from="~odom_local_out" to="aloam/odom_local"/>

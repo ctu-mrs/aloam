@@ -78,6 +78,7 @@ void AloamSlam::onInit() {
   // | ------------------------ profiler ------------------------ |
   // TODO: Add Profiler to all methods
   /* profiler_ = mrs_lib::Profiler(nh_, "Aloam", _profiler_enabled_); */
+  // TODO: Add AttitudeConverter
 
   feature_extractor->is_initialized = true;
   aloam_odometry->is_initialized    = true;
