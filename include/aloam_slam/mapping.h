@@ -64,12 +64,13 @@ public:
 
   bool is_initialized = false;
 
-  void setData(nav_msgs::Odometry aloam_odometry, pcl::PointCloud<PointType>::Ptr laserCloudCornerLast,
-               pcl::PointCloud<PointType>::Ptr laserCloudSurfLast, pcl::PointCloud<PointType>::Ptr laserCloudFullRes);
+  void setData(nav_msgs::Odometry aloam_odometry, pcl::PointCloud<PointType>::Ptr laserCloudCornerLast, pcl::PointCloud<PointType>::Ptr laserCloudSurfLast,
+               pcl::PointCloud<PointType>::Ptr laserCloudFullRes);
 
 private:
   // member objects
   ros::Timer _timer_mapping_loop;
+  ros::Time  _time_last_frame;
 
   std::vector<pcl::PointCloud<PointType>::Ptr> laserCloudCornerArray;
   std::vector<pcl::PointCloud<PointType>::Ptr> laserCloudSurfArray;
@@ -100,8 +101,12 @@ private:
   // member variables
   std::string _frame_fcu;
   std::string _frame_map;
-  
+
+  bool _limit_frequency;
+
   float _scan_frequency;
+  float _mapping_frequency;
+  float _mapping_period_sec;
 
   tf::Transform _tf_fcu_to_lidar;
 

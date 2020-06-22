@@ -17,6 +17,11 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
 
   param_loader.loadParam("mapping_line_resolution", _resolution_line, 0.2f);
   param_loader.loadParam("mapping_plane_resolution", _resolution_plane, 0.4f);
+  param_loader.loadParam("mapping_frequency", _mapping_frequency, -1.0f);
+
+  _limit_frequency    = _mapping_frequency > 0.0f;
+  _mapping_frequency  = std::min(scan_frequency, _mapping_frequency);  // cannot be higher than scan frequency
+  _mapping_period_sec = 1.0f / _mapping_frequency;
 
   _q_wmap_wodom = Eigen::Quaterniond(1, 0, 0, 0);
   _t_wmap_wodom = Eigen::Vector3d(0, 0, 0);
@@ -37,6 +42,7 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
   _pub_path                   = nh_.advertise<nav_msgs::Path>("path_out", 1);
 
   _timer_mapping_loop = nh_.createTimer(ros::Rate(1000), &AloamMapping::mappingLoop, this, false, true);
+  _time_last_frame    = ros::Time::now();
 }
 /*//}*/
 
@@ -68,6 +74,11 @@ void AloamMapping::mappingLoop([[maybe_unused]] const ros::TimerEvent &event) {
   if (!has_new_data) {
     return;
   }
+
+  if (_limit_frequency && (ros::Time::now() - _time_last_frame).toSec() < _mapping_period_sec) {
+    return;
+  }
+  _time_last_frame = ros::Time::now();
 
   nav_msgs::Odometry              aloam_odometry;
   pcl::PointCloud<PointType>::Ptr laserCloudCornerLast;
@@ -559,7 +570,7 @@ void AloamMapping::mappingLoop([[maybe_unused]] const ros::TimerEvent &event) {
 
   float time_whole = t_whole.toc();
 
-  ROS_INFO_THROTTLE(1.0, "[AloamMapping] Run time: %0.1f ms (%0.1f Hz)", time_whole, std::min(_scan_frequency, 1000.0f / time_whole));
+  ROS_INFO_THROTTLE(1.0, "[AloamMapping] Run time: %0.1f ms (%0.1f Hz)", time_whole, std::min(_mapping_frequency, 1000.0f / time_whole));
   ROS_DEBUG_THROTTLE(
       1.0,
       "[AloamMapping] features -> edges: %d, surfs: %d; data preparation: %0.1f ms; kd-tree initialization: %0.1f ms; "
