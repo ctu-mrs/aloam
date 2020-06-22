@@ -77,8 +77,6 @@ private:
   PointType _pointOri;
   PointType _pointSel;
 
-  std::vector<int>   _pointSearchInd;
-  std::vector<float> m_pointSearchSqDis;
 
   // Feature extractor newest data
   bool                            _has_new_data = false;

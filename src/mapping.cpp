@@ -309,6 +309,9 @@ void AloamMapping::mappingLoop([[maybe_unused]] const ros::TimerEvent &event) {
     kdtreeSurfFromMap->setInputCloud(m_laserCloudSurfFromMap);
     time_build_tree = t_tree.toc();
 
+    std::vector<int>   pointSearchInd;
+    std::vector<float> pointSearchSqDis;
+
     TicToc t_opt;
     for (int iterCount = 0; iterCount < 2; iterCount++) {
       // ceres::LossFunction *loss_function = NULL;
@@ -327,14 +330,14 @@ void AloamMapping::mappingLoop([[maybe_unused]] const ros::TimerEvent &event) {
         _pointOri = laserCloudCornerStack->points.at(i);
         // double sqrtDis = _pointOri.x * _pointOri.x + _pointOri.y * _pointOri.y + _pointOri.z * _pointOri.z;
         pointAssociateToMap(&_pointOri, &_pointSel);
-        kdtreeCornerFromMap->nearestKSearch(_pointSel, 5, _pointSearchInd, m_pointSearchSqDis);
+        kdtreeCornerFromMap->nearestKSearch(_pointSel, 5, pointSearchInd, pointSearchSqDis);
 
-        if (m_pointSearchSqDis.at(4) < 1.0) {
+        if (pointSearchSqDis.at(4) < 1.0) {
           std::vector<Eigen::Vector3d> nearCorners;
           Eigen::Vector3d              center(0, 0, 0);
           for (int j = 0; j < 5; j++) {
-            Eigen::Vector3d tmp(m_laserCloudCornerFromMap->points.at(_pointSearchInd.at(j)).x, m_laserCloudCornerFromMap->points.at(_pointSearchInd.at(j)).y,
-                                m_laserCloudCornerFromMap->points.at(_pointSearchInd.at(j)).z);
+            Eigen::Vector3d tmp(m_laserCloudCornerFromMap->points.at(pointSearchInd.at(j)).x, m_laserCloudCornerFromMap->points.at(pointSearchInd.at(j)).y,
+                                m_laserCloudCornerFromMap->points.at(pointSearchInd.at(j)).z);
             center = center + tmp;
             nearCorners.push_back(tmp);
           }
@@ -368,15 +371,15 @@ void AloamMapping::mappingLoop([[maybe_unused]] const ros::TimerEvent &event) {
         _pointOri = laserCloudSurfStack->points.at(i);
         // double sqrtDis = _pointOri.x * _pointOri.x + _pointOri.y * _pointOri.y + _pointOri.z * _pointOri.z;
         pointAssociateToMap(&_pointOri, &_pointSel);
-        kdtreeSurfFromMap->nearestKSearch(_pointSel, 5, _pointSearchInd, m_pointSearchSqDis);
+        kdtreeSurfFromMap->nearestKSearch(_pointSel, 5, pointSearchInd, pointSearchSqDis);
 
         Eigen::Matrix<double, 5, 3> matA0;
         Eigen::Matrix<double, 5, 1> matB0 = -1 * Eigen::Matrix<double, 5, 1>::Ones();
-        if (m_pointSearchSqDis.at(4) < 1.0) {
+        if (pointSearchSqDis.at(4) < 1.0) {
           for (int j = 0; j < 5; j++) {
-            matA0(j, 0) = m_laserCloudSurfFromMap->points.at(_pointSearchInd.at(j)).x;
-            matA0(j, 1) = m_laserCloudSurfFromMap->points.at(_pointSearchInd.at(j)).y;
-            matA0(j, 2) = m_laserCloudSurfFromMap->points.at(_pointSearchInd.at(j)).z;
+            matA0(j, 0) = m_laserCloudSurfFromMap->points.at(pointSearchInd.at(j)).x;
+            matA0(j, 1) = m_laserCloudSurfFromMap->points.at(pointSearchInd.at(j)).y;
+            matA0(j, 2) = m_laserCloudSurfFromMap->points.at(pointSearchInd.at(j)).z;
             // printf(" pts %f %f %f ", matA0(j, 0), matA0(j, 1), matA0(j, 2));
           }
           // find the norm of plane
@@ -388,9 +391,9 @@ void AloamMapping::mappingLoop([[maybe_unused]] const ros::TimerEvent &event) {
           bool planeValid = true;
           for (int j = 0; j < 5; j++) {
             // if OX * n > 0.2, then plane is not fit well
-            if (fabs(norm(0) * m_laserCloudSurfFromMap->points.at(_pointSearchInd.at(j)).x +
-                     norm(1) * m_laserCloudSurfFromMap->points.at(_pointSearchInd.at(j)).y +
-                     norm(2) * m_laserCloudSurfFromMap->points.at(_pointSearchInd.at(j)).z + negative_OA_dot_norm) > 0.2) {
+            if (fabs(norm(0) * m_laserCloudSurfFromMap->points.at(pointSearchInd.at(j)).x +
+                     norm(1) * m_laserCloudSurfFromMap->points.at(pointSearchInd.at(j)).y +
+                     norm(2) * m_laserCloudSurfFromMap->points.at(pointSearchInd.at(j)).z + negative_OA_dot_norm) > 0.2) {
               planeValid = false;
               break;
             }
@@ -404,7 +407,7 @@ void AloamMapping::mappingLoop([[maybe_unused]] const ros::TimerEvent &event) {
         }
       }
       /* printf("mapping data assosiation time %f ms \n", t_data.toc()); */
-      time_association = t_data.toc();
+      time_association += t_data.toc();
 
       TicToc                 t_solver;
       ceres::Solver::Options options;
@@ -416,7 +419,7 @@ void AloamMapping::mappingLoop([[maybe_unused]] const ros::TimerEvent &event) {
       ceres::Solver::Summary summary;
       ceres::Solve(options, &problem, &summary);
       /* printf("mapping solver time %f ms \n", t_solver.toc()); */
-      time_solver = t_solver.toc();
+      time_solver += t_solver.toc();
 
       // printf("corner factor num %d surf factor num %d\n", corner_num, surf_num);
       // printf("result q %f %f %f %f result t %f %f %f\n", _parameters[3], _parameters[0], _parameters[1], _parameters[2],

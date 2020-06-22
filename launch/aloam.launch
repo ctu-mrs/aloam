@@ -29,7 +29,7 @@
     <!-- Odometry -->
     <node pkg="nodelet" type="nodelet" name="aloam_slam" args="$(arg nodelet) aloam_slam/AloamSlam $(arg nodelet_manager)" output="screen" launch-prefix="$(arg launch_prefix)">
     <!-- <node pkg="aloam_slam" type="aloamOdometry" name="aloam_odometry" output="screen" launch-prefix="$(arg launch_prefix)"> -->
-      <param name="verbose" type="bool" value="true"/>
+      <param name="verbose" type="bool" value="false"/>
 
       <param name="scan_line" type="int" value="16" />
 
@@ -40,8 +40,8 @@
 
       <!-- if 1, do mapping 10 Hz, if 2, do mapping 5 Hz. Suggest to use 1, it will adjust frequence automaticlly -->
       <param name="mapping_skip_frame" type="int" value="1" />
-      <param name="mapping_line_resolution" type="double" value="0.2" />
-      <param name="mapping_plane_resolution" type="double" value="0.4" />
+      <param name="mapping_line_resolution" type="double" value="0.4" />
+      <param name="mapping_plane_resolution" type="double" value="0.8" />
       <param name="external_preprocessing" type="bool" value="$(arg external_preprocessing)" />
       <param name="min_range" type="double" value="$(arg min_range)"/>
       <param name="max_range" type="double" value="$(arg max_range)"/>
