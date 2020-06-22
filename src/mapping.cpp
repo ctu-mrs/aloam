@@ -41,15 +41,14 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
 /*//}*/
 
 /*//{ setData() */
-void AloamMapping::setData(nav_msgs::Odometry aloam_odometry,
-                           pcl::PointCloud<PointType>::Ptr laserCloudCornerLast, pcl::PointCloud<PointType>::Ptr laserCloudSurfLast,
-                           pcl::PointCloud<PointType>::Ptr laserCloudFullRes) {
+void AloamMapping::setData(nav_msgs::Odometry aloam_odometry, pcl::PointCloud<PointType>::Ptr laserCloudCornerLast,
+                           pcl::PointCloud<PointType>::Ptr laserCloudSurfLast, pcl::PointCloud<PointType>::Ptr laserCloudFullRes) {
   std::scoped_lock lock(_mutex_odometry_data);
-  _has_new_data            = true;
-  _aloam_odometry          = aloam_odometry;
-  _laserCloudCornerLast    = laserCloudCornerLast;
-  _laserCloudSurfLast      = laserCloudSurfLast;
-  _laserCloudFullRes       = laserCloudFullRes;
+  _has_new_data         = true;
+  _aloam_odometry       = aloam_odometry;
+  _laserCloudCornerLast = laserCloudCornerLast;
+  _laserCloudSurfLast   = laserCloudSurfLast;
+  _laserCloudFullRes    = laserCloudFullRes;
 }
 /*//}*/
 
@@ -76,11 +75,11 @@ void AloamMapping::mappingLoop([[maybe_unused]] const ros::TimerEvent &event) {
   pcl::PointCloud<PointType>::Ptr laserCloudFullRes;
   {
     std::scoped_lock lock(_mutex_odometry_data);
-    _has_new_data           = false;
-    aloam_odometry          = _aloam_odometry;
-    laserCloudCornerLast    = _laserCloudCornerLast;
-    laserCloudSurfLast      = _laserCloudSurfLast;
-    laserCloudFullRes       = _laserCloudFullRes;
+    _has_new_data        = false;
+    aloam_odometry       = _aloam_odometry;
+    laserCloudCornerLast = _laserCloudCornerLast;
+    laserCloudSurfLast   = _laserCloudSurfLast;
+    laserCloudFullRes    = _laserCloudFullRes;
   }
   /*//}*/
 
@@ -303,15 +302,14 @@ void AloamMapping::mappingLoop([[maybe_unused]] const ros::TimerEvent &event) {
   time_shift = t_shift.toc();
 
   if (laserCloudCornerFromMapNum > 10 && laserCloudSurfFromMapNum > 50) {
-    TicToc                           t_opt;
     TicToc                           t_tree;
-    pcl::KdTreeFLANN<PointType>::Ptr kdtreeCornerFromMap = boost::make_shared<pcl::KdTreeFLANN<PointType>>();
-    pcl::KdTreeFLANN<PointType>::Ptr kdtreeSurfFromMap   = boost::make_shared<pcl::KdTreeFLANN<PointType>>();
+    pcl::KdTreeFLANN<PointType>::Ptr kdtreeCornerFromMap(new pcl::KdTreeFLANN<PointType>());
+    pcl::KdTreeFLANN<PointType>::Ptr kdtreeSurfFromMap(new pcl::KdTreeFLANN<PointType>());
     kdtreeCornerFromMap->setInputCloud(m_laserCloudCornerFromMap);
     kdtreeSurfFromMap->setInputCloud(m_laserCloudSurfFromMap);
-    /* printf("build tree time %f ms \n", t_tree.toc()); */
     time_build_tree = t_tree.toc();
 
+    TicToc t_opt;
     for (int iterCount = 0; iterCount < 2; iterCount++) {
       // ceres::LossFunction *loss_function = NULL;
       ceres::LossFunction *         loss_function      = new ceres::HuberLoss(0.1);
@@ -355,10 +353,8 @@ void AloamMapping::mappingLoop([[maybe_unused]] const ros::TimerEvent &event) {
           Eigen::Vector3d unit_direction = saes.eigenvectors().col(2);
           Eigen::Vector3d curr_point(_pointOri.x, _pointOri.y, _pointOri.z);
           if (saes.eigenvalues()[2] > 3 * saes.eigenvalues()[1]) {
-            Eigen::Vector3d point_on_line = center;
-            Eigen::Vector3d point_a, point_b;
-            point_a = 0.1 * unit_direction + point_on_line;
-            point_b = -0.1 * unit_direction + point_on_line;
+            Eigen::Vector3d point_a = 0.1 * unit_direction + center;
+            Eigen::Vector3d point_b = -0.1 * unit_direction + center;
 
             ceres::CostFunction *cost_function = LidarEdgeFactor::Create(curr_point, point_a, point_b, 1.0);
             problem.AddResidualBlock(cost_function, loss_function, _parameters, _parameters + 4);
@@ -407,10 +403,6 @@ void AloamMapping::mappingLoop([[maybe_unused]] const ros::TimerEvent &event) {
           }
         }
       }
-
-      // printf("corner num %d used corner num %d \n", laserCloudCornerStack->points.size(), corner_num);
-      // printf("surf num %d used surf num %d \n", laserCloudSurfStack->points.size(), surf_num);
-
       /* printf("mapping data assosiation time %f ms \n", t_data.toc()); */
       time_association = t_data.toc();
 
@@ -565,11 +557,12 @@ void AloamMapping::mappingLoop([[maybe_unused]] const ros::TimerEvent &event) {
   float time_whole = t_whole.toc();
 
   ROS_INFO_THROTTLE(1.0, "[AloamMapping] Run time: %0.1f ms (%0.1f Hz)", time_whole, std::min(_scan_frequency, 1000.0f / time_whole));
-  ROS_DEBUG_THROTTLE(1.0,
-                     "[AloamMapping] features -> edges: %d, surfs: %d; data preparation: %0.1f ms; kd-tree initialization: %0.1f ms; "
-                     "publishing time: %0.1f ms; map -> association: %0.1f ms, solver: %0.1f ms, optimization: %0.1f ms, adding points: %0.1f ms, filtering: %0.1f ms",
-                     laserCloudCornerFromMapNum, laserCloudSurfFromMapNum, time_shift, time_build_tree, t_pub.toc(), time_association, time_solver,
-                     time_optimization, time_add, time_filter);
+  ROS_DEBUG_THROTTLE(
+      1.0,
+      "[AloamMapping] features -> edges: %d, surfs: %d; data preparation: %0.1f ms; kd-tree initialization: %0.1f ms; "
+      "publishing time: %0.1f ms; map -> association: %0.1f ms, solver: %0.1f ms, optimization: %0.1f ms, adding points: %0.1f ms, filtering: %0.1f ms",
+      laserCloudCornerFromMapNum, laserCloudSurfFromMapNum, time_shift, time_build_tree, t_pub.toc(), time_association, time_solver, time_optimization,
+      time_add, time_filter);
 
   _frame_count++;
 }
