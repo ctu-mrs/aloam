@@ -37,15 +37,7 @@ private:
 
   int _number_of_rings;
 
-  // TODO: make these arrays local or add mutexes
-  float cloudCurvature[400000];
-  int   cloudSortInd[400000];
-  int   cloudNeighborPicked[400000];
-  int   cloudLabel[400000];
-
   // member methods
-
-  bool comp(int i, int j);
   void removeCloseAndFarPointCloud(const pcl::PointCloud<PointType> &cloud_in, pcl::PointCloud<PointType> &cloud_out);
 
   // callbacks

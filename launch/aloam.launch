@@ -12,7 +12,7 @@
 
   <!-- FILTRATION PARAMETERS -->
   <arg name="external_preprocessing" default="false" />
-  <arg name="min_range" default="0.25" />
+  <arg name="min_range" default="0.5" />
   <arg name="max_range" default="30.0" />
 
   <arg name="standalone" default="$(optenv STANDALONE_LOCALIZATION true)" />
@@ -22,13 +22,15 @@
   <arg     if="$(eval arg('standalone') or arg('debug'))" name="nodelet_manager" value="" />
   <arg unless="$(eval arg('standalone') or arg('debug'))" name="nodelet_manager" value="$(arg uav_name)_ouster_nodelet_manager" />
   <arg unless="$(arg debug)" name="launch_prefix" value=""/>
-  <arg     if="$(arg debug)" name="launch_prefix" value="gdb -ex run --args"/>
+  <arg     if="$(arg debug)" name="launch_prefix" value="debug_roslaunch"/>
 
   <group ns="$(arg uav_name)">
 
     <!-- Odometry -->
     <node pkg="nodelet" type="nodelet" name="aloam_slam" args="$(arg nodelet) aloam_slam/AloamSlam $(arg nodelet_manager)" output="screen" launch-prefix="$(arg launch_prefix)">
     <!-- <node pkg="aloam_slam" type="aloamOdometry" name="aloam_odometry" output="screen" launch-prefix="$(arg launch_prefix)"> -->
+      <param name="verbose" type="bool" value="true"/>
+
       <param name="scan_line" type="int" value="16" />
 
       <param name="uav_name" type="string" value="$(arg uav_name)"/>

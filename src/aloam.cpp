@@ -15,6 +15,11 @@ class AloamSlam : public nodelet::Nodelet {
 
 public:
   virtual void onInit();
+
+private:
+  std::shared_ptr<AloamMapping>     aloam_mapping;
+  std::shared_ptr<AloamOdometry>    aloam_odometry;
+  std::shared_ptr<FeatureExtractor> feature_extractor;
 };
 
 //}
@@ -39,6 +44,7 @@ void AloamSlam::onInit() {
   std::string   frame_map;
   float         frequency;
   tf::Transform tf_lidar_in_fcu_frame;
+  bool          verbose;
 
   param_loader.loadParam("uav_name", uav_name);
   param_loader.loadParam("lidar_frame", frame_lidar);
@@ -47,9 +53,15 @@ void AloamSlam::onInit() {
 
   param_loader.loadParam("frequency", frequency);
 
+  param_loader.loadParam("verbose", verbose, false);
+
   if (!param_loader.loadedSuccessfully()) {
     ROS_ERROR("[Aloam]: Could not load all parameters!");
     ros::shutdown();
+  }
+
+  if (verbose && ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Debug)) {
+    ros::console::notifyLoggerLevelsChanged();
   }
 
   // | --------------------- tf transformer --------------------- |
@@ -68,12 +80,9 @@ void AloamSlam::onInit() {
 
   // | ----------------------- SLAM handlers  ------------------- |
 
-  std::shared_ptr<AloamMapping> aloam_mapping = std::make_shared<AloamMapping>(nh_, param_loader, frame_fcu, frame_map, tf_lidar_in_fcu_frame.inverse());
-
-  std::shared_ptr<AloamOdometry> aloam_odometry =
-      std::make_shared<AloamOdometry>(nh_, param_loader, aloam_mapping, frame_lidar, frame_map, 1.0f / frequency, tf_lidar_in_fcu_frame);
-
-  std::shared_ptr<FeatureExtractor> feature_extractor = std::make_shared<FeatureExtractor>(nh_, param_loader, aloam_odometry, frame_map, 1.0f / frequency);
+  aloam_mapping     = std::make_shared<AloamMapping>(nh_, param_loader, frame_fcu, frame_map, frequency, tf_lidar_in_fcu_frame.inverse());
+  aloam_odometry    = std::make_shared<AloamOdometry>(nh_, param_loader, aloam_mapping, frame_lidar, frame_map, 1.0f / frequency, tf_lidar_in_fcu_frame);
+  feature_extractor = std::make_shared<FeatureExtractor>(nh_, param_loader, aloam_odometry, frame_map, 1.0f / frequency);
 
   // | ------------------------ profiler ------------------------ |
   // TODO: Add Profiler to all methods
@@ -85,7 +94,6 @@ void AloamSlam::onInit() {
   aloam_mapping->is_initialized     = true;
 
   ROS_INFO("[Aloam]: initialized");
-  ros::spin();
 }
 
 //}

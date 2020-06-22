@@ -4,7 +4,7 @@
 namespace aloam_slam
 {
 
-/* //{ class AloamOdometry */
+/* //{ AloamOdometry() */
 AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, std::shared_ptr<AloamMapping> mapper, std::string frame_lidar,
                              std::string frame_map, float scan_period_sec, tf::Transform tf_lidar_to_fcu)
     : _mapper(mapper),
@@ -20,50 +20,68 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoa
   param_loader.loadParam("mapping_skip_frame", _skip_mapping_frame_num, 1);
 
   // Objects initialization
-  laserCloudCornerLast = pcl::PointCloud<PointType>::Ptr(new pcl::PointCloud<PointType>);
-  laserCloudSurfLast   = pcl::PointCloud<PointType>::Ptr(new pcl::PointCloud<PointType>);
-  kdtreeCornerLast     = pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr(new pcl::KdTreeFLANN<pcl::PointXYZI>);
-  kdtreeSurfLast       = pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr(new pcl::KdTreeFLANN<pcl::PointXYZI>);
+  laserCloudCornerLast = boost::make_shared<pcl::PointCloud<PointType>>();
+  laserCloudSurfLast   = boost::make_shared<pcl::PointCloud<PointType>>();
+  kdtreeCornerLast     = boost::make_shared<pcl::KdTreeFLANN<pcl::PointXYZI>>();
+  kdtreeSurfLast       = boost::make_shared<pcl::KdTreeFLANN<pcl::PointXYZI>>();
 
-  q_w_curr = Eigen::Quaterniond(1, 0, 0, 0);
+  q_w_curr = Eigen::Quaterniond(1, 0, 0, 0);  // eigen has qw, qx, qy, qz notation
   t_w_curr = Eigen::Vector3d(0, 0, 0);
-
-  /* q_last_curr = Eigen::Map<Eigen::Quaterniond>(para_q); */
-  /* t_last_curr = Eigen::Map<Eigen::Vector3d>(para_t); */
 
   _sub_orientation_meas = nh_.subscribe("orientation_in", 1, &AloamOdometry::callbackOrientationMeas, this, ros::TransportHints().tcpNoDelay());
 
   _pub_odometry_local = nh_.advertise<nav_msgs::Odometry>("odom_local_out", 1);
 
+  _timer_odometry_loop = nh_.createTimer(ros::Rate(1000), &AloamOdometry::odometryLoop, this, false, true);
+
   /* TODO: print ROS_INFO("[AloamOdometry] Mapping at %0.2f Hz.", 1.0 / _scan_period_sec / skipFrameNum); */
 }
 //}
 
-/*//{ TODO: compute_local_odometry() */
-void AloamOdometry::compute_local_odometry(double time_feature_extraction, pcl::PointCloud<PointType>::Ptr cornerPointsSharp, pcl::PointCloud<PointType>::Ptr cornerPointsLessSharp,
-                                           pcl::PointCloud<PointType>::Ptr surfPointsFlat, pcl::PointCloud<PointType>::Ptr surfPointsLessFlat,
-                                           pcl::PointCloud<PointType>::Ptr laserCloudFullRes) {
-
-  ros::Time stamp;
-  pcl_conversions::fromPCL(cornerPointsSharp->header.stamp, stamp);
-  timeCornerPointsSharp = stamp.toSec();
-  pcl_conversions::fromPCL(cornerPointsLessSharp->header.stamp, stamp);
-  timeCornerPointsLessSharp = stamp.toSec();
-  pcl_conversions::fromPCL(surfPointsFlat->header.stamp, stamp);
-  timeSurfPointsFlat = stamp.toSec();
-  pcl_conversions::fromPCL(laserCloudFullRes->header.stamp, stamp);
-  timeLaserCloudFullRes = stamp.toSec();
-  pcl_conversions::fromPCL(surfPointsLessFlat->header.stamp, stamp);
-  timeSurfPointsLessFlat = stamp.toSec();
-
-  if (timeCornerPointsSharp != timeLaserCloudFullRes || timeCornerPointsLessSharp != timeLaserCloudFullRes || timeSurfPointsFlat != timeLaserCloudFullRes ||
-      timeSurfPointsLessFlat != timeLaserCloudFullRes) {
-    ROS_ERROR_STREAM("[AloamOdometry] unsync message!");
-    ROS_BREAK();
+/*//{ odometryLoop() */
+void AloamOdometry::odometryLoop([[maybe_unused]] const ros::TimerEvent &event) {
+  if (!is_initialized) {
+    return;
   }
 
+  /*//{ Load latest features */
+  bool has_new_data;
+  {
+    std::scoped_lock lock(_mutex_features_data);
+    has_new_data = _has_new_data;
+  }
+
+  if (!has_new_data) {
+    return;
+  }
+
+  pcl::PointCloud<PointType>::Ptr cornerPointsSharp;
+  pcl::PointCloud<PointType>::Ptr cornerPointsLessSharp;
+  pcl::PointCloud<PointType>::Ptr surfPointsFlat;
+  pcl::PointCloud<PointType>::Ptr surfPointsLessFlat;
+  pcl::PointCloud<PointType>::Ptr laserCloudFullRes;
+  {
+    std::scoped_lock lock(_mutex_features_data);
+    _has_new_data           = false;
+    cornerPointsSharp       = _cornerPointsSharp;
+    cornerPointsLessSharp   = _cornerPointsLessSharp;
+    surfPointsFlat          = _surfPointsFlat;
+    surfPointsLessFlat      = _surfPointsLessFlat;
+    laserCloudFullRes       = _laserCloudFullRes;
+  }
+  /*//}*/
+
+  ros::Time stamp;
+  pcl_conversions::fromPCL(laserCloudFullRes->header.stamp, stamp);
+
   TicToc t_whole;
-  // initializing
+
+  /*//{ Find features correspondences and compute local odometry */
+
+  float time_data_association = 0.0f;
+  float time_solver           = 0.0f;
+  float time_opt              = 0.0f;
+
   if (_frame_count > 0) {
     int cornerPointsSharpNum = cornerPointsSharp->points.size();
     int surfPointsFlatNum    = surfPointsFlat->points.size();
@@ -87,30 +105,31 @@ void AloamOdometry::compute_local_odometry(double time_feature_extraction, pcl::
       std::vector<float> pointSearchSqDis;
 
       TicToc t_data;
+
       // find correspondence for corner features
       for (int i = 0; i < cornerPointsSharpNum; ++i) {
-        TransformToStart(&(cornerPointsSharp->points[i]), &pointSel);
+        TransformToStart(&(cornerPointsSharp->points.at(i)), &pointSel);
         kdtreeCornerLast->nearestKSearch(pointSel, 1, pointSearchInd, pointSearchSqDis);
 
         int closestPointInd = -1, minPointInd2 = -1;
-        if (pointSearchSqDis[0] < DISTANCE_SQ_THRESHOLD) {
-          closestPointInd        = pointSearchInd[0];
-          int closestPointScanID = int(laserCloudCornerLast->points[closestPointInd].intensity);
+        if (pointSearchSqDis.at(0) < DISTANCE_SQ_THRESHOLD) {
+          closestPointInd        = pointSearchInd.at(0);
+          int closestPointScanID = int(laserCloudCornerLast->points.at(closestPointInd).intensity);
 
           double minPointSqDis2 = DISTANCE_SQ_THRESHOLD;
           // search in the direction of increasing scan line
           for (int j = closestPointInd + 1; j < (int)laserCloudCornerLast->points.size(); ++j) {
             // if in the same scan line, continue
-            if (int(laserCloudCornerLast->points[j].intensity) <= closestPointScanID)
+            if (int(laserCloudCornerLast->points.at(j).intensity) <= closestPointScanID)
               continue;
 
             // if not in nearby scans, end the loop
-            if (int(laserCloudCornerLast->points[j].intensity) > (closestPointScanID + NEARBY_SCAN))
+            if (int(laserCloudCornerLast->points.at(j).intensity) > (closestPointScanID + NEARBY_SCAN))
               break;
 
-            double pointSqDis = (laserCloudCornerLast->points[j].x - pointSel.x) * (laserCloudCornerLast->points[j].x - pointSel.x) +
-                                (laserCloudCornerLast->points[j].y - pointSel.y) * (laserCloudCornerLast->points[j].y - pointSel.y) +
-                                (laserCloudCornerLast->points[j].z - pointSel.z) * (laserCloudCornerLast->points[j].z - pointSel.z);
+            double pointSqDis = (laserCloudCornerLast->points.at(j).x - pointSel.x) * (laserCloudCornerLast->points.at(j).x - pointSel.x) +
+                                (laserCloudCornerLast->points.at(j).y - pointSel.y) * (laserCloudCornerLast->points.at(j).y - pointSel.y) +
+                                (laserCloudCornerLast->points.at(j).z - pointSel.z) * (laserCloudCornerLast->points.at(j).z - pointSel.z);
 
             if (pointSqDis < minPointSqDis2) {
               // find nearer point
@@ -122,18 +141,18 @@ void AloamOdometry::compute_local_odometry(double time_feature_extraction, pcl::
           // search in the direction of decreasing scan line
           for (int j = closestPointInd - 1; j >= 0; --j) {
             // if in the same scan line, continue
-            if (int(laserCloudCornerLast->points[j].intensity) >= closestPointScanID) {
+            if (int(laserCloudCornerLast->points.at(j).intensity) >= closestPointScanID) {
               continue;
             }
 
             // if not in nearby scans, end the loop
-            if (int(laserCloudCornerLast->points[j].intensity) < (closestPointScanID - NEARBY_SCAN)) {
+            if (int(laserCloudCornerLast->points.at(j).intensity) < (closestPointScanID - NEARBY_SCAN)) {
               break;
             }
 
-            double pointSqDis = (laserCloudCornerLast->points[j].x - pointSel.x) * (laserCloudCornerLast->points[j].x - pointSel.x) +
-                                (laserCloudCornerLast->points[j].y - pointSel.y) * (laserCloudCornerLast->points[j].y - pointSel.y) +
-                                (laserCloudCornerLast->points[j].z - pointSel.z) * (laserCloudCornerLast->points[j].z - pointSel.z);
+            double pointSqDis = (laserCloudCornerLast->points.at(j).x - pointSel.x) * (laserCloudCornerLast->points.at(j).x - pointSel.x) +
+                                (laserCloudCornerLast->points.at(j).y - pointSel.y) * (laserCloudCornerLast->points.at(j).y - pointSel.y) +
+                                (laserCloudCornerLast->points.at(j).z - pointSel.z) * (laserCloudCornerLast->points.at(j).z - pointSel.z);
 
             if (pointSqDis < minPointSqDis2) {
               // find nearer point
@@ -144,15 +163,15 @@ void AloamOdometry::compute_local_odometry(double time_feature_extraction, pcl::
         }
         if (minPointInd2 >= 0)  // both closestPointInd and minPointInd2 is valid
         {
-          Eigen::Vector3d curr_point(cornerPointsSharp->points[i].x, cornerPointsSharp->points[i].y, cornerPointsSharp->points[i].z);
-          Eigen::Vector3d last_point_a(laserCloudCornerLast->points[closestPointInd].x, laserCloudCornerLast->points[closestPointInd].y,
-                                       laserCloudCornerLast->points[closestPointInd].z);
-          Eigen::Vector3d last_point_b(laserCloudCornerLast->points[minPointInd2].x, laserCloudCornerLast->points[minPointInd2].y,
-                                       laserCloudCornerLast->points[minPointInd2].z);
+          Eigen::Vector3d curr_point(cornerPointsSharp->points.at(i).x, cornerPointsSharp->points.at(i).y, cornerPointsSharp->points.at(i).z);
+          Eigen::Vector3d last_point_a(laserCloudCornerLast->points.at(closestPointInd).x, laserCloudCornerLast->points.at(closestPointInd).y,
+                                       laserCloudCornerLast->points.at(closestPointInd).z);
+          Eigen::Vector3d last_point_b(laserCloudCornerLast->points.at(minPointInd2).x, laserCloudCornerLast->points.at(minPointInd2).y,
+                                       laserCloudCornerLast->points.at(minPointInd2).z);
 
           double s = 1.0;
           if (DISTORTION) {
-            s = (cornerPointsSharp->points[i].intensity - int(cornerPointsSharp->points[i].intensity)) / _scan_period_sec;
+            s = (cornerPointsSharp->points.at(i).intensity - int(cornerPointsSharp->points.at(i).intensity)) / _scan_period_sec;
           }
           ceres::CostFunction *cost_function = LidarEdgeFactor::Create(curr_point, last_point_a, last_point_b, s);
           problem.AddResidualBlock(cost_function, loss_function, para_q, para_t);
@@ -162,34 +181,34 @@ void AloamOdometry::compute_local_odometry(double time_feature_extraction, pcl::
 
       // find correspondence for plane features
       for (int i = 0; i < surfPointsFlatNum; ++i) {
-        TransformToStart(&(surfPointsFlat->points[i]), &pointSel);
+        TransformToStart(&(surfPointsFlat->points.at(i)), &pointSel);
         kdtreeSurfLast->nearestKSearch(pointSel, 1, pointSearchInd, pointSearchSqDis);
 
         int closestPointInd = -1, minPointInd2 = -1, minPointInd3 = -1;
-        if (pointSearchSqDis[0] < DISTANCE_SQ_THRESHOLD) {
-          closestPointInd = pointSearchInd[0];
+        if (pointSearchSqDis.at(0) < DISTANCE_SQ_THRESHOLD) {
+          closestPointInd = pointSearchInd.at(0);
 
           // get closest point's scan ID
-          int    closestPointScanID = int(laserCloudSurfLast->points[closestPointInd].intensity);
+          int    closestPointScanID = int(laserCloudSurfLast->points.at(closestPointInd).intensity);
           double minPointSqDis2 = DISTANCE_SQ_THRESHOLD, minPointSqDis3 = DISTANCE_SQ_THRESHOLD;
 
           // search in the direction of increasing scan line
           for (int j = closestPointInd + 1; j < (int)laserCloudSurfLast->points.size(); ++j) {
             // if not in nearby scans, end the loop
-            if (int(laserCloudSurfLast->points[j].intensity) > (closestPointScanID + NEARBY_SCAN))
+            if (int(laserCloudSurfLast->points.at(j).intensity) > (closestPointScanID + NEARBY_SCAN))
               break;
 
-            double pointSqDis = (laserCloudSurfLast->points[j].x - pointSel.x) * (laserCloudSurfLast->points[j].x - pointSel.x) +
-                                (laserCloudSurfLast->points[j].y - pointSel.y) * (laserCloudSurfLast->points[j].y - pointSel.y) +
-                                (laserCloudSurfLast->points[j].z - pointSel.z) * (laserCloudSurfLast->points[j].z - pointSel.z);
+            double pointSqDis = (laserCloudSurfLast->points.at(j).x - pointSel.x) * (laserCloudSurfLast->points.at(j).x - pointSel.x) +
+                                (laserCloudSurfLast->points.at(j).y - pointSel.y) * (laserCloudSurfLast->points.at(j).y - pointSel.y) +
+                                (laserCloudSurfLast->points.at(j).z - pointSel.z) * (laserCloudSurfLast->points.at(j).z - pointSel.z);
 
             // if in the same or lower scan line
-            if (int(laserCloudSurfLast->points[j].intensity) <= closestPointScanID && pointSqDis < minPointSqDis2) {
+            if (int(laserCloudSurfLast->points.at(j).intensity) <= closestPointScanID && pointSqDis < minPointSqDis2) {
               minPointSqDis2 = pointSqDis;
               minPointInd2   = j;
             }
             // if in the higher scan line
-            else if (int(laserCloudSurfLast->points[j].intensity) > closestPointScanID && pointSqDis < minPointSqDis3) {
+            else if (int(laserCloudSurfLast->points.at(j).intensity) > closestPointScanID && pointSqDis < minPointSqDis3) {
               minPointSqDis3 = pointSqDis;
               minPointInd3   = j;
             }
@@ -198,18 +217,18 @@ void AloamOdometry::compute_local_odometry(double time_feature_extraction, pcl::
           // search in the direction of decreasing scan line
           for (int j = closestPointInd - 1; j >= 0; --j) {
             // if not in nearby scans, end the loop
-            if (int(laserCloudSurfLast->points[j].intensity) < (closestPointScanID - NEARBY_SCAN))
+            if (int(laserCloudSurfLast->points.at(j).intensity) < (closestPointScanID - NEARBY_SCAN))
               break;
 
-            double pointSqDis = (laserCloudSurfLast->points[j].x - pointSel.x) * (laserCloudSurfLast->points[j].x - pointSel.x) +
-                                (laserCloudSurfLast->points[j].y - pointSel.y) * (laserCloudSurfLast->points[j].y - pointSel.y) +
-                                (laserCloudSurfLast->points[j].z - pointSel.z) * (laserCloudSurfLast->points[j].z - pointSel.z);
+            double pointSqDis = (laserCloudSurfLast->points.at(j).x - pointSel.x) * (laserCloudSurfLast->points.at(j).x - pointSel.x) +
+                                (laserCloudSurfLast->points.at(j).y - pointSel.y) * (laserCloudSurfLast->points.at(j).y - pointSel.y) +
+                                (laserCloudSurfLast->points.at(j).z - pointSel.z) * (laserCloudSurfLast->points.at(j).z - pointSel.z);
 
             // if in the same or higher scan line
-            if (int(laserCloudSurfLast->points[j].intensity) >= closestPointScanID && pointSqDis < minPointSqDis2) {
+            if (int(laserCloudSurfLast->points.at(j).intensity) >= closestPointScanID && pointSqDis < minPointSqDis2) {
               minPointSqDis2 = pointSqDis;
               minPointInd2   = j;
-            } else if (int(laserCloudSurfLast->points[j].intensity) < closestPointScanID && pointSqDis < minPointSqDis3) {
+            } else if (int(laserCloudSurfLast->points.at(j).intensity) < closestPointScanID && pointSqDis < minPointSqDis3) {
               // find nearer point
               minPointSqDis3 = pointSqDis;
               minPointInd3   = j;
@@ -218,17 +237,17 @@ void AloamOdometry::compute_local_odometry(double time_feature_extraction, pcl::
 
           if (minPointInd2 >= 0 && minPointInd3 >= 0) {
 
-            Eigen::Vector3d curr_point(surfPointsFlat->points[i].x, surfPointsFlat->points[i].y, surfPointsFlat->points[i].z);
-            Eigen::Vector3d last_point_a(laserCloudSurfLast->points[closestPointInd].x, laserCloudSurfLast->points[closestPointInd].y,
-                                         laserCloudSurfLast->points[closestPointInd].z);
-            Eigen::Vector3d last_point_b(laserCloudSurfLast->points[minPointInd2].x, laserCloudSurfLast->points[minPointInd2].y,
-                                         laserCloudSurfLast->points[minPointInd2].z);
-            Eigen::Vector3d last_point_c(laserCloudSurfLast->points[minPointInd3].x, laserCloudSurfLast->points[minPointInd3].y,
-                                         laserCloudSurfLast->points[minPointInd3].z);
+            Eigen::Vector3d curr_point(surfPointsFlat->points.at(i).x, surfPointsFlat->points.at(i).y, surfPointsFlat->points.at(i).z);
+            Eigen::Vector3d last_point_a(laserCloudSurfLast->points.at(closestPointInd).x, laserCloudSurfLast->points.at(closestPointInd).y,
+                                         laserCloudSurfLast->points.at(closestPointInd).z);
+            Eigen::Vector3d last_point_b(laserCloudSurfLast->points.at(minPointInd2).x, laserCloudSurfLast->points.at(minPointInd2).y,
+                                         laserCloudSurfLast->points.at(minPointInd2).z);
+            Eigen::Vector3d last_point_c(laserCloudSurfLast->points.at(minPointInd3).x, laserCloudSurfLast->points.at(minPointInd3).y,
+                                         laserCloudSurfLast->points.at(minPointInd3).z);
 
             double s = 1.0;
             if (DISTORTION) {
-              s = (surfPointsFlat->points[i].intensity - int(surfPointsFlat->points[i].intensity)) / _scan_period_sec;
+              s = (surfPointsFlat->points.at(i).intensity - int(surfPointsFlat->points.at(i).intensity)) / _scan_period_sec;
             }
             ceres::CostFunction *cost_function = LidarPlaneFactor::Create(curr_point, last_point_a, last_point_b, last_point_c, s);
             problem.AddResidualBlock(cost_function, loss_function, para_q, para_t);
@@ -238,7 +257,7 @@ void AloamOdometry::compute_local_odometry(double time_feature_extraction, pcl::
       }
 
       // printf("coner_correspondance %d, plane_correspondence %d \n", corner_correspondence, plane_correspondence);
-      ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamOdometry] data association time " << t_data.toc() << " ms");
+      time_data_association = t_data.toc();
 
       if ((corner_correspondence + plane_correspondence) < 10) {
         ROS_WARN_STREAM("[AloamOdometry] low number of correspondence!");
@@ -252,16 +271,20 @@ void AloamOdometry::compute_local_odometry(double time_feature_extraction, pcl::
       ceres::Solver::Summary summary;
       ceres::Solve(options, &problem, &summary);
       /* printf("solver time %f ms \n", t_solver.toc()); */
-      ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamOdometry] solver time " << t_solver.toc() << " ms");
+      time_solver = t_solver.toc();
     }
     /* printf("optimization twice time %f \n", t_opt.toc()); */
-    ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamOdometry] optimization twice time " << t_opt.toc() << " ms");
+    time_opt = t_opt.toc();
 
     t_w_curr = t_w_curr + q_w_curr * t_last_curr;
     q_w_curr = q_w_curr * q_last_curr;
   }
 
+  /*//}*/
+
   TicToc t_pub;
+
+  /*//{ Correct orientation using mavros*/
 
   geometry_msgs::Quaternion ori;
   bool                      got_orientation_meas = false;
@@ -269,7 +292,7 @@ void AloamOdometry::compute_local_odometry(double time_feature_extraction, pcl::
     std::scoped_lock lock(_mutex_orientation_meas);
     if (_got_orientation_meas && (_orientation_meas.header.stamp - stamp).toSec() < 0.5) {
       got_orientation_meas = true;
-      ori        = _orientation_meas.pose.pose.orientation;
+      ori                  = _orientation_meas.pose.pose.orientation;
     }
   }
 
@@ -296,6 +319,10 @@ void AloamOdometry::compute_local_odometry(double time_feature_extraction, pcl::
     tf::quaternionEigenToMsg(q_w_curr, ori);
   }
 
+  /*//}*/
+
+  /*//{ Publish local odometry */
+
   // Publish odometry as PoseStamped
   nav_msgs::Odometry laserOdometry;
   laserOdometry.header.frame_id = _frame_map;
@@ -305,24 +332,6 @@ void AloamOdometry::compute_local_odometry(double time_feature_extraction, pcl::
   tf::pointEigenToMsg(t_w_curr, laserOdometry.pose.pose.position);
   laserOdometry.pose.pose.orientation = ori;
   _pub_odometry_local.publish(laserOdometry);
-
-  // transform corner features and plane features to the scan end point
-  if (0) {
-    int cornerPointsLessSharpNum = cornerPointsLessSharp->points.size();
-    for (int i = 0; i < cornerPointsLessSharpNum; i++) {
-      TransformToEnd(&cornerPointsLessSharp->points[i], &cornerPointsLessSharp->points[i]);
-    }
-
-    int surfPointsLessFlatNum = surfPointsLessFlat->points.size();
-    for (int i = 0; i < surfPointsLessFlatNum; i++) {
-      TransformToEnd(&surfPointsLessFlat->points[i], &surfPointsLessFlat->points[i]);
-    }
-
-    int laserCloudFullResNum = laserCloudFullRes->points.size();
-    for (int i = 0; i < laserCloudFullResNum; i++) {
-      TransformToEnd(&laserCloudFullRes->points[i], &laserCloudFullRes->points[i]);
-    }
-  }
 
   pcl::PointCloud<PointType>::Ptr laserCloudTemp = cornerPointsLessSharp;
   cornerPointsLessSharp                          = laserCloudCornerLast;
@@ -337,27 +346,44 @@ void AloamOdometry::compute_local_odometry(double time_feature_extraction, pcl::
 
   if (_frame_count % _skip_mapping_frame_num == 0) {
 
-    uint64_t pcl_stamp;
-    pcl_conversions::toPCL(stamp, pcl_stamp);
-    laserCloudCornerLast->header.stamp    = pcl_stamp;
+    laserCloudCornerLast->header.stamp = laserCloudFullRes->header.stamp;
+    laserCloudSurfLast->header.stamp   = laserCloudFullRes->header.stamp;
+    laserCloudFullRes->header.stamp    = laserCloudFullRes->header.stamp;
+
     laserCloudCornerLast->header.frame_id = _frame_lidar;
-    laserCloudSurfLast->header.stamp      = pcl_stamp;
     laserCloudSurfLast->header.frame_id   = _frame_lidar;
-    laserCloudFullRes->header.stamp       = pcl_stamp;
     laserCloudFullRes->header.frame_id    = _frame_lidar;
 
     /* printf("publication time %f ms \n", t_pub.toc()); */
     /* printf("whole laserOdometry time %f ms \n \n", t_whole.toc()); */
-    ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamOdometry] publication time " << t_pub.toc() << " ms");
 
-    double t = t_whole.toc();
-    ROS_DEBUG_STREAM_THROTTLE(0.5, "[AloamOdometry] Odometry run time: " << t << " ms");
-    ROS_WARN_COND(t > _scan_period_sec * 1000, "[AloamOdometry] odometry process over %0.2f ms", _scan_period_sec * 1000);
+    float time_whole = t_whole.toc();
+    ROS_INFO_THROTTLE(1.0, "[AloamOdometry] Run time: %0.1f ms (%0.1f Hz)", time_whole, std::min(1.0f / _scan_period_sec, 1000.0f / time_whole));
+    ROS_DEBUG_THROTTLE(1.0,
+                       "[AloamOdometry] feature registration: %0.1f ms; solver time: %0.1f ms; double optimization time: %0.1f ms; publishing time: %0.1f ms",
+                       time_data_association, time_solver, time_opt, t_pub.toc());
+    ROS_WARN_COND(time_whole > _scan_period_sec * 1000.0f, "[AloamOdometry] Odometry process took over %0.2f ms", _scan_period_sec * 1000.0f);
 
-    _mapper->compute_mapping(time_feature_extraction, t, laserOdometry, laserCloudCornerLast, laserCloudSurfLast, laserCloudFullRes);
+    _mapper->setData(laserOdometry, laserCloudCornerLast, laserCloudSurfLast, laserCloudFullRes);
   }
 
+  /*//}*/
+
   _frame_count++;
+}
+/*//}*/
+
+/*//{ setData() */
+void AloamOdometry::setData(pcl::PointCloud<PointType>::Ptr cornerPointsSharp,
+                            pcl::PointCloud<PointType>::Ptr cornerPointsLessSharp, pcl::PointCloud<PointType>::Ptr surfPointsFlat,
+                            pcl::PointCloud<PointType>::Ptr surfPointsLessFlat, pcl::PointCloud<PointType>::Ptr laserCloudFullRes) {
+  std::scoped_lock lock(_mutex_features_data);
+  _has_new_data            = true;
+  _cornerPointsSharp       = cornerPointsSharp;
+  _cornerPointsLessSharp   = cornerPointsLessSharp;
+  _surfPointsFlat          = surfPointsFlat;
+  _surfPointsLessFlat      = surfPointsLessFlat;
+  _laserCloudFullRes       = laserCloudFullRes;
 }
 /*//}*/
 

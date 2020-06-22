@@ -13,16 +13,16 @@ public:
 
   bool is_initialized = false;
 
-  void compute_local_odometry(double time_feature_extraction, pcl::PointCloud<PointType>::Ptr cornerPointsSharp, pcl::PointCloud<PointType>::Ptr cornerPointsLessSharp,
-                              pcl::PointCloud<PointType>::Ptr surfPointsFlat, pcl::PointCloud<PointType>::Ptr surfPointsLessFlat,
-                              pcl::PointCloud<PointType>::Ptr laserCloudFullRes);
+  void setData(pcl::PointCloud<PointType>::Ptr cornerPointsSharp, pcl::PointCloud<PointType>::Ptr cornerPointsLessSharp,
+               pcl::PointCloud<PointType>::Ptr surfPointsFlat, pcl::PointCloud<PointType>::Ptr surfPointsLessFlat,
+               pcl::PointCloud<PointType>::Ptr laserCloudFullRes);
 
 private:
   // member objects
   std::shared_ptr<AloamMapping> _mapper;
   ros::Subscriber               _sub_orientation_meas;
+  ros::Timer                    _timer_odometry_loop;
 
-  // TODO: make these objects local
   pcl::PointCloud<PointType>::Ptr       laserCloudCornerLast;
   pcl::PointCloud<PointType>::Ptr       laserCloudSurfLast;
   pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr kdtreeCornerLast;
@@ -31,11 +31,20 @@ private:
   Eigen::Quaterniond q_w_curr;
   Eigen::Vector3d    t_w_curr;
 
+  // Feature extractor newest data
+  bool                            _has_new_data = false;
+  pcl::PointCloud<PointType>::Ptr _cornerPointsSharp;
+  pcl::PointCloud<PointType>::Ptr _cornerPointsLessSharp;
+  pcl::PointCloud<PointType>::Ptr _surfPointsFlat;
+  pcl::PointCloud<PointType>::Ptr _surfPointsLessFlat;
+  pcl::PointCloud<PointType>::Ptr _laserCloudFullRes;
+
   // publishers and subscribers
-  ros::Publisher _pub_odometry_local;  // o_pubLaserOdometry
+  ros::Publisher _pub_odometry_local;
 
   // mutexes
   std::mutex _mutex_orientation_meas;
+  std::mutex _mutex_features_data;
 
   // ROS msgs
   nav_msgs::Odometry _orientation_meas;
@@ -71,6 +80,8 @@ private:
   const bool   DISTORTION            = false;
 
   // member methods
+  void odometryLoop([[maybe_unused]] const ros::TimerEvent &event);
+
   void TransformToStart(PointType const *const pi, PointType *const po);
   void TransformToEnd(PointType const *const pi, PointType *const po);
 

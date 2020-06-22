@@ -59,18 +59,17 @@ namespace aloam_slam
 class AloamMapping {
 
 public:
-  AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, std::string frame_fcu, std::string frame_map,
+  AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, std::string frame_fcu, std::string frame_map, float scan_frequency,
                tf::Transform tf_fcu_to_lidar);
 
   bool is_initialized = false;
 
-  void compute_mapping(double time_feature_extraction, double time_odometry, nav_msgs::Odometry odometry, pcl::PointCloud<PointType>::Ptr laserCloudCornerLast,
-                       pcl::PointCloud<PointType>::Ptr laserCloudSurfLast, pcl::PointCloud<PointType>::Ptr laserCloudFullRes);
+  void setData(nav_msgs::Odometry aloam_odometry, pcl::PointCloud<PointType>::Ptr laserCloudCornerLast,
+               pcl::PointCloud<PointType>::Ptr laserCloudSurfLast, pcl::PointCloud<PointType>::Ptr laserCloudFullRes);
 
 private:
   // member objects
-  pcl::VoxelGrid<PointType> downSizeFilterCorner;
-  pcl::VoxelGrid<PointType> downSizeFilterSurf;
+  ros::Timer _timer_mapping_loop;
 
   std::vector<pcl::PointCloud<PointType>::Ptr> laserCloudCornerArray;
   std::vector<pcl::PointCloud<PointType>::Ptr> laserCloudSurfArray;
@@ -81,11 +80,21 @@ private:
   std::vector<int>   _pointSearchInd;
   std::vector<float> m_pointSearchSqDis;
 
+  // Feature extractor newest data
+  bool                            _has_new_data = false;
+  nav_msgs::Odometry              _aloam_odometry;
+  pcl::PointCloud<PointType>::Ptr _laserCloudCornerLast;
+  pcl::PointCloud<PointType>::Ptr _laserCloudSurfLast;
+  pcl::PointCloud<PointType>::Ptr _laserCloudFullRes;
+
   // publishers and subscribers
   ros::Publisher _pub_laser_cloud_map;         // m_pubLaserCloudMap
   ros::Publisher _pub_laser_cloud_registered;  // m_pubLaserCloudFullRes
   ros::Publisher _pub_odom_global;             // m_pubOdomAftMapped
   ros::Publisher _pub_path;                    // m_pubLaserAfterMappedPath
+
+  // mutexes
+  std::mutex _mutex_odometry_data;
 
   // ROS messages
   nav_msgs::Path laserAfterMappedPath;
@@ -93,6 +102,8 @@ private:
   // member variables
   std::string _frame_fcu;
   std::string _frame_map;
+  
+  float _scan_frequency;
 
   tf::Transform _tf_fcu_to_lidar;
 
@@ -110,7 +121,6 @@ private:
 
   long int _frame_count = 0;
 
-  int       laserCloudValidInd[125];
   int       laserCloudCenWidth  = 10;
   int       laserCloudCenHeight = 10;
   int       laserCloudCenDepth  = 5;
@@ -119,7 +129,12 @@ private:
   const int laserCloudDepth     = 11;
   const int laserCloudNum       = laserCloudWidth * laserCloudHeight * laserCloudDepth;  // 4851
 
+  float _resolution_line;
+  float _resolution_plane;
+
   // member methods
+  void mappingLoop([[maybe_unused]] const ros::TimerEvent &event);
+
   void transformAssociateToMap();
   void transformUpdate();
   void pointAssociateToMap(PointType const *const pi, PointType *const po);
