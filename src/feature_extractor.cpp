@@ -16,7 +16,7 @@ FeatureExtractor::FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::Pa
   param_loader.loadParam("scan_line", _number_of_rings);
   param_loader.loadParam("min_range", _min_range_sq);
   param_loader.loadParam("max_range", _max_range_sq);
-  param_loader.loadParam("external_preprocessing", _external_preprocessing);
+  param_loader.loadParam("preprocess_data", _preprocess_data);
 
   if (_number_of_rings != 16) {
     ROS_ERROR_STREAM(
@@ -59,7 +59,7 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
   pcl::fromROSMsg(*laserCloudMsg, laserCloudIn);
   std::vector<int> indices;
 
-  if (!_external_preprocessing) {
+  if (_preprocess_data) {
     pcl::removeNaNFromPointCloud(laserCloudIn, laserCloudIn, indices);
     removeCloseAndFarPointCloud(laserCloudIn, laserCloudIn);
   }

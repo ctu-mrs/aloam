@@ -70,7 +70,7 @@ public:
 private:
   // member objects
   ros::Timer _timer_mapping_loop;
-  ros::Time  _time_last_frame;
+  ros::Time  _time_last_map_publish;
 
   std::vector<pcl::PointCloud<PointType>::Ptr> laserCloudCornerArray;
   std::vector<pcl::PointCloud<PointType>::Ptr> laserCloudSurfArray;
@@ -87,10 +87,10 @@ private:
   pcl::PointCloud<PointType>::Ptr _laserCloudFullRes;
 
   // publishers and subscribers
-  ros::Publisher _pub_laser_cloud_map;         // m_pubLaserCloudMap
-  ros::Publisher _pub_laser_cloud_registered;  // m_pubLaserCloudFullRes
-  ros::Publisher _pub_odom_global;             // m_pubOdomAftMapped
-  ros::Publisher _pub_path;                    // m_pubLaserAfterMappedPath
+  ros::Publisher _pub_laser_cloud_map;
+  ros::Publisher _pub_laser_cloud_registered;
+  ros::Publisher _pub_odom_global;
+  ros::Publisher _pub_path;
 
   // mutexes
   std::mutex _mutex_odometry_data;
@@ -102,11 +102,9 @@ private:
   std::string _frame_fcu;
   std::string _frame_map;
 
-  bool _limit_frequency;
-
   float _scan_frequency;
   float _mapping_frequency;
-  float _mapping_period_sec;
+  float _map_publish_period;
 
   tf::Transform _tf_fcu_to_lidar;
 

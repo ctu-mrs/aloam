@@ -5,7 +5,7 @@ namespace aloam_slam
 {
 
 /* //{ AloamOdometry() */
-AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, std::shared_ptr<AloamMapping> mapper, std::string frame_lidar,
+AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::shared_ptr<AloamMapping> mapper, std::string frame_lidar,
                              std::string frame_map, float scan_period_sec, tf::Transform tf_lidar_to_fcu)
     : _mapper(mapper),
       _frame_lidar(frame_lidar),
@@ -16,8 +16,6 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoa
       t_last_curr(para_t) {
 
   ros::NodeHandle nh_(parent_nh);
-
-  param_loader.loadParam("mapping_skip_frame", _skip_mapping_frame_num, 1);
 
   // Objects initialization
   laserCloudCornerLast = boost::make_shared<pcl::PointCloud<PointType>>();
@@ -33,8 +31,6 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoa
   _pub_odometry_local = nh_.advertise<nav_msgs::Odometry>("odom_local_out", 1);
 
   _timer_odometry_loop = nh_.createTimer(ros::Rate(1000), &AloamOdometry::odometryLoop, this, false, true);
-
-  /* TODO: print ROS_INFO("[AloamOdometry] Mapping at %0.2f Hz.", 1.0 / _scan_period_sec / skipFrameNum); */
 }
 //}
 
@@ -62,12 +58,12 @@ void AloamOdometry::odometryLoop([[maybe_unused]] const ros::TimerEvent &event) 
   pcl::PointCloud<PointType>::Ptr laserCloudFullRes;
   {
     std::scoped_lock lock(_mutex_features_data);
-    _has_new_data           = false;
-    cornerPointsSharp       = _cornerPointsSharp;
-    cornerPointsLessSharp   = _cornerPointsLessSharp;
-    surfPointsFlat          = _surfPointsFlat;
-    surfPointsLessFlat      = _surfPointsLessFlat;
-    laserCloudFullRes       = _laserCloudFullRes;
+    _has_new_data         = false;
+    cornerPointsSharp     = _cornerPointsSharp;
+    cornerPointsLessSharp = _cornerPointsLessSharp;
+    surfPointsFlat        = _surfPointsFlat;
+    surfPointsLessFlat    = _surfPointsLessFlat;
+    laserCloudFullRes     = _laserCloudFullRes;
   }
   /*//}*/
 
@@ -344,28 +340,25 @@ void AloamOdometry::odometryLoop([[maybe_unused]] const ros::TimerEvent &event) 
   kdtreeCornerLast->setInputCloud(laserCloudCornerLast);
   kdtreeSurfLast->setInputCloud(laserCloudSurfLast);
 
-  if (_frame_count % _skip_mapping_frame_num == 0) {
+  laserCloudCornerLast->header.stamp = laserCloudFullRes->header.stamp;
+  laserCloudSurfLast->header.stamp   = laserCloudFullRes->header.stamp;
+  laserCloudFullRes->header.stamp    = laserCloudFullRes->header.stamp;
 
-    laserCloudCornerLast->header.stamp = laserCloudFullRes->header.stamp;
-    laserCloudSurfLast->header.stamp   = laserCloudFullRes->header.stamp;
-    laserCloudFullRes->header.stamp    = laserCloudFullRes->header.stamp;
+  laserCloudCornerLast->header.frame_id = _frame_lidar;
+  laserCloudSurfLast->header.frame_id   = _frame_lidar;
+  laserCloudFullRes->header.frame_id    = _frame_lidar;
 
-    laserCloudCornerLast->header.frame_id = _frame_lidar;
-    laserCloudSurfLast->header.frame_id   = _frame_lidar;
-    laserCloudFullRes->header.frame_id    = _frame_lidar;
+  /* printf("publication time %f ms \n", t_pub.toc()); */
+  /* printf("whole laserOdometry time %f ms \n \n", t_whole.toc()); */
 
-    /* printf("publication time %f ms \n", t_pub.toc()); */
-    /* printf("whole laserOdometry time %f ms \n \n", t_whole.toc()); */
+  float time_whole = t_whole.toc();
+  ROS_INFO_THROTTLE(1.0, "[AloamOdometry] Run time: %0.1f ms (%0.1f Hz)", time_whole, std::min(1.0f / _scan_period_sec, 1000.0f / time_whole));
+  ROS_DEBUG_THROTTLE(1.0,
+                     "[AloamOdometry] feature registration: %0.1f ms; solver time: %0.1f ms; double optimization time: %0.1f ms; publishing time: %0.1f ms",
+                     time_data_association, time_solver, time_opt, t_pub.toc());
+  ROS_WARN_COND(time_whole > _scan_period_sec * 1000.0f, "[AloamOdometry] Odometry process took over %0.2f ms", _scan_period_sec * 1000.0f);
 
-    float time_whole = t_whole.toc();
-    ROS_INFO_THROTTLE(1.0, "[AloamOdometry] Run time: %0.1f ms (%0.1f Hz)", time_whole, std::min(1.0f / _scan_period_sec, 1000.0f / time_whole));
-    ROS_DEBUG_THROTTLE(1.0,
-                       "[AloamOdometry] feature registration: %0.1f ms; solver time: %0.1f ms; double optimization time: %0.1f ms; publishing time: %0.1f ms",
-                       time_data_association, time_solver, time_opt, t_pub.toc());
-    ROS_WARN_COND(time_whole > _scan_period_sec * 1000.0f, "[AloamOdometry] Odometry process took over %0.2f ms", _scan_period_sec * 1000.0f);
-
-    _mapper->setData(laserOdometry, laserCloudCornerLast, laserCloudSurfLast, laserCloudFullRes);
-  }
+  _mapper->setData(laserOdometry, laserCloudCornerLast, laserCloudSurfLast, laserCloudFullRes);
 
   /*//}*/
 
@@ -374,16 +367,16 @@ void AloamOdometry::odometryLoop([[maybe_unused]] const ros::TimerEvent &event) 
 /*//}*/
 
 /*//{ setData() */
-void AloamOdometry::setData(pcl::PointCloud<PointType>::Ptr cornerPointsSharp,
-                            pcl::PointCloud<PointType>::Ptr cornerPointsLessSharp, pcl::PointCloud<PointType>::Ptr surfPointsFlat,
-                            pcl::PointCloud<PointType>::Ptr surfPointsLessFlat, pcl::PointCloud<PointType>::Ptr laserCloudFullRes) {
+void AloamOdometry::setData(pcl::PointCloud<PointType>::Ptr cornerPointsSharp, pcl::PointCloud<PointType>::Ptr cornerPointsLessSharp,
+                            pcl::PointCloud<PointType>::Ptr surfPointsFlat, pcl::PointCloud<PointType>::Ptr surfPointsLessFlat,
+                            pcl::PointCloud<PointType>::Ptr laserCloudFullRes) {
   std::scoped_lock lock(_mutex_features_data);
-  _has_new_data            = true;
-  _cornerPointsSharp       = cornerPointsSharp;
-  _cornerPointsLessSharp   = cornerPointsLessSharp;
-  _surfPointsFlat          = surfPointsFlat;
-  _surfPointsLessFlat      = surfPointsLessFlat;
-  _laserCloudFullRes       = laserCloudFullRes;
+  _has_new_data          = true;
+  _cornerPointsSharp     = cornerPointsSharp;
+  _cornerPointsLessSharp = cornerPointsLessSharp;
+  _surfPointsFlat        = surfPointsFlat;
+  _surfPointsLessFlat    = surfPointsLessFlat;
+  _laserCloudFullRes     = laserCloudFullRes;
 }
 /*//}*/
 

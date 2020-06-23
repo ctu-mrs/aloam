@@ -17,11 +17,12 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
 
   param_loader.loadParam("mapping_line_resolution", _resolution_line, 0.2f);
   param_loader.loadParam("mapping_plane_resolution", _resolution_plane, 0.4f);
-  param_loader.loadParam("mapping_frequency", _mapping_frequency, -1.0f);
+  param_loader.loadParam("mapping_rate", _mapping_frequency, 5.0f);
+  param_loader.loadParam("map_publish_rate", _map_publish_period, 0.5f);
 
-  _limit_frequency    = _mapping_frequency > 0.0f;
-  _mapping_frequency  = std::min(scan_frequency, _mapping_frequency);  // cannot be higher than scan frequency
-  _mapping_period_sec = 1.0f / _mapping_frequency;
+  _mapping_frequency = std::min(scan_frequency, _mapping_frequency);  // cannot be higher than scan frequency
+
+  _map_publish_period = 1.0f / _map_publish_period;
 
   _q_wmap_wodom = Eigen::Quaterniond(1, 0, 0, 0);
   _t_wmap_wodom = Eigen::Vector3d(0, 0, 0);
@@ -41,8 +42,10 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
   _pub_odom_global            = nh_.advertise<nav_msgs::Odometry>("odom_global_out", 1);
   _pub_path                   = nh_.advertise<nav_msgs::Path>("path_out", 1);
 
-  _timer_mapping_loop = nh_.createTimer(ros::Rate(1000), &AloamMapping::mappingLoop, this, false, true);
-  _time_last_frame    = ros::Time::now();
+  if (_mapping_frequency > 0.0f) {
+    _timer_mapping_loop = nh_.createTimer(ros::Rate(_mapping_frequency), &AloamMapping::mappingLoop, this, false, true);
+  }
+  _time_last_map_publish = ros::Time::now();
 }
 /*//}*/
 
@@ -74,11 +77,6 @@ void AloamMapping::mappingLoop([[maybe_unused]] const ros::TimerEvent &event) {
   if (!has_new_data) {
     return;
   }
-
-  if (_limit_frequency && (ros::Time::now() - _time_last_frame).toSec() < _mapping_period_sec) {
-    return;
-  }
-  _time_last_frame = ros::Time::now();
 
   nav_msgs::Odometry              aloam_odometry;
   pcl::PointCloud<PointType>::Ptr laserCloudCornerLast;
@@ -504,39 +502,14 @@ void AloamMapping::mappingLoop([[maybe_unused]] const ros::TimerEvent &event) {
     downSizeFilterSurf.filter(*tmpSurf);
     laserCloudSurfArray.at(ind) = tmpSurf;
   }
-  /* printf("filter time %f ms \n", t_filter.toc()); */
   time_filter = t_filter.toc();
+
+  /*//{ Publish data */
 
   TicToc    t_pub;
   ros::Time stamp = aloam_odometry.header.stamp;
 
-  if (_frame_count % 20 == 0) {
-    pcl::PointCloud<PointType> laserCloudMap;
-    for (int i = 0; i < laserCloudNum; i++) {
-      laserCloudMap += *laserCloudCornerArray.at(i);
-      laserCloudMap += *laserCloudSurfArray.at(i);
-    }
-    sensor_msgs::PointCloud2 laserCloudMsg;
-    pcl::toROSMsg(laserCloudMap, laserCloudMsg);
-    laserCloudMsg.header.stamp    = stamp;
-    laserCloudMsg.header.frame_id = _frame_map;
-    _pub_laser_cloud_map.publish(laserCloudMsg);
-  }
-
-  int laserCloudFullResNum = laserCloudFullRes->points.size();
-  for (int i = 0; i < laserCloudFullResNum; i++) {
-    pointAssociateToMap(&laserCloudFullRes->points.at(i), &laserCloudFullRes->points.at(i));
-  }
-
-  sensor_msgs::PointCloud2::Ptr laserCloudFullRes3 = boost::make_shared<sensor_msgs::PointCloud2>();
-  pcl::toROSMsg(*laserCloudFullRes, *laserCloudFullRes3);
-  laserCloudFullRes3->header.stamp    = stamp;
-  laserCloudFullRes3->header.frame_id = _frame_map;
-  _pub_laser_cloud_registered.publish(laserCloudFullRes3);
-
-  /* printf("mapping pub time %f ms \n", t_pub.toc()); */
-  /* printf("whole mapping time %f ms +++++\n", t_whole.toc()); */
-
+  // Publish TF
   // TF fcu -> aloam origin (_t_w_curr and _q_w_curr is in origin -> fcu frame, hence inversion)
   static tf::TransformBroadcaster br;
   tf::Transform                   transform;
@@ -548,25 +521,61 @@ void AloamMapping::mappingLoop([[maybe_unused]] const ros::TimerEvent &event) {
   tf::Transform tf_fcu = transform * _tf_fcu_to_lidar;
   br.sendTransform(tf::StampedTransform(tf_fcu.inverse(), stamp, _frame_fcu, _frame_map));
 
-  // nav_msgs::Odometry msg
-  nav_msgs::Odometry odomAftMapped;
-  odomAftMapped.header.frame_id      = _frame_map;
-  odomAftMapped.header.stamp         = stamp;
-  odomAftMapped.child_frame_id       = _frame_fcu;
-  tf::Vector3 origin                 = tf_fcu.getOrigin();
-  odomAftMapped.pose.pose.position.x = origin.x();
-  odomAftMapped.pose.pose.position.y = origin.y();
-  odomAftMapped.pose.pose.position.z = origin.z();
-  tf::quaternionTFToMsg(tf_fcu.getRotation(), odomAftMapped.pose.pose.orientation);
-  _pub_odom_global.publish(odomAftMapped);
+  if (_pub_odom_global.getNumSubscribers() > 0 || _pub_path.getNumSubscribers() > 0) {
+    // Publish nav_msgs::Odometry msg
+    nav_msgs::Odometry odomAftMapped;
+    odomAftMapped.header.frame_id      = _frame_map;
+    odomAftMapped.header.stamp         = stamp;
+    odomAftMapped.child_frame_id       = _frame_fcu;
+    tf::Vector3 origin                 = tf_fcu.getOrigin();
+    odomAftMapped.pose.pose.position.x = origin.x();
+    odomAftMapped.pose.pose.position.y = origin.y();
+    odomAftMapped.pose.pose.position.z = origin.z();
+    tf::quaternionTFToMsg(tf_fcu.getRotation(), odomAftMapped.pose.pose.orientation);
+    _pub_odom_global.publish(odomAftMapped);
 
-  // Odometry path
-  geometry_msgs::PoseStamped laserAfterMappedPose;
-  laserAfterMappedPose.header = odomAftMapped.header;
-  laserAfterMappedPose.pose   = odomAftMapped.pose.pose;
-  laserAfterMappedPath.header = odomAftMapped.header;
-  laserAfterMappedPath.poses.push_back(laserAfterMappedPose);
-  _pub_path.publish(laserAfterMappedPath);
+    // Publish nav_msgs::Path msg
+    geometry_msgs::PoseStamped laserAfterMappedPose;
+    laserAfterMappedPose.header = odomAftMapped.header;
+    laserAfterMappedPose.pose   = odomAftMapped.pose.pose;
+    laserAfterMappedPath.header = odomAftMapped.header;
+    laserAfterMappedPath.poses.push_back(laserAfterMappedPose);
+    _pub_path.publish(laserAfterMappedPath);
+  }
+
+  // Publish entire map
+  if (_pub_laser_cloud_map.getNumSubscribers() > 0 && (ros::Time::now() - _time_last_map_publish).toSec() < _map_publish_period) {
+    pcl::PointCloud<PointType> laserCloudMap;
+    for (int i = 0; i < laserCloudNum; i++) {
+      laserCloudMap += *laserCloudCornerArray.at(i);
+      laserCloudMap += *laserCloudSurfArray.at(i);
+    }
+    sensor_msgs::PointCloud2 laserCloudMsg;
+    pcl::toROSMsg(laserCloudMap, laserCloudMsg);
+    laserCloudMsg.header.stamp    = stamp;
+    laserCloudMsg.header.frame_id = _frame_map;
+    _pub_laser_cloud_map.publish(laserCloudMsg);
+
+    _time_last_map_publish = ros::Time::now();
+  }
+
+  // Publish registered sensor data
+  if (_pub_laser_cloud_registered.getNumSubscribers() > 0) {
+    // TODO: this pcl might be published in lidar frame instead of map saving some load..
+    // or it might not be published at all as the data are already published by sensor and TFs are published above
+    int laserCloudFullResNum = laserCloudFullRes->points.size();
+    for (int i = 0; i < laserCloudFullResNum; i++) {
+      pointAssociateToMap(&laserCloudFullRes->points.at(i), &laserCloudFullRes->points.at(i));
+    }
+
+    sensor_msgs::PointCloud2::Ptr laserCloudFullResMsg = boost::make_shared<sensor_msgs::PointCloud2>();
+    pcl::toROSMsg(*laserCloudFullRes, *laserCloudFullResMsg);
+    laserCloudFullResMsg->header.stamp    = stamp;
+    laserCloudFullResMsg->header.frame_id = _frame_map;
+    _pub_laser_cloud_registered.publish(laserCloudFullResMsg);
+  }
+
+  /*//}*/
 
   float time_whole = t_whole.toc();
 

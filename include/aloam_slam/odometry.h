@@ -8,7 +8,7 @@ namespace aloam_slam
 class AloamOdometry {
 
 public:
-  AloamOdometry(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, std::shared_ptr<AloamMapping> mapper, std::string frame_lidar,
+  AloamOdometry(const ros::NodeHandle &parent_nh, std::shared_ptr<AloamMapping> mapper, std::string frame_lidar,
                 std::string frame_map, float scan_period_sec, tf::Transform tf_lidar_to_fcu);
 
   bool is_initialized = false;
@@ -62,8 +62,6 @@ private:
   double timeLaserCloudFullRes     = 0;
 
   long int _frame_count = 0;
-
-  int _skip_mapping_frame_num;
 
   tf::Transform _tf_lidar_to_fcu;
 

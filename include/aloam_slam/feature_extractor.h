@@ -23,7 +23,7 @@ private:
   // member variables
   std::string _frame_map;
 
-  bool _external_preprocessing;
+  bool _preprocess_data;
 
   float _vertical_fov_half;
   float _ray_vert_delta;

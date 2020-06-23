@@ -11,7 +11,7 @@
   <arg name="frequency" default="10.0" />
 
   <!-- FILTRATION PARAMETERS -->
-  <arg name="external_preprocessing" default="false" />
+  <arg name="preprocess_data" default="true" />
   <arg name="min_range" default="0.5" />
   <arg name="max_range" default="30.0" />
 
@@ -37,19 +37,19 @@
       <param name="map_frame" type="string" value="$(arg map_frame)"/>
       <param name="lidar_frame" type="string" value="$(arg lidar_frame)"/>
 
-      <!-- <= 0 for real-time mapping -->
-      <param name="mapping_frequency" type="double" value="0.0" />
+      <param name="mapping_rate" type="double" value="$(arg frequency)" />
+      <param name="map_publish_rate" type="double" value="0.5" />
       <param name="mapping_line_resolution" type="double" value="0.4" />
       <param name="mapping_plane_resolution" type="double" value="0.8" />
-      <param name="external_preprocessing" type="bool" value="$(arg external_preprocessing)" />
+      <param name="preprocess_data" type="bool" value="$(arg preprocess_data)" />
       <param name="min_range" type="double" value="$(arg min_range)"/>
       <param name="max_range" type="double" value="$(arg max_range)"/>
       <param name="vertical_fov" type="double" value="$(arg vertical_fov)"/>
-      <param name="frequency" type="double" value="$(arg frequency)"/>
+      <param name="sensor_frequency" type="double" value="$(arg frequency)"/>
 
       <!-- Subscribers -->
-      <remap if="$(arg external_preprocessing)" from="~laser_cloud_in" to="os1_cloud_node/points_processed"/>
-      <remap unless="$(arg external_preprocessing)" from="~laser_cloud_in" to="os1_cloud_node/points"/>
+      <remap if="$(arg preprocess_data)" from="~laser_cloud_in" to="os1_cloud_node/points"/>
+      <remap unless="$(arg preprocess_data)" from="~laser_cloud_in" to="os1_cloud_node/points_processed"/>
       <remap from="~orientation_in" to="odometry/orientation"/>
 
       <!-- Publishers -->
