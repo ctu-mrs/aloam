@@ -1,16 +1,19 @@
 <launch>
 
+  <!-- ENV VARS -->
+  <arg name="PROFILER" default="$(optenv PROFILER false)" />
+  <arg name="UAV_NAME" default="$(env UAV_NAME)" />
+
   <!-- DEFAULT PARAMETERS AND FRAMES -->
-  <arg name="uav_name" default="$(env UAV_NAME)" />
-  <arg name="fcu_frame" default="$(arg uav_name)/fcu"/>
-  <arg name="lidar_frame" default="$(arg uav_name)/os1_lidar"/>
-  <arg name="map_frame" default="$(arg uav_name)/aloam_origin"/>
+  <arg name="fcu_frame" default="$(arg UAV_NAME)/fcu"/>
+  <arg name="lidar_frame" default="$(arg UAV_NAME)/os1_lidar"/>
+  <arg name="map_frame" default="$(arg UAV_NAME)/aloam_origin"/>
 
   <!-- SENSOR PARAMETERS -->
   <arg name="vertical_fov" default="33.2" />
   <arg name="frequency" default="10.0" />
 
-  <!-- FILTRATION PARAMETERS -->
+  <!-- DATA FILTRATION PARAMETERS -->
   <arg name="preprocess_data" default="true" />
   <arg name="min_range" default="0.5" />
   <arg name="max_range" default="30.0" />
@@ -20,19 +23,20 @@
   <arg     if="$(eval arg('standalone') or arg('debug'))" name="nodelet" value="standalone" />
   <arg unless="$(eval arg('standalone') or arg('debug'))" name="nodelet" value="load" />
   <arg     if="$(eval arg('standalone') or arg('debug'))" name="nodelet_manager" value="" />
-  <arg unless="$(eval arg('standalone') or arg('debug'))" name="nodelet_manager" value="$(arg uav_name)_ouster_nodelet_manager" />
+  <arg unless="$(eval arg('standalone') or arg('debug'))" name="nodelet_manager" value="$(arg UAV_NAME)_ouster_nodelet_manager" />
   <arg unless="$(arg debug)" name="launch_prefix" value=""/>
   <arg     if="$(arg debug)" name="launch_prefix" value="debug_roslaunch"/>
 
-  <group ns="$(arg uav_name)">
+  <group ns="$(arg UAV_NAME)">
 
     <!-- Odometry -->
     <node pkg="nodelet" type="nodelet" name="aloam_slam" args="$(arg nodelet) aloam_slam/AloamSlam $(arg nodelet_manager)" output="screen" launch-prefix="$(arg launch_prefix)">
-      <param name="verbose" type="bool" value="true"/>
+      <param name="verbose" type="bool" value="false"/>
+      <param name="enable_profiler" type="bool" value="$(arg PROFILER)" />
 
       <param name="scan_line" type="int" value="16" />
 
-      <param name="uav_name" type="string" value="$(arg uav_name)"/>
+      <param name="uav_name" type="string" value="$(arg UAV_NAME)"/>
       <param name="fcu_frame" type="string" value="$(arg fcu_frame)"/>
       <param name="map_frame" type="string" value="$(arg map_frame)"/>
       <param name="lidar_frame" type="string" value="$(arg lidar_frame)"/>

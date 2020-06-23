@@ -5,9 +5,10 @@ namespace aloam_slam
 {
 
 /* //{ AloamOdometry() */
-AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::shared_ptr<AloamMapping> mapper, std::string frame_lidar,
+AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::shared_ptr<mrs_lib::Profiler> profiler, std::shared_ptr<AloamMapping> mapper, std::string frame_lidar,
                              std::string frame_map, float scan_period_sec, tf::Transform tf_lidar_to_fcu)
-    : _mapper(mapper),
+    : _profiler(profiler),
+      _mapper(mapper),
       _frame_lidar(frame_lidar),
       _frame_map(frame_map),
       _scan_period_sec(scan_period_sec),
@@ -30,12 +31,12 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::shared_ptr<A
 
   _pub_odometry_local = nh_.advertise<nav_msgs::Odometry>("odom_local_out", 1);
 
-  _timer_odometry_loop = nh_.createTimer(ros::Rate(1000), &AloamOdometry::odometryLoop, this, false, true);
+  _timer_odometry_loop = nh_.createTimer(ros::Rate(1000), &AloamOdometry::timerOdometry, this, false, true);
 }
 //}
 
-/*//{ odometryLoop() */
-void AloamOdometry::odometryLoop([[maybe_unused]] const ros::TimerEvent &event) {
+/*//{ timerOdometry() */
+void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event) {
   if (!is_initialized) {
     return;
   }
@@ -66,6 +67,8 @@ void AloamOdometry::odometryLoop([[maybe_unused]] const ros::TimerEvent &event) 
     laserCloudFullRes     = _laserCloudFullRes;
   }
   /*//}*/
+
+  mrs_lib::Routine profiler_routine = _profiler->createRoutine("timerOdometry", 1.0f / _scan_period_sec, 0.05, event);
 
   ros::Time stamp;
   pcl_conversions::fromPCL(laserCloudFullRes->header.stamp, stamp);
@@ -293,24 +296,15 @@ void AloamOdometry::odometryLoop([[maybe_unused]] const ros::TimerEvent &event) 
   }
 
   if (got_orientation_meas) {
-    // TODO: AttitudeConverter
-    tf::Quaternion q_mavros;
-    tf::Quaternion q_odom;
+    mrs_lib::AttitudeConverter attitude_mavros(ori);
+    mrs_lib::AttitudeConverter attitude_aloam(q_w_curr);
 
-    tf::quaternionMsgToTF(ori, q_mavros);
-    tf::quaternionEigenToTF(q_w_curr, q_odom);
+    // Transform mavros attitude (fcu frame) to lidar frame
+    tf::Vector3 rpy = tf::quatRotate(_tf_lidar_to_fcu.getRotation(), tf::Vector3(attitude_mavros.getRoll(), attitude_mavros.getPitch(), 0));
+    ori             = tf::createQuaternionMsgFromRollPitchYaw(rpy.x(), rpy.y(), attitude_aloam.getHeading());
 
-    // Parse roll and pitch from mavros and yaw from odometry
-    double roll, pitch, yaw;
-    double r, p, y;
-    tf::Matrix3x3(q_mavros).getRPY(roll, pitch, y);
-    tf::Matrix3x3(q_odom).getRPY(r, p, yaw);
-
-    // Transform mavros fcu orientation to lidar orientation
-    tf::Vector3 rpy = tf::quatRotate(_tf_lidar_to_fcu.getRotation(), tf::Vector3(roll, pitch, 0));
-
-    /* ROS_WARN("Lidar orientation: (%0.2f, %0.2f, %0.2f), odom orientation: (%0.2f, %0.2f, %0.2f)", rpy.x(), rpy.y(), rpy.z(), r, p, yaw); */
-    ori = tf::createQuaternionMsgFromRollPitchYaw(rpy.x(), rpy.y(), yaw);
+    /* ROS_WARN("Lidar orientation: (%0.2f, %0.2f, %0.2f), odom orientation: (%0.2f, %0.2f, %0.2f)", rpy.x(), rpy.y(), rpy.z(), attitude_aloam.getRoll(), */
+    /* attitude_aloam.getPitch(), attitude_aloam.getHeading()); */
   } else {
     tf::quaternionEigenToMsg(q_w_curr, ori);
   }
@@ -370,6 +364,9 @@ void AloamOdometry::odometryLoop([[maybe_unused]] const ros::TimerEvent &event) 
 void AloamOdometry::setData(pcl::PointCloud<PointType>::Ptr cornerPointsSharp, pcl::PointCloud<PointType>::Ptr cornerPointsLessSharp,
                             pcl::PointCloud<PointType>::Ptr surfPointsFlat, pcl::PointCloud<PointType>::Ptr surfPointsLessFlat,
                             pcl::PointCloud<PointType>::Ptr laserCloudFullRes) {
+  
+  mrs_lib::Routine profiler_routine = _profiler->createRoutine("aloamOdometrySetData");
+
   std::scoped_lock lock(_mutex_features_data);
   _has_new_data          = true;
   _cornerPointsSharp     = cornerPointsSharp;
@@ -424,6 +421,9 @@ void AloamOdometry::callbackOrientationMeas(const nav_msgs::OdometryConstPtr &ms
   if (!is_initialized) {
     return;
   }
+
+  mrs_lib::Routine profiler_routine = _profiler->createRoutine("callbackOrientationMeas");
+
   ROS_INFO_ONCE("[AloamOdometry] Received first message with orientation measurement.");
 
   std::scoped_lock lock(_mutex_orientation_meas);

@@ -8,7 +8,7 @@ namespace aloam_slam
 class AloamOdometry {
 
 public:
-  AloamOdometry(const ros::NodeHandle &parent_nh, std::shared_ptr<AloamMapping> mapper, std::string frame_lidar,
+  AloamOdometry(const ros::NodeHandle &parent_nh, std::shared_ptr<mrs_lib::Profiler> profiler, std::shared_ptr<AloamMapping> mapper, std::string frame_lidar,
                 std::string frame_map, float scan_period_sec, tf::Transform tf_lidar_to_fcu);
 
   bool is_initialized = false;
@@ -19,6 +19,7 @@ public:
 
 private:
   // member objects
+  std::shared_ptr<mrs_lib::Profiler> _profiler;
   std::shared_ptr<AloamMapping> _mapper;
   ros::Subscriber               _sub_orientation_meas;
   ros::Timer                    _timer_odometry_loop;
@@ -78,7 +79,7 @@ private:
   const bool   DISTORTION            = false;
 
   // member methods
-  void odometryLoop([[maybe_unused]] const ros::TimerEvent &event);
+  void timerOdometry([[maybe_unused]] const ros::TimerEvent &event);
 
   void TransformToStart(PointType const *const pi, PointType *const po);
   void TransformToEnd(PointType const *const pi, PointType *const po);

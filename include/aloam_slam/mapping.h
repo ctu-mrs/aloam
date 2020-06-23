@@ -47,6 +47,7 @@
 #include <mrs_lib/param_loader.h>
 #include <mrs_lib/mutex.h>
 #include <mrs_lib/transformer.h>
+#include <mrs_lib/attitude_converter.h>
 
 #include "aloam_slam/common.h"
 #include "aloam_slam/tic_toc.h"
@@ -59,8 +60,8 @@ namespace aloam_slam
 class AloamMapping {
 
 public:
-  AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, std::string frame_fcu, std::string frame_map, float scan_frequency,
-               tf::Transform tf_fcu_to_lidar);
+  AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, std::shared_ptr<mrs_lib::Profiler> profiler, std::string frame_fcu,
+               std::string frame_map, float scan_frequency, tf::Transform tf_fcu_to_lidar);
 
   bool is_initialized = false;
 
@@ -69,6 +70,8 @@ public:
 
 private:
   // member objects
+  std::shared_ptr<mrs_lib::Profiler> _profiler;
+
   ros::Timer _timer_mapping_loop;
   ros::Time  _time_last_map_publish;
 
@@ -77,7 +80,6 @@ private:
 
   PointType _pointOri;
   PointType _pointSel;
-
 
   // Feature extractor newest data
   bool                            _has_new_data = false;
@@ -134,7 +136,7 @@ private:
   float _resolution_plane;
 
   // member methods
-  void mappingLoop([[maybe_unused]] const ros::TimerEvent &event);
+  void timerMapping([[maybe_unused]] const ros::TimerEvent &event);
 
   void transformAssociateToMap();
   void transformUpdate();

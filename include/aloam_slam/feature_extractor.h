@@ -9,13 +9,14 @@ namespace aloam_slam
 class FeatureExtractor {
 
 public:
-  FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, std::shared_ptr<AloamOdometry> odometry, std::string map_frame,
-                   float scan_period_sec);
+  FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, std::shared_ptr<mrs_lib::Profiler> profiler,
+                   std::shared_ptr<AloamOdometry> odometry, std::string map_frame, float scan_period_sec);
 
   bool is_initialized = false;
 
 private:
   // member objects
+  std::shared_ptr<mrs_lib::Profiler> _profiler;
   ros::Subscriber _sub_laser_cloud;
 
   std::shared_ptr<AloamOdometry> _odometry;

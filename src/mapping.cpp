@@ -4,9 +4,10 @@ namespace aloam_slam
 {
 
 /*//{ AloamMapping() */
-AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, std::string frame_fcu, std::string frame_map,
-                           float scan_frequency, tf::Transform tf_fcu_to_lidar)
-    : _frame_fcu(frame_fcu),
+AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, std::shared_ptr<mrs_lib::Profiler> profiler, std::string frame_fcu,
+                           std::string frame_map, float scan_frequency, tf::Transform tf_fcu_to_lidar)
+    : _profiler(profiler),
+      _frame_fcu(frame_fcu),
       _frame_map(frame_map),
       _scan_frequency(scan_frequency),
       _tf_fcu_to_lidar(tf_fcu_to_lidar),
@@ -43,7 +44,7 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
   _pub_path                   = nh_.advertise<nav_msgs::Path>("path_out", 1);
 
   if (_mapping_frequency > 0.0f) {
-    _timer_mapping_loop = nh_.createTimer(ros::Rate(_mapping_frequency), &AloamMapping::mappingLoop, this, false, true);
+    _timer_mapping_loop = nh_.createTimer(ros::Rate(_mapping_frequency), &AloamMapping::timerMapping, this, false, true);
   }
   _time_last_map_publish = ros::Time::now();
 }
@@ -52,6 +53,9 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
 /*//{ setData() */
 void AloamMapping::setData(nav_msgs::Odometry aloam_odometry, pcl::PointCloud<PointType>::Ptr laserCloudCornerLast,
                            pcl::PointCloud<PointType>::Ptr laserCloudSurfLast, pcl::PointCloud<PointType>::Ptr laserCloudFullRes) {
+  
+  mrs_lib::Routine profiler_routine = _profiler->createRoutine("aloamMappingSetData");
+
   std::scoped_lock lock(_mutex_odometry_data);
   _has_new_data         = true;
   _aloam_odometry       = aloam_odometry;
@@ -61,12 +65,12 @@ void AloamMapping::setData(nav_msgs::Odometry aloam_odometry, pcl::PointCloud<Po
 }
 /*//}*/
 
-/*//{ mappingLoop() */
-void AloamMapping::mappingLoop([[maybe_unused]] const ros::TimerEvent &event) {
+/*//{ timerMapping() */
+void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   if (!is_initialized) {
     return;
   }
-
+  
   /*//{ Load latest odometry data */
   bool has_new_data;
   {
@@ -91,6 +95,8 @@ void AloamMapping::mappingLoop([[maybe_unused]] const ros::TimerEvent &event) {
     laserCloudFullRes    = _laserCloudFullRes;
   }
   /*//}*/
+
+  mrs_lib::Routine profiler_routine = _profiler->createRoutine("timerMapping", _mapping_frequency, 0.1, event);
 
   _q_wodom_curr.x() = aloam_odometry.pose.pose.orientation.x;
   _q_wodom_curr.y() = aloam_odometry.pose.pose.orientation.y;
