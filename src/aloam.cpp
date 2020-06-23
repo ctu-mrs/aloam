@@ -16,6 +16,8 @@ class AloamSlam : public nodelet::Nodelet {
 public:
   virtual void onInit();
 
+  tf::Transform getStaticTf(std::string frame_from, std::string frame_to);
+
 private:
   std::shared_ptr<AloamMapping>     aloam_mapping;
   std::shared_ptr<AloamOdometry>    aloam_odometry;
@@ -59,17 +61,7 @@ void AloamSlam::onInit() {
 
   // | --------------------- tf transformer --------------------- |
 
-  std::shared_ptr<mrs_lib::Transformer> transformer_ = std::make_shared<mrs_lib::Transformer>("Aloam", uav_name);
-  ROS_INFO("[Aloam]: Waiting 0.5 second to fill transform buffer.");
-  ros::Duration(0.5).sleep();
-  // TODO: no need for mrs_lib transformer for this simple task
-  ROS_INFO_ONCE("[Aloam]: Looking for transform from %s to %s", frame_lidar.c_str(), frame_fcu.c_str());
-  auto tf_lidar_fcu = transformer_->getTransform(frame_lidar, frame_fcu, ros::Time(0));
-  while (!tf_lidar_fcu) {
-    tf_lidar_fcu = transformer_->getTransform(frame_lidar, frame_fcu, ros::Time(0));
-  }
-  tf::transformMsgToTF(tf_lidar_fcu->getTransform().transform, tf_lidar_in_fcu_frame);
-  ROS_INFO("[Aloam]: Successfully found transformation from %s to %s.", frame_lidar.c_str(), frame_fcu.c_str());
+  tf_lidar_in_fcu_frame = getStaticTf(frame_lidar, frame_fcu);
 
   // | ----------------------- SLAM handlers  ------------------- |
 
@@ -95,6 +87,25 @@ void AloamSlam::onInit() {
 }
 
 //}
+
+/*//{ getStaticTf() */
+tf::Transform AloamSlam::getStaticTf(std::string frame_from, std::string frame_to) {
+  tf::Transform tf_ret;
+  std::shared_ptr<mrs_lib::Transformer> transformer_ = std::make_shared<mrs_lib::Transformer>("Aloam");
+  ROS_INFO("[Aloam]: Waiting 0.5 second to fill transform buffer.");
+  ros::Duration(0.5).sleep();
+
+  ROS_INFO_ONCE("[Aloam]: Looking for transform from %s to %s", frame_from.c_str(), frame_to.c_str());
+  auto tf_lidar_fcu = transformer_->getTransform(frame_from, frame_to, ros::Time(0));
+  while (!tf_lidar_fcu) {
+    tf_lidar_fcu = transformer_->getTransform(frame_from, frame_to, ros::Time(0));
+  }
+  ROS_INFO("[Aloam]: Successfully found transformation from %s to %s.", frame_from.c_str(), frame_to.c_str());
+
+  tf::transformMsgToTF(tf_lidar_fcu->getTransform().transform, tf_ret);
+  return tf_ret;
+}
+/*//}*/
 
 }  // namespace aloam_slam
 
