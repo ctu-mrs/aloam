@@ -544,7 +544,7 @@ void AloamMapping::mappingLoop([[maybe_unused]] const ros::TimerEvent &event) {
   }
 
   // Publish entire map
-  if (_pub_laser_cloud_map.getNumSubscribers() > 0 && (ros::Time::now() - _time_last_map_publish).toSec() < _map_publish_period) {
+  if (_pub_laser_cloud_map.getNumSubscribers() > 0 && (ros::Time::now() - _time_last_map_publish).toSec() > _map_publish_period) {
     pcl::PointCloud<PointType> laserCloudMap;
     for (int i = 0; i < laserCloudNum; i++) {
       laserCloudMap += *laserCloudCornerArray.at(i);
