@@ -75,18 +75,15 @@ private:
   ros::Timer _timer_mapping_loop;
   ros::Time  _time_last_map_publish;
 
-  std::vector<pcl::PointCloud<PointType>::Ptr> laserCloudCornerArray;
-  std::vector<pcl::PointCloud<PointType>::Ptr> laserCloudSurfArray;
-
-  PointType _pointOri;
-  PointType _pointSel;
+  std::vector<pcl::PointCloud<PointType>::Ptr> _cloud_corners;
+  std::vector<pcl::PointCloud<PointType>::Ptr> _cloud_surfs;
 
   // Feature extractor newest data
   bool                            _has_new_data = false;
   nav_msgs::Odometry              _aloam_odometry;
-  pcl::PointCloud<PointType>::Ptr _laserCloudCornerLast;
-  pcl::PointCloud<PointType>::Ptr _laserCloudSurfLast;
-  pcl::PointCloud<PointType>::Ptr _laserCloudFullRes;
+  pcl::PointCloud<PointType>::Ptr _features_corners_last;
+  pcl::PointCloud<PointType>::Ptr _features_surfs_last;
+  pcl::PointCloud<PointType>::Ptr _cloud_full_res;
 
   // publishers and subscribers
   ros::Publisher _pub_laser_cloud_map;
@@ -98,7 +95,7 @@ private:
   std::mutex _mutex_odometry_data;
 
   // ROS messages
-  nav_msgs::Path laserAfterMappedPath;
+  nav_msgs::Path _laser_path_msg;
 
   // member variables
   std::string _frame_fcu;
@@ -124,13 +121,13 @@ private:
 
   long int _frame_count = 0;
 
-  int       laserCloudCenWidth  = 10;
-  int       laserCloudCenHeight = 10;
-  int       laserCloudCenDepth  = 5;
-  const int laserCloudWidth     = 21;
-  const int laserCloudHeight    = 21;
-  const int laserCloudDepth     = 11;
-  const int laserCloudNum       = laserCloudWidth * laserCloudHeight * laserCloudDepth;  // 4851
+  int       _cloud_center_width  = 10;
+  int       _cloud_center_height = 10;
+  int       _cloud_center_depth  = 5;
+  const int _cloud_width         = 21;
+  const int _cloud_height        = 21;
+  const int _cloud_depth         = 11;
+  const int _cloud_volume        = _cloud_width * _cloud_height * _cloud_depth;  // 4851
 
   float _resolution_line;
   float _resolution_plane;

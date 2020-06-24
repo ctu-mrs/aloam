@@ -152,13 +152,13 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
   cloudSize = count;
   /* printf("points size %d \n", cloudSize); */
 
-  pcl::PointCloud<PointType>::Ptr laserCloud = boost::make_shared<pcl::PointCloud<PointType>>();
+  pcl::PointCloud<PointType>::Ptr laser_cloud = boost::make_shared<pcl::PointCloud<PointType>>();
   /* ROS_ERROR("Cloud:"); */
   for (int i = 0; i < _number_of_rings; i++) {
-    scanStartInd.at(i) = laserCloud->size() + 5;
+    scanStartInd.at(i) = laser_cloud->size() + 5;
     /* ROS_ERROR("Ring %d: %ld", i, laserCloudScans[i].points.size()); */
-    *laserCloud += laserCloudScans.at(i);
-    scanEndInd.at(i) = laserCloud->size() - 6;
+    *laser_cloud += laserCloudScans.at(i);
+    scanEndInd.at(i) = laser_cloud->size() - 6;
   }
 
   /* printf("prepare time %f \n", t_prepare.toc()); */
@@ -175,15 +175,15 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
   cloudLabel.resize(cloudSize, 0);
 
   for (int i = 5; i < cloudSize - 5; i++) {
-    float diffX = laserCloud->points.at(i - 5).x + laserCloud->points.at(i - 4).x + laserCloud->points.at(i - 3).x + laserCloud->points.at(i - 2).x +
-                  laserCloud->points.at(i - 1).x - 10 * laserCloud->points.at(i).x + laserCloud->points.at(i + 1).x + laserCloud->points.at(i + 2).x +
-                  laserCloud->points.at(i + 3).x + laserCloud->points.at(i + 4).x + laserCloud->points.at(i + 5).x;
-    float diffY = laserCloud->points.at(i - 5).y + laserCloud->points.at(i - 4).y + laserCloud->points.at(i - 3).y + laserCloud->points.at(i - 2).y +
-                  laserCloud->points.at(i - 1).y - 10 * laserCloud->points.at(i).y + laserCloud->points.at(i + 1).y + laserCloud->points.at(i + 2).y +
-                  laserCloud->points.at(i + 3).y + laserCloud->points.at(i + 4).y + laserCloud->points.at(i + 5).y;
-    float diffZ = laserCloud->points.at(i - 5).z + laserCloud->points.at(i - 4).z + laserCloud->points.at(i - 3).z + laserCloud->points.at(i - 2).z +
-                  laserCloud->points.at(i - 1).z - 10 * laserCloud->points.at(i).z + laserCloud->points.at(i + 1).z + laserCloud->points.at(i + 2).z +
-                  laserCloud->points.at(i + 3).z + laserCloud->points.at(i + 4).z + laserCloud->points.at(i + 5).z;
+    float diffX = laser_cloud->points.at(i - 5).x + laser_cloud->points.at(i - 4).x + laser_cloud->points.at(i - 3).x + laser_cloud->points.at(i - 2).x +
+                  laser_cloud->points.at(i - 1).x - 10 * laser_cloud->points.at(i).x + laser_cloud->points.at(i + 1).x + laser_cloud->points.at(i + 2).x +
+                  laser_cloud->points.at(i + 3).x + laser_cloud->points.at(i + 4).x + laser_cloud->points.at(i + 5).x;
+    float diffY = laser_cloud->points.at(i - 5).y + laser_cloud->points.at(i - 4).y + laser_cloud->points.at(i - 3).y + laser_cloud->points.at(i - 2).y +
+                  laser_cloud->points.at(i - 1).y - 10 * laser_cloud->points.at(i).y + laser_cloud->points.at(i + 1).y + laser_cloud->points.at(i + 2).y +
+                  laser_cloud->points.at(i + 3).y + laser_cloud->points.at(i + 4).y + laser_cloud->points.at(i + 5).y;
+    float diffZ = laser_cloud->points.at(i - 5).z + laser_cloud->points.at(i - 4).z + laser_cloud->points.at(i - 3).z + laser_cloud->points.at(i - 2).z +
+                  laser_cloud->points.at(i - 1).z - 10 * laser_cloud->points.at(i).z + laser_cloud->points.at(i + 1).z + laser_cloud->points.at(i + 2).z +
+                  laser_cloud->points.at(i + 3).z + laser_cloud->points.at(i + 4).z + laser_cloud->points.at(i + 5).z;
 
     cloudCurvature.at(i) = diffX * diffX + diffY * diffY + diffZ * diffZ;
     cloudSortInd.at(i)   = i;
@@ -191,10 +191,10 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
 
   TicToc t_pts;
 
-  pcl::PointCloud<PointType>::Ptr cornerPointsSharp     = boost::make_shared<pcl::PointCloud<PointType>>();
-  pcl::PointCloud<PointType>::Ptr cornerPointsLessSharp = boost::make_shared<pcl::PointCloud<PointType>>();
-  pcl::PointCloud<PointType>::Ptr surfPointsFlat        = boost::make_shared<pcl::PointCloud<PointType>>();
-  pcl::PointCloud<PointType>::Ptr surfPointsLessFlat    = boost::make_shared<pcl::PointCloud<PointType>>();
+  pcl::PointCloud<PointType>::Ptr corner_points_sharp      = boost::make_shared<pcl::PointCloud<PointType>>();
+  pcl::PointCloud<PointType>::Ptr corner_points_less_sharp = boost::make_shared<pcl::PointCloud<PointType>>();
+  pcl::PointCloud<PointType>::Ptr surf_points_flat         = boost::make_shared<pcl::PointCloud<PointType>>();
+  pcl::PointCloud<PointType>::Ptr surf_points_less_flat    = boost::make_shared<pcl::PointCloud<PointType>>();
 
   /*//{ Compute features (planes and edges) */
   float time_q_sort = 0;
@@ -221,11 +221,11 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
           largestPickedNum++;
           if (largestPickedNum <= 2) {
             cloudLabel.at(ind) = 2;
-            cornerPointsSharp->push_back(laserCloud->points.at(ind));
-            cornerPointsLessSharp->push_back(laserCloud->points.at(ind));
+            corner_points_sharp->push_back(laser_cloud->points.at(ind));
+            corner_points_less_sharp->push_back(laser_cloud->points.at(ind));
           } else if (largestPickedNum <= 20) {
             cloudLabel.at(ind) = 1;
-            cornerPointsLessSharp->push_back(laserCloud->points.at(ind));
+            corner_points_less_sharp->push_back(laser_cloud->points.at(ind));
           } else {
             break;
           }
@@ -233,9 +233,9 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
           cloudNeighborPicked.at(ind) = 1;
 
           for (int l = 1; l <= 5; l++) {
-            float diffX = laserCloud->points.at(ind + l).x - laserCloud->points.at(ind + l - 1).x;
-            float diffY = laserCloud->points.at(ind + l).y - laserCloud->points.at(ind + l - 1).y;
-            float diffZ = laserCloud->points.at(ind + l).z - laserCloud->points.at(ind + l - 1).z;
+            float diffX = laser_cloud->points.at(ind + l).x - laser_cloud->points.at(ind + l - 1).x;
+            float diffY = laser_cloud->points.at(ind + l).y - laser_cloud->points.at(ind + l - 1).y;
+            float diffZ = laser_cloud->points.at(ind + l).z - laser_cloud->points.at(ind + l - 1).z;
             if (diffX * diffX + diffY * diffY + diffZ * diffZ > 0.05) {
               break;
             }
@@ -243,9 +243,9 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
             cloudNeighborPicked.at(ind + l) = 1;
           }
           for (int l = -1; l >= -5; l--) {
-            float diffX = laserCloud->points.at(ind + l).x - laserCloud->points.at(ind + l + 1).x;
-            float diffY = laserCloud->points.at(ind + l).y - laserCloud->points.at(ind + l + 1).y;
-            float diffZ = laserCloud->points.at(ind + l).z - laserCloud->points.at(ind + l + 1).z;
+            float diffX = laser_cloud->points.at(ind + l).x - laser_cloud->points.at(ind + l + 1).x;
+            float diffY = laser_cloud->points.at(ind + l).y - laser_cloud->points.at(ind + l + 1).y;
+            float diffZ = laser_cloud->points.at(ind + l).z - laser_cloud->points.at(ind + l + 1).z;
             if (diffX * diffX + diffY * diffY + diffZ * diffZ > 0.05) {
               break;
             }
@@ -262,7 +262,7 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
         if (cloudNeighborPicked.at(ind) == 0 && cloudCurvature.at(ind) < 0.1) {
 
           cloudLabel.at(ind) = -1;
-          surfPointsFlat->push_back(laserCloud->points.at(ind));
+          surf_points_flat->push_back(laser_cloud->points.at(ind));
 
           smallestPickedNum++;
           if (smallestPickedNum >= 4) {
@@ -271,9 +271,9 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
 
           cloudNeighborPicked.at(ind) = 1;
           for (int l = 1; l <= 5; l++) {
-            float diffX = laserCloud->points.at(ind + l).x - laserCloud->points.at(ind + l - 1).x;
-            float diffY = laserCloud->points.at(ind + l).y - laserCloud->points.at(ind + l - 1).y;
-            float diffZ = laserCloud->points.at(ind + l).z - laserCloud->points.at(ind + l - 1).z;
+            float diffX = laser_cloud->points.at(ind + l).x - laser_cloud->points.at(ind + l - 1).x;
+            float diffY = laser_cloud->points.at(ind + l).y - laser_cloud->points.at(ind + l - 1).y;
+            float diffZ = laser_cloud->points.at(ind + l).z - laser_cloud->points.at(ind + l - 1).z;
             if (diffX * diffX + diffY * diffY + diffZ * diffZ > 0.05) {
               break;
             }
@@ -281,9 +281,9 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
             cloudNeighborPicked.at(ind + l) = 1;
           }
           for (int l = -1; l >= -5; l--) {
-            float diffX = laserCloud->points.at(ind + l).x - laserCloud->points.at(ind + l + 1).x;
-            float diffY = laserCloud->points.at(ind + l).y - laserCloud->points.at(ind + l + 1).y;
-            float diffZ = laserCloud->points.at(ind + l).z - laserCloud->points.at(ind + l + 1).z;
+            float diffX = laser_cloud->points.at(ind + l).x - laser_cloud->points.at(ind + l + 1).x;
+            float diffY = laser_cloud->points.at(ind + l).y - laser_cloud->points.at(ind + l + 1).y;
+            float diffZ = laser_cloud->points.at(ind + l).z - laser_cloud->points.at(ind + l + 1).z;
             if (diffX * diffX + diffY * diffY + diffZ * diffZ > 0.05) {
               break;
             }
@@ -295,7 +295,7 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
 
       for (int k = sp; k <= ep; k++) {
         if (cloudLabel.at(k) <= 0) {
-          surfPointsLessFlatScan->push_back(laserCloud->points.at(k));
+          surfPointsLessFlatScan->push_back(laser_cloud->points.at(k));
         }
       }
     }
@@ -306,7 +306,7 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
     downSizeFilter.setLeafSize(0.2, 0.2, 0.2);
     downSizeFilter.filter(*surfPointsLessFlatScanDS);
 
-    *surfPointsLessFlat += *surfPointsLessFlatScanDS;
+    *surf_points_less_flat += *surfPointsLessFlatScanDS;
   }
   /* printf("sort q time %f \n", time_q_sort); */
   /* printf("seperate points time %f \n", t_pts.toc()); */
@@ -315,19 +315,21 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
 
   float time_pts = t_pts.toc();
 
-  laserCloud->header.frame_id            = _frame_map;
-  cornerPointsSharp->header.frame_id     = _frame_map;
-  cornerPointsLessSharp->header.frame_id = _frame_map;
-  surfPointsFlat->header.frame_id        = _frame_map;
-  surfPointsLessFlat->header.frame_id    = _frame_map;
+  laser_cloud->header.frame_id              = _frame_map;
+  corner_points_sharp->header.frame_id      = _frame_map;
+  corner_points_less_sharp->header.frame_id = _frame_map;
+  surf_points_flat->header.frame_id         = _frame_map;
+  surf_points_less_flat->header.frame_id    = _frame_map;
 
   pcl::uint64_t stamp;
   pcl_conversions::toPCL(laserCloudMsg->header.stamp, stamp);
-  laserCloud->header.stamp            = stamp;
-  cornerPointsSharp->header.stamp     = stamp;
-  cornerPointsLessSharp->header.stamp = stamp;
-  surfPointsFlat->header.stamp        = stamp;
-  surfPointsLessFlat->header.stamp    = stamp;
+  laser_cloud->header.stamp              = stamp;
+  corner_points_sharp->header.stamp      = stamp;
+  corner_points_less_sharp->header.stamp = stamp;
+  surf_points_flat->header.stamp         = stamp;
+  surf_points_less_flat->header.stamp    = stamp;
+
+  _odometry->setData(corner_points_sharp, corner_points_less_sharp, surf_points_flat, surf_points_less_flat, laser_cloud);
 
   float time_whole = t_whole.toc();
 
@@ -335,8 +337,6 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
   ROS_DEBUG_THROTTLE(1.0, "[AloamFeatureExtractor] points: %d; preparing data: %0.1f ms; q-sorting data: %0.1f ms; computing features: %0.1f ms", cloudSize,
                      time_prepare, time_q_sort, time_pts);
   ROS_WARN_COND(time_whole > _scan_period_sec * 1000.0f, "[AloamFeatureExtractor] Feature extraction took over %0.2f ms", _scan_period_sec * 1000.0f);
-
-  _odometry->setData(cornerPointsSharp, cornerPointsLessSharp, surfPointsFlat, surfPointsLessFlat, laserCloud);
 }
 /*//}*/
 

@@ -63,7 +63,6 @@ void AloamSlam::onInit() {
   }
 
   // | --------------------- tf transformer --------------------- |
-
   tf_lidar_in_fcu_frame = getStaticTf(frame_lidar, frame_fcu);
 
   // | ------------------------ profiler ------------------------ |
@@ -80,7 +79,6 @@ void AloamSlam::onInit() {
     ros::shutdown();
   }
 
-
   feature_extractor->is_initialized = true;
   aloam_odometry->is_initialized    = true;
   aloam_mapping->is_initialized     = true;
@@ -94,8 +92,6 @@ void AloamSlam::onInit() {
 tf::Transform AloamSlam::getStaticTf(std::string frame_from, std::string frame_to) {
   tf::Transform                         tf_ret;
   std::shared_ptr<mrs_lib::Transformer> transformer_ = std::make_shared<mrs_lib::Transformer>("Aloam");
-  ROS_INFO("[Aloam]: Waiting 0.5 second to fill transform buffer.");
-  ros::Duration(0.5).sleep();
 
   ROS_INFO_ONCE("[Aloam]: Looking for transform from %s to %s", frame_from.c_str(), frame_to.c_str());
   auto tf_lidar_fcu = transformer_->getTransform(frame_from, frame_to, ros::Time(0));

@@ -13,9 +13,9 @@ public:
 
   bool is_initialized = false;
 
-  void setData(pcl::PointCloud<PointType>::Ptr cornerPointsSharp, pcl::PointCloud<PointType>::Ptr cornerPointsLessSharp,
-               pcl::PointCloud<PointType>::Ptr surfPointsFlat, pcl::PointCloud<PointType>::Ptr surfPointsLessFlat,
-               pcl::PointCloud<PointType>::Ptr laserCloudFullRes);
+  void setData(pcl::PointCloud<PointType>::Ptr corner_points_sharp, pcl::PointCloud<PointType>::Ptr corner_points_less_sharp,
+               pcl::PointCloud<PointType>::Ptr surf_points_flat, pcl::PointCloud<PointType>::Ptr surf_points_less_flat,
+               pcl::PointCloud<PointType>::Ptr laser_cloud_full_res);
 
 private:
   // member objects
@@ -24,21 +24,21 @@ private:
   ros::Subscriber               _sub_orientation_meas;
   ros::Timer                    _timer_odometry_loop;
 
-  pcl::PointCloud<PointType>::Ptr       laserCloudCornerLast;
-  pcl::PointCloud<PointType>::Ptr       laserCloudSurfLast;
-  pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr kdtreeCornerLast;
-  pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr kdtreeSurfLast;
+  pcl::PointCloud<PointType>::Ptr       _features_corners_last;
+  pcl::PointCloud<PointType>::Ptr       _features_surfs_last;
+  pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr _kdtree_corners_last;
+  pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr _kdtree_surfs_last;
 
-  Eigen::Quaterniond q_w_curr;
-  Eigen::Vector3d    t_w_curr;
+  Eigen::Quaterniond _q_w_curr;
+  Eigen::Vector3d    _t_w_curr;
 
   // Feature extractor newest data
   bool                            _has_new_data = false;
-  pcl::PointCloud<PointType>::Ptr _cornerPointsSharp;
-  pcl::PointCloud<PointType>::Ptr _cornerPointsLessSharp;
-  pcl::PointCloud<PointType>::Ptr _surfPointsFlat;
-  pcl::PointCloud<PointType>::Ptr _surfPointsLessFlat;
-  pcl::PointCloud<PointType>::Ptr _laserCloudFullRes;
+  pcl::PointCloud<PointType>::Ptr _corner_points_sharp;
+  pcl::PointCloud<PointType>::Ptr _corner_points_less_sharp;
+  pcl::PointCloud<PointType>::Ptr _surf_points_flat;
+  pcl::PointCloud<PointType>::Ptr _surf_points_less_flat;
+  pcl::PointCloud<PointType>::Ptr _cloud_full_ress;
 
   // publishers and subscribers
   ros::Publisher _pub_odometry_local;
@@ -56,22 +56,16 @@ private:
 
   float _scan_period_sec;
 
-  double timeCornerPointsSharp     = 0;
-  double timeCornerPointsLessSharp = 0;
-  double timeSurfPointsFlat        = 0;
-  double timeSurfPointsLessFlat    = 0;
-  double timeLaserCloudFullRes     = 0;
-
   long int _frame_count = 0;
 
   tf::Transform _tf_lidar_to_fcu;
 
   bool _got_orientation_meas = false;
 
-  double                         para_q[4] = {0, 0, 0, 1};
-  double                         para_t[3] = {0, 0, 0};
-  Eigen::Map<Eigen::Quaterniond> q_last_curr;
-  Eigen::Map<Eigen::Vector3d>    t_last_curr;
+  double                         _para_q[4] = {0, 0, 0, 1};
+  double                         _para_t[3] = {0, 0, 0};
+  Eigen::Map<Eigen::Quaterniond> _q_last_curr;
+  Eigen::Map<Eigen::Vector3d>    _t_last_curr;
 
   // constants
   const double DISTANCE_SQ_THRESHOLD = 25.0;
