@@ -24,12 +24,8 @@ private:
   // member variables
   std::string _frame_map;
 
-  bool _preprocess_data;
-
   float _vertical_fov_half;
   float _ray_vert_delta;
-  float _min_range_sq;
-  float _max_range_sq;
   float _scan_period_sec;
 
   int _initialization_frames_delay;
@@ -38,8 +34,9 @@ private:
 
   int _number_of_rings;
 
-  // member methods
-  void removeCloseAndFarPointCloud(const pcl::PointCloud<PointType> &cloud_in, pcl::PointCloud<PointType> &cloud_out);
+  bool _has_field_ring = false;
+
+  void parseRowsFromCloudMsg(const sensor_msgs::PointCloud2ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr cloud_processed, std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices, float &processing_time);
 
   // callbacks
   void callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg);
