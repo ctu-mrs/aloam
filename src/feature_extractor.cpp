@@ -37,6 +37,10 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
   if (!is_initialized) {
     return;
   }
+  if (laserCloudMsg->data.size() == 0) {
+    ROS_WARN("[AloamFeatureExtractor]: Received empty laser cloud msg. Skipping frame.");
+    return;
+  }
 
   mrs_lib::Routine profiler_routine = _profiler->createRoutine("callbackLaserCloud");
 
