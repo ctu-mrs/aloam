@@ -4,6 +4,8 @@
 #include "aloam_slam/odometry.h"
 #include "aloam_slam/mapping.h"
 
+#include <os1_driver/ouster_ros/point_os1.h>
+
 namespace aloam_slam
 {
 class FeatureExtractor {
@@ -34,9 +36,10 @@ private:
 
   int _number_of_rings;
 
-  bool _has_field_ring = false;
+  bool _data_have_ring_field = false;
 
   void parseRowsFromCloudMsg(const sensor_msgs::PointCloud2ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr cloud_processed, std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices, float &processing_time);
+  void parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr cloud_processed, std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices, float &processing_time);
 
   // callbacks
   void callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg);
