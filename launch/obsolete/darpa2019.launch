@@ -88,7 +88,7 @@
     <arg if="$(eval arg('RUN_TYPE') == 'uav')" name="ouster_filter_intensity_thrd" value="$(arg filter/intensity/value)" />
     <arg unless="$(eval arg('RUN_TYPE') == 'uav')" name="ouster_filter_intensity_thrd" value="0" />
     <arg if="$(eval arg('RUN_TYPE') == 'uav')" name="ouster_filter_intensity_range" value="$(arg filter/intensity/range)" />
-    <arg unless="$(eval arg('RUN_TYPE') == 'uav')" name="ouster_filter_intensity_range" value="0" />
+    <arg unless="$(eval arg('RUN_TYPE') == 'uav')" name="ouster_filter_intensity_range" value="0.0" />
 
     <arg name="realsense_republish" value="false" />
     <arg name="rplidar_republish" value="false" />

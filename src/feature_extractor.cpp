@@ -14,9 +14,6 @@ FeatureExtractor::FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::Pa
 
   param_loader.loadParam("vertical_fov", _vertical_fov_half);
   param_loader.loadParam("scan_line", _number_of_rings);
-  param_loader.loadParam("min_range", _min_range_sq);
-  param_loader.loadParam("max_range", _max_range_sq);
-  param_loader.loadParam("preprocess_data", _preprocess_data);
 
   if (_number_of_rings != 16) {
     ROS_ERROR_STREAM(
@@ -24,8 +21,6 @@ FeatureExtractor::FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::Pa
     ros::shutdown();
   }
 
-  _min_range_sq *= _min_range_sq;
-  _max_range_sq *= _max_range_sq;
   _ray_vert_delta = _vertical_fov_half / float(_number_of_rings - 1);  // vertical resolution
   _vertical_fov_half /= 2.0;                                           // get half fov
 
@@ -42,139 +37,52 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
   if (!is_initialized) {
     return;
   }
-
-  mrs_lib::Routine profiler_routine = _profiler->createRoutine("callbackLaserCloud");
-
-  ROS_INFO_ONCE("[AloamFeatureExtractor]: Received first laser cloud msg.");
-  if (_frame_count++ < _initialization_frames_delay) {
+  if (laserCloudMsg->data.size() == 0) {
+    ROS_WARN("[AloamFeatureExtractor]: Received empty laser cloud msg. Skipping frame.");
     return;
   }
 
-  float time_prepare;
+  mrs_lib::Routine profiler_routine = _profiler->createRoutine("callbackLaserCloud");
 
-  TicToc           t_whole;
-  TicToc           t_prepare;
-  std::vector<int> scanStartInd(_number_of_rings, 0);
-  std::vector<int> scanEndInd(_number_of_rings, 0);
-
-  pcl::PointCloud<PointType> laserCloudIn;
-  pcl::fromROSMsg(*laserCloudMsg, laserCloudIn);
-  std::vector<int> indices;
-
-  if (_preprocess_data) {
-    pcl::removeNaNFromPointCloud(laserCloudIn, laserCloudIn, indices);
-    removeCloseAndFarPointCloud(laserCloudIn, laserCloudIn);
-  }
-
-  /*//{ Precompute points indices */
-  int   cloudSize = laserCloudIn.points.size();
-  float startOri  = -std::atan2(laserCloudIn.points.at(0).y, laserCloudIn.points.at(0).x);
-  float endOri    = -std::atan2(laserCloudIn.points.at(cloudSize - 1).y, laserCloudIn.points.at(cloudSize - 1).x) + 2 * M_PI;
-
-  if (endOri - startOri > 3 * M_PI) {
-    endOri -= 2 * M_PI;
-  } else if (endOri - startOri < M_PI) {
-    endOri += 2 * M_PI;
-  }
-
-  bool                                    halfPassed = false;
-  int                                     count      = cloudSize;
-  PointType                               point;
-  std::vector<pcl::PointCloud<PointType>> laserCloudScans(_number_of_rings);
-  for (int i = 0; i < cloudSize; i++) {
-    point.x = laserCloudIn.points.at(i).x;
-    point.y = laserCloudIn.points.at(i).y;
-    point.z = laserCloudIn.points.at(i).z;
-
-    int   scanID = 0;
-    float angle  = (M_PI_2 - acos(point.z / sqrt(point.x * point.x + point.y * point.y + point.z * point.z))) * 180.0 / M_PI;
-
-    if (_number_of_rings == 16) {
-      scanID = std::round((angle + _vertical_fov_half) / _ray_vert_delta);
-      /* ROS_WARN("point: (%0.2f, %0.2f, %0.2f), angle: %0.2f deg, scan_id: %d", point.x, point.y, point.z, angle, scanID); */
-      /* scanID = int((angle + 15) / 2 + 0.5); */
-      if (scanID > int(_number_of_rings - 1) || scanID < 0) {
-        count--;
-        continue;
-      }
-    } else if (_number_of_rings == 32) {
-      // TODO: get correct scanID
-      scanID = int((angle + 92.0 / 3.0) * 3.0 / 4.0);
-      if (scanID > int(_number_of_rings - 1) || scanID < 0) {
-        count--;
-        continue;
-      }
-    } else if (_number_of_rings == 64) {
-      // TODO: get correct scanID
-      if (angle >= -8.83)
-        scanID = int((2 - angle) * 3.0 + 0.5);
-      else
-        scanID = int(_number_of_rings / 2 + int((-8.83 - angle) * 2.0 + 0.5));
-
-      // use [0 50]  > 50 remove outlies
-      if (angle > 2 || angle < -24.33 || scanID > 50 || scanID < 0) {
-        count--;
-        continue;
-      }
-    } else {
-      /* printf("wrong scan number\n"); */
-      ROS_ERROR_STREAM("[AloamFeatureExtractor] wrong scan number");
-      ROS_BREAK();
-    }
-    // printf("angle %f scanID %d \n", angle, scanID);
-
-    float ori = -std::atan2(point.y, point.x);
-    if (!halfPassed) {
-      if (ori < startOri - M_PI / 2) {
-        ori += 2 * M_PI;
-      } else if (ori > startOri + M_PI * 3 / 2) {
-        ori -= 2 * M_PI;
-      }
-
-      if (ori - startOri > M_PI) {
-        halfPassed = true;
-      }
-    } else {
-      ori += 2 * M_PI;
-      if (ori < endOri - M_PI * 3 / 2) {
-        ori += 2 * M_PI;
-      } else if (ori > endOri + M_PI / 2) {
-        ori -= 2 * M_PI;
+  // Skip 1s of data
+  if (_frame_count++ < _initialization_frames_delay) {
+    if (_frame_count == 1) {
+      ROS_INFO("[AloamFeatureExtractor]: Received first laser cloud msg.");
+      for (auto field : laserCloudMsg->fields) {
+        if (field.name == "ring") {
+          _data_have_ring_field = true;
+          ROS_INFO("[AloamFeatureExtractor]: Laser cloud msg contains field `ring`. Will use this information for data processing.");
+          break;
+        }
       }
     }
-
-    float relTime   = (ori - startOri) / (endOri - startOri);
-    point.intensity = scanID + _scan_period_sec * relTime;
-    laserCloudScans.at(scanID).push_back(point);
+    return;
   }
-  /*//}*/
 
-  cloudSize = count;
-  /* printf("points size %d \n", cloudSize); */
-
+  // Process input data per row
+  std::vector<int>                rows_start_idxs(_number_of_rings, 0);
+  std::vector<int>                rows_end_idxs(_number_of_rings, 0);
+  float                           processing_time;
   pcl::PointCloud<PointType>::Ptr laser_cloud = boost::make_shared<pcl::PointCloud<PointType>>();
-  /* ROS_ERROR("Cloud:"); */
-  for (int i = 0; i < _number_of_rings; i++) {
-    scanStartInd.at(i) = laser_cloud->size() + 5;
-    /* ROS_ERROR("Ring %d: %ld", i, laserCloudScans[i].points.size()); */
-    *laser_cloud += laserCloudScans.at(i);
-    scanEndInd.at(i) = laser_cloud->size() - 6;
+  if (_data_have_ring_field) {
+    parseRowsFromOS1CloudMsg(laserCloudMsg, laser_cloud, rows_start_idxs, rows_end_idxs, processing_time);
+  } else {
+    parseRowsFromCloudMsg(laserCloudMsg, laser_cloud, rows_start_idxs, rows_end_idxs, processing_time);
   }
 
-  /* printf("prepare time %f \n", t_prepare.toc()); */
-  time_prepare = t_prepare.toc();
-
+  TicToc             t_whole;
   std::vector<float> cloudCurvature;
   std::vector<int>   cloudSortInd;
   std::vector<int>   cloudNeighborPicked;
   std::vector<int>   cloudLabel;
 
-  cloudCurvature.resize(cloudSize);
-  cloudSortInd.resize(cloudSize);
-  cloudNeighborPicked.resize(cloudSize, 0);
-  cloudLabel.resize(cloudSize, 0);
+  int cloud_size = laser_cloud->points.size();
+  cloudCurvature.resize(cloud_size);
+  cloudSortInd.resize(cloud_size);
+  cloudNeighborPicked.resize(cloud_size, 0);
+  cloudLabel.resize(cloud_size, 0);
 
-  for (int i = 5; i < cloudSize - 5; i++) {
+  for (int i = 5; i < cloud_size - 5; i++) {
     float diffX = laser_cloud->points.at(i - 5).x + laser_cloud->points.at(i - 4).x + laser_cloud->points.at(i - 3).x + laser_cloud->points.at(i - 2).x +
                   laser_cloud->points.at(i - 1).x - 10 * laser_cloud->points.at(i).x + laser_cloud->points.at(i + 1).x + laser_cloud->points.at(i + 2).x +
                   laser_cloud->points.at(i + 3).x + laser_cloud->points.at(i + 4).x + laser_cloud->points.at(i + 5).x;
@@ -196,16 +104,16 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
   pcl::PointCloud<PointType>::Ptr surf_points_flat         = boost::make_shared<pcl::PointCloud<PointType>>();
   pcl::PointCloud<PointType>::Ptr surf_points_less_flat    = boost::make_shared<pcl::PointCloud<PointType>>();
 
-  /*//{ Compute features (planes and edges) */
+  /*//{ Compute features (planes and edges) in two resolutions */
   float time_q_sort = 0;
   for (int i = 0; i < _number_of_rings; i++) {
-    if (scanEndInd.at(i) - scanStartInd.at(i) < 6) {
+    if (rows_end_idxs.at(i) - rows_start_idxs.at(i) < 6) {
       continue;
     }
     pcl::PointCloud<PointType>::Ptr surfPointsLessFlatScan = boost::make_shared<pcl::PointCloud<PointType>>();
     for (int j = 0; j < 6; j++) {
-      int sp = scanStartInd.at(i) + (scanEndInd.at(i) - scanStartInd.at(i)) * j / 6;
-      int ep = scanStartInd.at(i) + (scanEndInd.at(i) - scanStartInd.at(i)) * (j + 1) / 6 - 1;
+      int sp = rows_start_idxs.at(i) + (rows_end_idxs.at(i) - rows_start_idxs.at(i)) * j / 6;
+      int ep = rows_start_idxs.at(i) + (rows_end_idxs.at(i) - rows_start_idxs.at(i)) * (j + 1) / 6 - 1;
 
       TicToc t_tmp;
       std::sort(cloudSortInd.begin() + sp, cloudSortInd.begin() + ep + 1,
@@ -308,8 +216,6 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
 
     *surf_points_less_flat += *surfPointsLessFlatScanDS;
   }
-  /* printf("sort q time %f \n", time_q_sort); */
-  /* printf("seperate points time %f \n", t_pts.toc()); */
 
   /*//}*/
 
@@ -331,42 +237,183 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
 
   _odometry->setData(corner_points_sharp, corner_points_less_sharp, surf_points_flat, surf_points_less_flat, laser_cloud);
 
-  float time_whole = t_whole.toc();
+  float time_whole = t_whole.toc() + processing_time;
 
   ROS_INFO_THROTTLE(1.0, "[AloamFeatureExtractor] Run time: %0.1f ms (%0.1f Hz)", time_whole, std::min(1.0f / _scan_period_sec, 1000.0f / time_whole));
-  ROS_DEBUG_THROTTLE(1.0, "[AloamFeatureExtractor] points: %d; preparing data: %0.1f ms; q-sorting data: %0.1f ms; computing features: %0.1f ms", cloudSize,
-                     time_prepare, time_q_sort, time_pts);
+  ROS_DEBUG_THROTTLE(1.0, "[AloamFeatureExtractor] points: %d; preparing data: %0.1f ms; q-sorting data: %0.1f ms; computing features: %0.1f ms", cloud_size,
+                     processing_time, time_q_sort, time_pts);
   ROS_WARN_COND(time_whole > _scan_period_sec * 1000.0f, "[AloamFeatureExtractor] Feature extraction took over %0.2f ms", _scan_period_sec * 1000.0f);
 }
 /*//}*/
 
-/*//{ removeCloseAndFarPointCloud() */
-void FeatureExtractor::removeCloseAndFarPointCloud(const pcl::PointCloud<PointType> &cloud_in, pcl::PointCloud<PointType> &cloud_out) {
-  if (&cloud_in != &cloud_out) {
-    cloud_out.header = cloud_in.header;
-    cloud_out.points.resize(cloud_in.points.size());
+/*//{ parseRowsFromCloudMsg() */
+void FeatureExtractor::parseRowsFromCloudMsg(const sensor_msgs::PointCloud2ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr cloud_processed,
+                                             std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices, float &processing_time) {
+  TicToc t_prepare;
+
+  pcl::PointCloud<PointType> cloud_pcl;
+  pcl::fromROSMsg(*cloud, cloud_pcl);
+
+  std::vector<int> indices;
+
+  /*//{ Precompute points indices */
+  const int cloud_size    = cloud_pcl.points.size();
+  float     azimuth_start = -std::atan2(cloud_pcl.points.at(0).y, cloud_pcl.points.at(0).x);
+  float     azimuth_end   = -std::atan2(cloud_pcl.points.at(cloud_size - 1).y, cloud_pcl.points.at(cloud_size - 1).x) + 2 * M_PI;
+
+  if (azimuth_end - azimuth_start > 3 * M_PI) {
+    azimuth_end -= 2 * M_PI;
+  } else if (azimuth_end - azimuth_start < M_PI) {
+    azimuth_end += 2 * M_PI;
   }
 
-  size_t j = 0;
+  bool                                    halfPassed = false;
+  int                                     count      = cloud_size;
+  std::vector<pcl::PointCloud<PointType>> laser_cloud_rows(_number_of_rings);
+  for (int i = 0; i < cloud_size; i++) {
+    PointType point;
+    point.x = cloud_pcl.points.at(i).x;
+    point.y = cloud_pcl.points.at(i).y;
+    point.z = cloud_pcl.points.at(i).z;
 
-  for (size_t i = 0; i < cloud_in.points.size(); ++i) {
-    double dist_sq =
-        cloud_in.points.at(i).x * cloud_in.points.at(i).x + cloud_in.points.at(i).y * cloud_in.points.at(i).y + cloud_in.points.at(i).z * cloud_in.points[i].z;
-    if (dist_sq < _min_range_sq || dist_sq > _max_range_sq) {
-      continue;
+    int point_ring = 0;
+
+    float angle = (M_PI_2 - acos(point.z / sqrt(point.x * point.x + point.y * point.y + point.z * point.z))) * 180.0 / M_PI;
+
+    if (_number_of_rings == 16) {
+      point_ring = std::round((angle + _vertical_fov_half) / _ray_vert_delta);
+      /* ROS_WARN("point: (%0.2f, %0.2f, %0.2f), angle: %0.2f deg, scan_id: %d", point.x, point.y, point.z, angle, point_ring); */
+      /* point_ring = int((angle + 15) / 2 + 0.5); */
+      if (point_ring > int(_number_of_rings - 1) || point_ring < 0) {
+        count--;
+        continue;
+      }
+    } else if (_number_of_rings == 32) {
+      // TODO: get correct point_ring
+      point_ring = int((angle + 92.0 / 3.0) * 3.0 / 4.0);
+      if (point_ring > int(_number_of_rings - 1) || point_ring < 0) {
+        count--;
+        continue;
+      }
+    } else if (_number_of_rings == 64) {
+      // TODO: get correct point_ring
+      if (angle >= -8.83)
+        point_ring = int((2 - angle) * 3.0 + 0.5);
+      else
+        point_ring = int(_number_of_rings / 2 + int((-8.83 - angle) * 2.0 + 0.5));
+
+      // use [0 50]  > 50 remove outlies
+      if (angle > 2 || angle < -24.33 || point_ring > 50 || point_ring < 0) {
+        count--;
+        continue;
+      }
     }
-    cloud_out.points.at(j) = cloud_in.points.at(i);
-    j++;
+
+    float point_azimuth = -std::atan2(point.y, point.x);
+    if (!halfPassed) {
+      if (point_azimuth < azimuth_start - M_PI / 2) {
+        point_azimuth += 2 * M_PI;
+      } else if (point_azimuth > azimuth_start + M_PI * 3 / 2) {
+        point_azimuth -= 2 * M_PI;
+      }
+
+      if (point_azimuth - azimuth_start > M_PI) {
+        halfPassed = true;
+      }
+    } else {
+      point_azimuth += 2 * M_PI;
+      if (point_azimuth < azimuth_end - M_PI * 3 / 2) {
+        point_azimuth += 2 * M_PI;
+      } else if (point_azimuth > azimuth_end + M_PI / 2) {
+        point_azimuth -= 2 * M_PI;
+      }
+    }
+
+    float rel_time  = (point_azimuth - azimuth_start) / (azimuth_end - azimuth_start);
+    point.intensity = point_ring + _scan_period_sec * rel_time;
+    laser_cloud_rows.at(point_ring).push_back(point);
   }
-  if (j != cloud_in.points.size()) {
-    cloud_out.points.resize(j);
+  /*//}*/
+
+  for (int i = 0; i < _number_of_rings; i++) {
+    rows_start_indices.at(i) = cloud_processed->size() + 5;
+    *cloud_processed += laser_cloud_rows.at(i);
+    rows_end_indices.at(i) = cloud_processed->size() - 6;
   }
 
-  cloud_out.height   = 1;
-  cloud_out.width    = static_cast<uint32_t>(j);
-  cloud_out.is_dense = true;
+  processing_time = t_prepare.toc();
 }
 /*//}*/
 
+/*//{ parseRowsFromOS1CloudMsg() */
+void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr cloud_processed,
+                                                std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices, float &processing_time) {
+  TicToc t_prepare;
+
+  // Create PointOS1 pointcloud {x, y, z, intensity, t, reflectivity, ring, noise, range}
+  pcl::PointCloud<ouster_ros::OS1::PointOS1> cloud_pcl;
+  pcl::fromROSMsg(*cloud, cloud_pcl);
+
+  std::vector<int> indices;
+
+  /*//{ Precompute points indices */
+  const int cloud_size    = cloud_pcl.points.size();
+  float     azimuth_start = -std::atan2(cloud_pcl.points.at(0).y, cloud_pcl.points.at(0).x);
+  float     azimuth_end   = -std::atan2(cloud_pcl.points.at(cloud_size - 1).y, cloud_pcl.points.at(cloud_size - 1).x) + 2 * M_PI;
+
+  if (azimuth_end - azimuth_start > 3 * M_PI) {
+    azimuth_end -= 2 * M_PI;
+  } else if (azimuth_end - azimuth_start < M_PI) {
+    azimuth_end += 2 * M_PI;
+  }
+
+  bool                                    halfPassed = false;
+  std::vector<pcl::PointCloud<PointType>> laser_cloud_rows(_number_of_rings);
+  for (int i = 0; i < cloud_size; i++) {
+    PointType point;
+    point.x = cloud_pcl.points.at(i).x;
+    point.y = cloud_pcl.points.at(i).y;
+    point.z = cloud_pcl.points.at(i).z;
+
+    // Read row (ring) directly from msg
+    int   point_ring    = cloud_pcl.points.at(i).ring;
+
+    // Compute intensity TODO: can we polish this crazy ifs?
+    float point_azimuth = -std::atan2(point.y, point.x);
+    if (!halfPassed) {
+      if (point_azimuth < azimuth_start - M_PI / 2) {
+        point_azimuth += 2 * M_PI;
+      } else if (point_azimuth > azimuth_start + M_PI * 3 / 2) {
+        point_azimuth -= 2 * M_PI;
+      }
+
+      if (point_azimuth - azimuth_start > M_PI) {
+        halfPassed = true;
+      }
+    } else {
+      point_azimuth += 2 * M_PI;
+      if (point_azimuth < azimuth_end - M_PI * 3 / 2) {
+        point_azimuth += 2 * M_PI;
+      } else if (point_azimuth > azimuth_end + M_PI / 2) {
+        point_azimuth -= 2 * M_PI;
+      }
+    }
+
+    // TODO: can we use `t` fiels from OS1 message?
+    float rel_time  = (point_azimuth - azimuth_start) / (azimuth_end - azimuth_start);
+    point.intensity = point_ring + _scan_period_sec * rel_time;
+    laser_cloud_rows.at(point_ring).push_back(point);
+  }
+  /*//}*/
+
+  for (int i = 0; i < _number_of_rings; i++) {
+    rows_start_indices.at(i) = cloud_processed->size() + 5;
+    *cloud_processed += laser_cloud_rows.at(i);
+    rows_end_indices.at(i) = cloud_processed->size() - 6;
+  }
+
+  processing_time = t_prepare.toc();
+}
+/*//}*/
 }  // namespace aloam_slam
 

@@ -3,6 +3,7 @@
   <!-- ENV VARS -->
   <arg name="PROFILER" default="$(optenv PROFILER false)" />
   <arg name="UAV_NAME" default="$(env UAV_NAME)" />
+  <arg name="RUN_TYPE" default="$(env RUN_TYPE)" />
 
   <!-- DEFAULT PARAMETERS AND FRAMES -->
   <arg name="fcu_frame" default="$(arg UAV_NAME)/fcu"/>
@@ -10,15 +11,12 @@
   <arg name="map_frame" default="$(arg UAV_NAME)/aloam_origin"/>
 
   <!-- SENSOR PARAMETERS -->
+  <arg name="points_topic" default="os1_cloud_node/points_processed" />
+  <arg name="number_of_rings" default="16" />
   <arg name="vertical_fov" default="33.2" />
   <arg name="frequency" default="10.0" />
 
-  <!-- DATA FILTRATION PARAMETERS -->
-  <arg name="preprocess_data" default="true" />
-  <arg name="min_range" default="0.5" />
-  <arg name="max_range" default="30.0" />
-
-  <arg name="standalone" default="$(optenv STANDALONE_LOCALIZATION true)" />
+  <arg name="standalone" default="$(optenv OUSTER_STANDALONE true)" />
   <arg name="debug" default="$(optenv DEBUG false)" />
   <arg     if="$(eval arg('standalone') or arg('debug'))" name="nodelet" value="standalone" />
   <arg unless="$(eval arg('standalone') or arg('debug'))" name="nodelet" value="load" />
@@ -28,13 +26,21 @@
   <arg     if="$(arg debug)" name="launch_prefix" value="debug_roslaunch"/>
 
   <group ns="$(arg UAV_NAME)">
+    
+    <!--//{ LAUNCH NODELET MANAGER (SIMULATION ONLY) -->
+    <node if="$(eval arg('RUN_TYPE') == 'simulation' and arg('nodelet') == 'load')" pkg="nodelet" type="nodelet" name="$(arg nodelet_manager)" args="manager" output="screen" launch-prefix="$(arg launch_prefix)">
+      <param name="num_worker_threads" value="8" />
+    </node>
+    <!--//}-->
 
-    <!-- Odometry -->
+    <!--//{ ALOAM SLAM NODELET -->
     <node pkg="nodelet" type="nodelet" name="aloam_slam" args="$(arg nodelet) aloam_slam/AloamSlam $(arg nodelet_manager)" output="screen" launch-prefix="$(arg launch_prefix)">
       <param name="verbose" type="bool" value="false"/>
       <param name="enable_profiler" type="bool" value="$(arg PROFILER)" />
 
-      <param name="scan_line" type="int" value="16" />
+      <param name="scan_line" type="int" value="$(arg number_of_rings)" />
+      <param name="vertical_fov" type="double" value="$(arg vertical_fov)"/>
+      <param name="sensor_frequency" type="double" value="$(arg frequency)"/>
 
       <param name="uav_name" type="string" value="$(arg UAV_NAME)"/>
       <param name="fcu_frame" type="string" value="$(arg fcu_frame)"/>
@@ -45,18 +51,12 @@
       <param name="map_publish_rate" type="double" value="0.5" />
       <param name="mapping_line_resolution" type="double" value="0.4" />
       <param name="mapping_plane_resolution" type="double" value="0.8" />
-      <param name="preprocess_data" type="bool" value="$(arg preprocess_data)" />
-      <param name="min_range" type="double" value="$(arg min_range)"/>
-      <param name="max_range" type="double" value="$(arg max_range)"/>
-      <param name="vertical_fov" type="double" value="$(arg vertical_fov)"/>
-      <param name="sensor_frequency" type="double" value="$(arg frequency)"/>
 
-      <!-- Subscribers -->
-      <remap if="$(arg preprocess_data)" from="~laser_cloud_in" to="os1_cloud_node/points"/>
-      <remap unless="$(arg preprocess_data)" from="~laser_cloud_in" to="os1_cloud_node/points_processed"/>
-      <remap from="~orientation_in" to="odometry/orientation"/>
+        <!-- Subscribers -->
+      <remap from="~laser_cloud_in" to="$(arg points_topic)"/>
+      <remap from="~orientation_in" to="odometry/orientationTODO"/>
 
-      <!-- Publishers -->
+        <!-- Publishers -->
       <remap from="~odom_local_out" to="aloam/odom_local"/>
       <remap from="~path_out" to="aloam/path"/>
       <remap from="~odom_global_out" to="aloam/odom"/>
@@ -64,6 +64,8 @@
       <remap from="~scan_registered_out" to="aloam/scan_registered"/>
 
     </node>
+    <!--//}-->
+
   </group>
 
 </launch>
