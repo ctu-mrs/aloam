@@ -51,13 +51,14 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
 /*//}*/
 
 /*//{ setData() */
-void AloamMapping::setData(tf::StampedTransform aloam_odometry, pcl::PointCloud<PointType>::Ptr features_corners_last,
+void AloamMapping::setData(ros::Time time_of_data, tf::Transform aloam_odometry, pcl::PointCloud<PointType>::Ptr features_corners_last,
                            pcl::PointCloud<PointType>::Ptr features_surfs_last, pcl::PointCloud<PointType>::Ptr cloud_full_res) {
 
   mrs_lib::Routine profiler_routine = _profiler->createRoutine("aloamMappingSetData");
 
   std::scoped_lock lock(_mutex_odometry_data);
   _has_new_data          = true;
+  _time_aloam_odometry   = time_of_data;
   _aloam_odometry        = aloam_odometry;
   _features_corners_last = features_corners_last;
   _features_surfs_last   = features_surfs_last;
@@ -82,13 +83,15 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     return;
   }
 
-  tf::StampedTransform                   aloam_odometry;
+  ros::Time                       time_aloam_odometry;
+  tf::Transform                   aloam_odometry;
   pcl::PointCloud<PointType>::Ptr features_corners_last;
   pcl::PointCloud<PointType>::Ptr features_surfs_last;
   pcl::PointCloud<PointType>::Ptr cloud_full_res;
   {
     std::scoped_lock lock(_mutex_odometry_data);
     _has_new_data         = false;
+    time_aloam_odometry   = _time_aloam_odometry;
     aloam_odometry        = _aloam_odometry;
     features_corners_last = _features_corners_last;
     features_surfs_last   = _features_surfs_last;
@@ -496,8 +499,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
   /*//{ Publish data */
 
-  TicToc    t_pub;
-  ros::Time stamp = aloam_odometry.stamp_;
+  TicToc t_pub;
 
   // Publish TF
   // TF fcu -> aloam origin (_t_w_curr and _q_w_curr is in origin -> fcu frame, hence inversion)
@@ -509,13 +511,13 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   transform.setRotation(q);
 
   tf::Transform tf_fcu = transform * _tf_fcu_to_lidar;
-  br.sendTransform(tf::StampedTransform(tf_fcu.inverse(), stamp, _frame_fcu, _frame_map));
+  br.sendTransform(tf::StampedTransform(tf_fcu.inverse(), time_aloam_odometry, _frame_fcu, _frame_map));
 
   if (_pub_odom_global.getNumSubscribers() > 0 || _pub_path.getNumSubscribers() > 0) {
     // Publish nav_msgs::Odometry msg
     nav_msgs::Odometry fcu_odom_msg;
     fcu_odom_msg.header.frame_id      = _frame_map;
-    fcu_odom_msg.header.stamp         = stamp;
+    fcu_odom_msg.header.stamp         = time_aloam_odometry;
     fcu_odom_msg.child_frame_id       = _frame_fcu;
     tf::Vector3 origin                = tf_fcu.getOrigin();
     fcu_odom_msg.pose.pose.position.x = origin.x();
@@ -542,7 +544,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     }
     sensor_msgs::PointCloud2 map_msg;
     pcl::toROSMsg(map_pcl, map_msg);
-    map_msg.header.stamp    = stamp;
+    map_msg.header.stamp    = time_aloam_odometry;
     map_msg.header.frame_id = _frame_map;
     _pub_laser_cloud_map.publish(map_msg);
 
@@ -560,7 +562,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
     sensor_msgs::PointCloud2::Ptr cloud_full_res_msg = boost::make_shared<sensor_msgs::PointCloud2>();
     pcl::toROSMsg(*cloud_full_res, *cloud_full_res_msg);
-    cloud_full_res_msg->header.stamp    = stamp;
+    cloud_full_res_msg->header.stamp    = time_aloam_odometry;
     cloud_full_res_msg->header.frame_id = _frame_map;
     _pub_laser_cloud_registered.publish(cloud_full_res_msg);
   }

@@ -21,8 +21,6 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::shared_ptr<m
   // Objects initialization
   _tf_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>();
   _transformer    = std::make_shared<mrs_lib::Transformer>("AloamOdometry", "uav1");
-  _frame_odom     = "uav1/aloam_odom_origin";
-  _frame_fcu      = "uav1/fcu";
 
   _features_corners_last = boost::make_shared<pcl::PointCloud<PointType>>();
   _features_surfs_last   = boost::make_shared<pcl::PointCloud<PointType>>();
@@ -343,15 +341,12 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
 
   /*//}*/
 
-  // Create TF transform
-  tf::StampedTransform tf_tf;
-  tf_tf.setOrigin(tf::Vector3(_t_w_curr.x(), _t_w_curr.y(), _t_w_curr.z()));
+  // Transform odometry from lidar frame to fcu frame
+  tf::Transform tf_lidar;
+  tf_lidar.setOrigin(tf::Vector3(_t_w_curr.x(), _t_w_curr.y(), _t_w_curr.z()));
   tf::Quaternion tf_q;
   tf::quaternionMsgToTF(ori, tf_q);
-  tf_tf.setRotation(tf_q);
-  tf_tf.stamp_          = stamp;
-  tf_tf.frame_id_       = _frame_odom;
-  tf_tf.child_frame_id_ = _frame_lidar;
+  tf_lidar.setRotation(tf_q);
 
   /*//{ Save odometry data to AloamMapping */
   pcl::PointCloud<PointType>::Ptr laserCloudTemp = corner_points_less_sharp;
@@ -373,7 +368,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   _features_surfs_last->header.frame_id   = _frame_lidar;
   laser_cloud_full_res->header.frame_id   = _frame_lidar;
 
-  _mapper->setData(tf_tf, _features_corners_last, _features_surfs_last, laser_cloud_full_res);
+  _mapper->setData(stamp, tf_lidar, _features_corners_last, _features_surfs_last, laser_cloud_full_res);
   /*//}*/
 
   /*//{ Publish odometry */
@@ -383,7 +378,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   tf_msg.header.stamp    = stamp;
   tf_msg.header.frame_id = _frame_lidar;
   tf_msg.child_frame_id  = _frame_odom;
-  tf::transformTFToMsg(tf_tf.inverse(), tf_msg.transform);
+  tf::transformTFToMsg(tf_lidar.inverse(), tf_msg.transform);
 
   try {
     _tf_broadcaster->sendTransform(tf_msg);
@@ -395,11 +390,11 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   // Publish nav_msgs::Odometry msg in odom frame
   if (_pub_odometry_local.getNumSubscribers() > 0) {
     nav_msgs::Odometry laser_odometry_msg;
+    laser_odometry_msg.header.stamp    = stamp;
     laser_odometry_msg.header.frame_id = _frame_odom;
     laser_odometry_msg.child_frame_id  = _frame_lidar;
-    laser_odometry_msg.header.stamp    = stamp;
-    tf::pointTFToMsg(tf_tf.getOrigin(), laser_odometry_msg.pose.pose.position);
-    tf::quaternionTFToMsg(tf_tf.getRotation(), laser_odometry_msg.pose.pose.orientation);
+    tf::pointTFToMsg(tf_lidar.getOrigin(), laser_odometry_msg.pose.pose.position);
+    tf::quaternionTFToMsg(tf_lidar.getRotation(), laser_odometry_msg.pose.pose.orientation);
 
     try {
       _pub_odometry_local.publish(laser_odometry_msg);

@@ -66,8 +66,8 @@ public:
 
   bool is_initialized = false;
 
-  void setData(tf::StampedTransform aloam_odometry, pcl::PointCloud<PointType>::Ptr laserCloudCornerLast, pcl::PointCloud<PointType>::Ptr laserCloudSurfLast,
-               pcl::PointCloud<PointType>::Ptr laserCloudFullRes);
+  void setData(ros::Time time_of_data, tf::Transform aloam_odometry, pcl::PointCloud<PointType>::Ptr laserCloudCornerLast,
+               pcl::PointCloud<PointType>::Ptr laserCloudSurfLast, pcl::PointCloud<PointType>::Ptr laserCloudFullRes);
 
 private:
   // member objects
@@ -81,7 +81,8 @@ private:
 
   // Feature extractor newest data
   bool                            _has_new_data = false;
-  tf::StampedTransform            _aloam_odometry;
+  ros::Time                       _time_aloam_odometry;
+  tf::Transform                   _aloam_odometry;
   pcl::PointCloud<PointType>::Ptr _features_corners_last;
   pcl::PointCloud<PointType>::Ptr _features_surfs_last;
   pcl::PointCloud<PointType>::Ptr _cloud_full_res;
