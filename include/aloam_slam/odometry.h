@@ -10,8 +10,8 @@ namespace aloam_slam
 class AloamOdometry {
 
 public:
-  AloamOdometry(const ros::NodeHandle &parent_nh, std::shared_ptr<mrs_lib::Profiler> profiler, std::shared_ptr<AloamMapping> mapper, std::string frame_lidar,
-                std::string frame_odom, float scan_period_sec, tf::Transform tf_lidar_to_fcu);
+  AloamOdometry(const ros::NodeHandle &parent_nh, std::shared_ptr<mrs_lib::Profiler> profiler, std::shared_ptr<AloamMapping> mapper, std::string frame_fcu,
+                std::string frame_lidar, std::string frame_odom, float scan_period_sec, tf::Transform tf_lidar_to_fcu);
 
   bool is_initialized = false;
 
@@ -26,7 +26,7 @@ private:
   std::shared_ptr<tf2_ros::TransformBroadcaster> _tf_broadcaster;
   ros::Timer                                     _timer_odometry_loop;
 
-  std::shared_ptr<mrs_lib::Transformer>         _transformer;
+  /* std::shared_ptr<mrs_lib::Transformer>         _transformer; */
   mrs_lib::SubscribeHandler<nav_msgs::Odometry> _sub_handler_orientation;
 
   pcl::PointCloud<PointType>::Ptr       _features_corners_last;
@@ -55,9 +55,9 @@ private:
   nav_msgs::Odometry _orientation_meas;
 
   // member variables
+  std::string _frame_fcu;
   std::string _frame_lidar;
   std::string _frame_odom;
-  std::string _frame_fcu;
 
   float _scan_period_sec;
 

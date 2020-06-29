@@ -5,12 +5,12 @@ namespace aloam_slam
 
 /*//{ AloamMapping() */
 AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, std::shared_ptr<mrs_lib::Profiler> profiler,
-                           std::string frame_fcu, std::string frame_map, float scan_frequency, tf::Transform tf_fcu_to_lidar)
+                           std::string frame_fcu, std::string frame_map, float scan_frequency, tf::Transform tf_lidar_to_fcu)
     : _profiler(profiler),
       _frame_fcu(frame_fcu),
       _frame_map(frame_map),
       _scan_frequency(scan_frequency),
-      _tf_fcu_to_lidar(tf_fcu_to_lidar),
+      _tf_lidar_to_fcu(tf_lidar_to_fcu),
       _q_w_curr(_parameters),
       _t_w_curr(_parameters + 4) {
 
@@ -46,6 +46,9 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
   if (_mapping_frequency > 0.0f) {
     _timer_mapping_loop = nh_.createTimer(ros::Rate(_mapping_frequency), &AloamMapping::timerMapping, this, false, true);
   }
+
+  _tf_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>();
+
   _time_last_map_publish = ros::Time::now();
 }
 /*//}*/
@@ -503,28 +506,42 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
   // Publish TF
   // TF fcu -> aloam origin (_t_w_curr and _q_w_curr is in origin -> fcu frame, hence inversion)
-  static tf::TransformBroadcaster br;
-  tf::Transform                   transform;
-  tf::Quaternion                  q;
-  transform.setOrigin(tf::Vector3(_t_w_curr(0), _t_w_curr(1), _t_w_curr(2)));
-  tf::quaternionEigenToTF(_q_w_curr, q);
-  transform.setRotation(q);
+  tf::Transform  tf_lidar;
+  tf::Quaternion tf_q;
+  tf_lidar.setOrigin(tf::Vector3(_t_w_curr(0), _t_w_curr(1), _t_w_curr(2)));
+  tf::quaternionEigenToTF(_q_w_curr, tf_q);
+  tf_lidar.setRotation(tf_q);
 
-  tf::Transform tf_fcu = transform * _tf_fcu_to_lidar;
-  br.sendTransform(tf::StampedTransform(tf_fcu.inverse(), time_aloam_odometry, _frame_fcu, _frame_map));
+  tf::Transform tf_fcu = tf_lidar * _tf_lidar_to_fcu;
+
+  geometry_msgs::TransformStamped tf_msg;
+  tf_msg.header.stamp    = time_aloam_odometry;
+  tf_msg.header.frame_id = _frame_fcu;
+  tf_msg.child_frame_id  = _frame_map;
+  tf::transformTFToMsg(tf_fcu.inverse(), tf_msg.transform);
+
+  try {
+    _tf_broadcaster->sendTransform(tf_msg);
+  }
+  catch (...) {
+    ROS_ERROR("[AloamMapping]: Exception caught during publishing TF: %s - %s.", tf_msg.child_frame_id.c_str(), tf_msg.header.frame_id.c_str());
+  }
 
   if (_pub_odom_global.getNumSubscribers() > 0 || _pub_path.getNumSubscribers() > 0) {
     // Publish nav_msgs::Odometry msg
     nav_msgs::Odometry fcu_odom_msg;
-    fcu_odom_msg.header.frame_id      = _frame_map;
-    fcu_odom_msg.header.stamp         = time_aloam_odometry;
-    fcu_odom_msg.child_frame_id       = _frame_fcu;
-    tf::Vector3 origin                = tf_fcu.getOrigin();
-    fcu_odom_msg.pose.pose.position.x = origin.x();
-    fcu_odom_msg.pose.pose.position.y = origin.y();
-    fcu_odom_msg.pose.pose.position.z = origin.z();
+    fcu_odom_msg.header.frame_id = _frame_map;
+    fcu_odom_msg.header.stamp    = time_aloam_odometry;
+    fcu_odom_msg.child_frame_id  = _frame_fcu;
+    tf::pointTFToMsg(tf_fcu.getOrigin(), fcu_odom_msg.pose.pose.position);
     tf::quaternionTFToMsg(tf_fcu.getRotation(), fcu_odom_msg.pose.pose.orientation);
-    _pub_odom_global.publish(fcu_odom_msg);
+
+    try {
+      _pub_odom_global.publish(fcu_odom_msg);
+    }
+    catch (...) {
+      ROS_ERROR("[AloamMapping]: Exception caught during publishing topic %s.", _pub_odom_global.getTopic().c_str());
+    }
 
     // Publish nav_msgs::Path msg
     geometry_msgs::PoseStamped fcu_pose_msg;
@@ -532,7 +549,12 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     fcu_pose_msg.pose      = fcu_odom_msg.pose.pose;
     _laser_path_msg.header = fcu_odom_msg.header;
     _laser_path_msg.poses.push_back(fcu_pose_msg);
-    _pub_path.publish(_laser_path_msg);
+    try {
+      _pub_path.publish(_laser_path_msg);
+    }
+    catch (...) {
+      ROS_ERROR("[AloamMapping]: Exception caught during publishing topic %s.", _pub_path.getTopic().c_str());
+    }
   }
 
   // Publish entire map
@@ -546,9 +568,14 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     pcl::toROSMsg(map_pcl, map_msg);
     map_msg.header.stamp    = time_aloam_odometry;
     map_msg.header.frame_id = _frame_map;
-    _pub_laser_cloud_map.publish(map_msg);
 
-    _time_last_map_publish = ros::Time::now();
+    try {
+      _pub_laser_cloud_map.publish(map_msg);
+      _time_last_map_publish = ros::Time::now();
+    }
+    catch (...) {
+      ROS_ERROR("[AloamMapping]: Exception caught during publishing topic %s.", _pub_laser_cloud_map.getTopic().c_str());
+    }
   }
 
   // Publish registered sensor data
@@ -564,11 +591,20 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     pcl::toROSMsg(*cloud_full_res, *cloud_full_res_msg);
     cloud_full_res_msg->header.stamp    = time_aloam_odometry;
     cloud_full_res_msg->header.frame_id = _frame_map;
-    _pub_laser_cloud_registered.publish(cloud_full_res_msg);
+
+    try {
+      _pub_laser_cloud_registered.publish(cloud_full_res_msg);
+    }
+    catch (...) {
+      ROS_ERROR("[AloamMapping]: Exception caught during publishing topic %s.", _pub_laser_cloud_registered.getTopic().c_str());
+    }
   }
 
   /*//}*/
 
+  _frame_count++;
+
+  // Print diagnostics
   float time_whole = t_whole.toc();
 
   ROS_INFO_THROTTLE(1.0, "[AloamMapping] Run time: %0.1f ms (%0.1f Hz)", time_whole, std::min(_mapping_frequency, 1000.0f / time_whole));
@@ -578,8 +614,6 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
       "publishing time: %0.1f ms; map -> association: %0.1f ms, solver: %0.1f ms, optimization: %0.1f ms, adding points: %0.1f ms, filtering: %0.1f ms",
       map_features_corners->points.size(), map_features_surfs->points.size(), time_shift, time_build_tree, t_pub.toc(), time_association, time_solver,
       time_optimization, time_add, time_filter);
-
-  _frame_count++;
 }
 /*//}*/
 

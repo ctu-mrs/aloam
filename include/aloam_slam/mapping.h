@@ -62,7 +62,7 @@ class AloamMapping {
 
 public:
   AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, std::shared_ptr<mrs_lib::Profiler> profiler, std::string frame_fcu,
-               std::string frame_map, float scan_frequency, tf::Transform tf_fcu_to_lidar);
+               std::string frame_map, float scan_frequency, tf::Transform tf_lidar_to_fcu);
 
   bool is_initialized = false;
 
@@ -72,6 +72,7 @@ public:
 private:
   // member objects
   std::shared_ptr<mrs_lib::Profiler> _profiler;
+  std::shared_ptr<tf2_ros::TransformBroadcaster> _tf_broadcaster;
 
   ros::Timer _timer_mapping_loop;
   ros::Time  _time_last_map_publish;
@@ -107,7 +108,7 @@ private:
   float _mapping_frequency;
   float _map_publish_period;
 
-  tf::Transform _tf_fcu_to_lidar;
+  tf::Transform _tf_lidar_to_fcu;
 
   double                         _parameters[7] = {0, 0, 0, 1, 0, 0, 0};
   Eigen::Map<Eigen::Quaterniond> _q_w_curr;
