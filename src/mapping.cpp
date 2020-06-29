@@ -51,7 +51,7 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
 /*//}*/
 
 /*//{ setData() */
-void AloamMapping::setData(nav_msgs::Odometry aloam_odometry, pcl::PointCloud<PointType>::Ptr features_corners_last,
+void AloamMapping::setData(tf::StampedTransform aloam_odometry, pcl::PointCloud<PointType>::Ptr features_corners_last,
                            pcl::PointCloud<PointType>::Ptr features_surfs_last, pcl::PointCloud<PointType>::Ptr cloud_full_res) {
 
   mrs_lib::Routine profiler_routine = _profiler->createRoutine("aloamMappingSetData");
@@ -82,7 +82,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     return;
   }
 
-  nav_msgs::Odometry              aloam_odometry;
+  tf::StampedTransform                   aloam_odometry;
   pcl::PointCloud<PointType>::Ptr features_corners_last;
   pcl::PointCloud<PointType>::Ptr features_surfs_last;
   pcl::PointCloud<PointType>::Ptr cloud_full_res;
@@ -98,13 +98,8 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
   mrs_lib::Routine profiler_routine = _profiler->createRoutine("timerMapping", _mapping_frequency, 0.1, event);
 
-  _q_wodom_curr.x() = aloam_odometry.pose.pose.orientation.x;
-  _q_wodom_curr.y() = aloam_odometry.pose.pose.orientation.y;
-  _q_wodom_curr.z() = aloam_odometry.pose.pose.orientation.z;
-  _q_wodom_curr.w() = aloam_odometry.pose.pose.orientation.w;
-  _t_wodom_curr.x() = aloam_odometry.pose.pose.position.x;
-  _t_wodom_curr.y() = aloam_odometry.pose.pose.position.y;
-  _t_wodom_curr.z() = aloam_odometry.pose.pose.position.z;
+  tf::vectorTFToEigen(aloam_odometry.getOrigin(), _t_wodom_curr);
+  tf::quaternionTFToEigen(aloam_odometry.getRotation(), _q_wodom_curr);
 
   /*//{ Associate odometry features to map features */
   TicToc t_whole;
@@ -399,7 +394,8 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
           bool planeValid = true;
           for (int j = 0; j < 5; j++) {
             // if OX * n > 0.2, then plane is not fit well
-            if (fabs(norm(0) * map_features_surfs->points.at(point_search_indices.at(j)).x + norm(1) * map_features_surfs->points.at(point_search_indices.at(j)).y +
+            if (fabs(norm(0) * map_features_surfs->points.at(point_search_indices.at(j)).x +
+                     norm(1) * map_features_surfs->points.at(point_search_indices.at(j)).y +
                      norm(2) * map_features_surfs->points.at(point_search_indices.at(j)).z + negative_OA_dot_norm) > 0.2) {
               planeValid = false;
               break;
@@ -426,7 +422,6 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
       ceres::Solver::Summary summary;
       ceres::Solve(options, &problem, &summary);
       time_solver += t_solver.toc();
-
     }
     time_optimization = t_opt.toc();
   } else {
@@ -502,7 +497,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   /*//{ Publish data */
 
   TicToc    t_pub;
-  ros::Time stamp = aloam_odometry.header.stamp;
+  ros::Time stamp = aloam_odometry.stamp_;
 
   // Publish TF
   // TF fcu -> aloam origin (_t_w_curr and _q_w_curr is in origin -> fcu frame, hence inversion)

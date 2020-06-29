@@ -24,6 +24,7 @@
 #include <tf/transform_datatypes.h>
 #include <tf/transform_broadcaster.h>
 #include <tf_conversions/tf_eigen.h>
+#include <tf2_ros/transform_broadcaster.h>
 
 #include <eigen3/Eigen/Dense>
 #include <eigen_conversions/eigen_msg.h>
@@ -65,7 +66,7 @@ public:
 
   bool is_initialized = false;
 
-  void setData(nav_msgs::Odometry aloam_odometry, pcl::PointCloud<PointType>::Ptr laserCloudCornerLast, pcl::PointCloud<PointType>::Ptr laserCloudSurfLast,
+  void setData(tf::StampedTransform aloam_odometry, pcl::PointCloud<PointType>::Ptr laserCloudCornerLast, pcl::PointCloud<PointType>::Ptr laserCloudSurfLast,
                pcl::PointCloud<PointType>::Ptr laserCloudFullRes);
 
 private:
@@ -80,7 +81,7 @@ private:
 
   // Feature extractor newest data
   bool                            _has_new_data = false;
-  nav_msgs::Odometry              _aloam_odometry;
+  tf::StampedTransform            _aloam_odometry;
   pcl::PointCloud<PointType>::Ptr _features_corners_last;
   pcl::PointCloud<PointType>::Ptr _features_surfs_last;
   pcl::PointCloud<PointType>::Ptr _cloud_full_res;

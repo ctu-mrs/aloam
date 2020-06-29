@@ -3,13 +3,15 @@
 
 #include "aloam_slam/mapping.h"
 
+#include <mrs_lib/subscribe_handler.h>
+
 namespace aloam_slam
 {
 class AloamOdometry {
 
 public:
   AloamOdometry(const ros::NodeHandle &parent_nh, std::shared_ptr<mrs_lib::Profiler> profiler, std::shared_ptr<AloamMapping> mapper, std::string frame_lidar,
-                std::string frame_map, float scan_period_sec, tf::Transform tf_lidar_to_fcu);
+                std::string frame_odom, float scan_period_sec, tf::Transform tf_lidar_to_fcu);
 
   bool is_initialized = false;
 
@@ -19,10 +21,13 @@ public:
 
 private:
   // member objects
-  std::shared_ptr<mrs_lib::Profiler> _profiler;
-  std::shared_ptr<AloamMapping> _mapper;
-  ros::Subscriber               _sub_orientation_meas;
-  ros::Timer                    _timer_odometry_loop;
+  std::shared_ptr<mrs_lib::Profiler>             _profiler;
+  std::shared_ptr<AloamMapping>                  _mapper;
+  std::shared_ptr<tf2_ros::TransformBroadcaster> _tf_broadcaster;
+  ros::Timer                                     _timer_odometry_loop;
+
+  std::shared_ptr<mrs_lib::Transformer>         _transformer;
+  mrs_lib::SubscribeHandler<nav_msgs::Odometry> _sub_handler_orientation;
 
   pcl::PointCloud<PointType>::Ptr       _features_corners_last;
   pcl::PointCloud<PointType>::Ptr       _features_surfs_last;
@@ -44,7 +49,6 @@ private:
   ros::Publisher _pub_odometry_local;
 
   // mutexes
-  std::mutex _mutex_orientation_meas;
   std::mutex _mutex_features_data;
 
   // ROS msgs
@@ -52,15 +56,14 @@ private:
 
   // member variables
   std::string _frame_lidar;
-  std::string _frame_map;
+  std::string _frame_odom;
+  std::string _frame_fcu;
 
   float _scan_period_sec;
 
   long int _frame_count = 0;
 
   tf::Transform _tf_lidar_to_fcu;
-
-  bool _got_orientation_meas = false;
 
   double                         _para_q[4] = {0, 0, 0, 1};
   double                         _para_t[3] = {0, 0, 0};
@@ -77,9 +80,6 @@ private:
 
   void TransformToStart(PointType const *const pi, PointType *const po);
   void TransformToEnd(PointType const *const pi, PointType *const po);
-
-  // callbacks
-  void callbackOrientationMeas(const nav_msgs::OdometryConstPtr &msg);
 };
 }  // namespace aloam_slam
 #endif

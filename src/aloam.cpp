@@ -44,6 +44,7 @@ void AloamSlam::onInit() {
   std::string   uav_name;
   std::string   frame_lidar;
   std::string   frame_fcu;
+  std::string   frame_odom;
   std::string   frame_map;
   float         frequency;
   tf::Transform tf_lidar_in_fcu_frame;
@@ -53,6 +54,7 @@ void AloamSlam::onInit() {
   param_loader.loadParam("uav_name", uav_name);
   param_loader.loadParam("lidar_frame", frame_lidar);
   param_loader.loadParam("fcu_frame", frame_fcu);
+  param_loader.loadParam("odom_frame", frame_odom);
   param_loader.loadParam("map_frame", frame_map);
   param_loader.loadParam("sensor_frequency", frequency);
   param_loader.loadParam("verbose", verbose, false);

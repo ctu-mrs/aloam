@@ -6,11 +6,11 @@ namespace aloam_slam
 
 /* //{ AloamOdometry() */
 AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::shared_ptr<mrs_lib::Profiler> profiler, std::shared_ptr<AloamMapping> mapper,
-                             std::string frame_lidar, std::string frame_map, float scan_period_sec, tf::Transform tf_lidar_to_fcu)
+                             std::string frame_lidar, std::string frame_odom, float scan_period_sec, tf::Transform tf_lidar_to_fcu)
     : _profiler(profiler),
       _mapper(mapper),
       _frame_lidar(frame_lidar),
-      _frame_map(frame_map),
+      _frame_odom(frame_odom),
       _scan_period_sec(scan_period_sec),
       _tf_lidar_to_fcu(tf_lidar_to_fcu),
       _q_last_curr(_para_q),
@@ -19,6 +19,11 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::shared_ptr<m
   ros::NodeHandle nh_(parent_nh);
 
   // Objects initialization
+  _tf_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>();
+  _transformer    = std::make_shared<mrs_lib::Transformer>("AloamOdometry", "uav1");
+  _frame_odom     = "uav1/aloam_odom_origin";
+  _frame_fcu      = "uav1/fcu";
+
   _features_corners_last = boost::make_shared<pcl::PointCloud<PointType>>();
   _features_surfs_last   = boost::make_shared<pcl::PointCloud<PointType>>();
   _kdtree_corners_last   = boost::make_shared<pcl::KdTreeFLANN<pcl::PointXYZI>>();
@@ -27,7 +32,13 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::shared_ptr<m
   _q_w_curr = Eigen::Quaterniond(1, 0, 0, 0);  // eigen has qw, qx, qy, qz notation
   _t_w_curr = Eigen::Vector3d(0, 0, 0);
 
-  _sub_orientation_meas = nh_.subscribe("orientation_in", 1, &AloamOdometry::callbackOrientationMeas, this, ros::TransportHints().tcpNoDelay());
+
+  mrs_lib::SubscribeHandlerOptions shopts;
+  shopts.nh         = nh_;
+  shopts.node_name  = "AloamOdometry";
+  shopts.threadsafe = true;
+
+  _sub_handler_orientation = mrs_lib::SubscribeHandler<nav_msgs::Odometry>(shopts, "orientation_in", ros::Duration(0.5));
 
   _pub_odometry_local = nh_.advertise<nav_msgs::Odometry>("odom_local_out", 1);
 
@@ -283,46 +294,66 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
 
   TicToc t_pub;
 
-  /*//{ Correct orientation using mavros*/
-
   geometry_msgs::Quaternion ori;
-  bool                      got_orientation_meas = false;
-  {
-    std::scoped_lock lock(_mutex_orientation_meas);
-    if (_got_orientation_meas && (_orientation_meas.header.stamp - stamp).toSec() < 0.5) {
-      got_orientation_meas = true;
-      ori                  = _orientation_meas.pose.pose.orientation;
-    }
-  }
+  tf::quaternionEigenToMsg(_q_w_curr, ori);
 
-  if (got_orientation_meas) {
-    mrs_lib::AttitudeConverter attitude_mavros(ori);
-    mrs_lib::AttitudeConverter attitude_aloam(_q_w_curr);
+  /*//{ TODO: Correct orientation using inertial measurements */
 
-    // Transform mavros attitude (fcu frame) to lidar frame
-    tf::Vector3 rpy = tf::quatRotate(_tf_lidar_to_fcu.getRotation(), tf::Vector3(attitude_mavros.getRoll(), attitude_mavros.getPitch(), 0));
-    ori             = tf::createQuaternionMsgFromRollPitchYaw(rpy.x(), rpy.y(), attitude_aloam.getHeading());
+  /* if (_sub_handler_orientation.hasMsg()) { */
+  /*   auto odom_msg = _sub_handler_orientation.getMsg(); */
 
-    /* ROS_WARN("Lidar orientation: (%0.2f, %0.2f, %0.2f), odom orientation: (%0.2f, %0.2f, %0.2f)", rpy.x(), rpy.y(), rpy.z(), attitude_aloam.getRoll(), */
-    /* attitude_aloam.getPitch(), attitude_aloam.getHeading()); */
-  } else {
-    tf::quaternionEigenToMsg(_q_w_curr, ori);
-  }
+  /*   // Find transform from control frame to aloam map frame */
+  /*   auto ret = _transformer->getTransform(_frame_map, odom_msg->header.frame_id, stamp); */
+
+  /*   if (ret) { */
+  /*     tf::Quaternion control_to_map_att; */
+  /*     tf::Quaternion fcu_in_control_att; */
+
+  /*     // Get rotation transform from control frame to the aloam map frame */
+  /*     tf::quaternionMsgToTF(ret.value().getTransform().transform.rotation, control_to_map_att); */
+  /*     /1* std::cout << "gps -> aloam: " << ret.value().getTransform().transform << std::endl; *1/ */
+  /*     ROS_INFO("%0.2f %0.2f %0.2f %0.2f", control_to_map_att.x(), control_to_map_att.y(), control_to_map_att.z(), control_to_map_att.w()); */
+
+  /*     // Get attitude given by orientation from odometry */
+  /*     tf::quaternionMsgToTF(odom_msg->pose.pose.orientation, fcu_in_control_att); */
+
+  /*     // Transform the odometry attitude to aloam map frame */
+  /*     tf::Quaternion fcu_in_map_att = control_to_map_att * fcu_in_control_att; */
+
+  /*     // Transform measured fcu odom to lidar odom */
+  /*     mrs_lib::AttitudeConverter lidar_in_map_meas_att = fcu_in_map_att * _tf_lidar_to_fcu.getRotation(); */
+  /*     // Set measured lidar odom roll/pitch to the estimated aloam attitude */
+  /*     mrs_lib::AttitudeConverter lidar_in_map_esti_att = _q_w_curr; */
+  /*     lidar_in_map_meas_att.setHeading(lidar_in_map_esti_att.getHeading()); */
+
+  /*     tf::quaternionTFToMsg(lidar_in_map_meas_att, ori); */
+
+  /*     mrs_lib::AttitudeConverter ac_fcu_in_map     = fcu_in_map_att; */
+  /*     mrs_lib::AttitudeConverter ac_control_to_map = control_to_map_att; */
+  /*     mrs_lib::AttitudeConverter ac_fcu_in_control = fcu_in_control_att; */
+  /*     ROS_INFO("control to map:   %0.2f %0.2f %0.2f", ac_control_to_map.getRoll(), ac_control_to_map.getPitch(), ac_control_to_map.getHeading()); */
+  /*     ROS_INFO("fcu in control:   %0.2f %0.2f %0.2f", ac_fcu_in_control.getRoll(), ac_fcu_in_control.getPitch(), ac_fcu_in_control.getHeading()); */
+  /*     ROS_INFO("fcu in map:       %0.2f %0.2f %0.2f", ac_fcu_in_map.getRoll(), ac_fcu_in_map.getPitch(), ac_fcu_in_map.getHeading()); */
+  /*     ROS_INFO("measured  in map: %0.2f %0.2f %0.2f", lidar_in_map_meas_att.getRoll(), lidar_in_map_meas_att.getPitch(), lidar_in_map_meas_att.getHeading());
+   */
+  /*     ROS_INFO("estimated in map: %0.2f %0.2f %0.2f", lidar_in_map_esti_att.getRoll(), lidar_in_map_esti_att.getPitch(), lidar_in_map_esti_att.getHeading());
+   */
+  /*   } */
+  /* } */
 
   /*//}*/
 
-  /*//{ Publish local odometry */
+  // Create TF transform
+  tf::StampedTransform tf_tf;
+  tf_tf.setOrigin(tf::Vector3(_t_w_curr.x(), _t_w_curr.y(), _t_w_curr.z()));
+  tf::Quaternion tf_q;
+  tf::quaternionMsgToTF(ori, tf_q);
+  tf_tf.setRotation(tf_q);
+  tf_tf.stamp_          = stamp;
+  tf_tf.frame_id_       = _frame_odom;
+  tf_tf.child_frame_id_ = _frame_lidar;
 
-  // Publish odometry as PoseStamped
-  nav_msgs::Odometry laser_odometry_msg;
-  laser_odometry_msg.header.frame_id = _frame_map;
-  laser_odometry_msg.header.stamp    = stamp;
-  laser_odometry_msg.child_frame_id  = _frame_lidar;
-
-  tf::pointEigenToMsg(_t_w_curr, laser_odometry_msg.pose.pose.position);
-  laser_odometry_msg.pose.pose.orientation = ori;
-  _pub_odometry_local.publish(laser_odometry_msg);
-
+  /*//{ Save odometry data to AloamMapping */
   pcl::PointCloud<PointType>::Ptr laserCloudTemp = corner_points_less_sharp;
   corner_points_less_sharp                       = _features_corners_last;
   _features_corners_last                         = laserCloudTemp;
@@ -342,18 +373,53 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   _features_surfs_last->header.frame_id   = _frame_lidar;
   laser_cloud_full_res->header.frame_id   = _frame_lidar;
 
+  _mapper->setData(tf_tf, _features_corners_last, _features_surfs_last, laser_cloud_full_res);
+  /*//}*/
+
+  /*//{ Publish odometry */
+
+  // Publish inverse TF transform (lidar -> odom)
+  geometry_msgs::TransformStamped tf_msg;
+  tf_msg.header.stamp    = stamp;
+  tf_msg.header.frame_id = _frame_lidar;
+  tf_msg.child_frame_id  = _frame_odom;
+  tf::transformTFToMsg(tf_tf.inverse(), tf_msg.transform);
+
+  try {
+    _tf_broadcaster->sendTransform(tf_msg);
+  }
+  catch (...) {
+    ROS_ERROR("[AloamOdometry]: Exception caught during publishing TF: %s - %s.", tf_msg.child_frame_id.c_str(), tf_msg.header.frame_id.c_str());
+  }
+
+  // Publish nav_msgs::Odometry msg in odom frame
+  if (_pub_odometry_local.getNumSubscribers() > 0) {
+    nav_msgs::Odometry laser_odometry_msg;
+    laser_odometry_msg.header.frame_id = _frame_odom;
+    laser_odometry_msg.child_frame_id  = _frame_lidar;
+    laser_odometry_msg.header.stamp    = stamp;
+    tf::pointTFToMsg(tf_tf.getOrigin(), laser_odometry_msg.pose.pose.position);
+    tf::quaternionTFToMsg(tf_tf.getRotation(), laser_odometry_msg.pose.pose.orientation);
+
+    try {
+      _pub_odometry_local.publish(laser_odometry_msg);
+    }
+    catch (...) {
+      ROS_ERROR("[AloamOdometry]: Exception caught during publishing topic %s.", _pub_odometry_local.getTopic().c_str());
+    }
+  }
+
+  /*//}*/
+
+  _frame_count++;
+
+  // Print diagnostics
   float time_whole = t_whole.toc();
   ROS_INFO_THROTTLE(1.0, "[AloamOdometry] Run time: %0.1f ms (%0.1f Hz)", time_whole, std::min(1.0f / _scan_period_sec, 1000.0f / time_whole));
   ROS_DEBUG_THROTTLE(1.0,
                      "[AloamOdometry] feature registration: %0.1f ms; solver time: %0.1f ms; double optimization time: %0.1f ms; publishing time: %0.1f ms",
                      time_data_association, time_solver, time_opt, t_pub.toc());
   ROS_WARN_COND(time_whole > _scan_period_sec * 1000.0f, "[AloamOdometry] Odometry process took over %0.2f ms", _scan_period_sec * 1000.0f);
-
-  _mapper->setData(laser_odometry_msg, _features_corners_last, _features_surfs_last, laser_cloud_full_res);
-
-  /*//}*/
-
-  _frame_count++;
 }
 /*//}*/
 
@@ -410,22 +476,6 @@ void AloamOdometry::TransformToEnd(PointType const *const pi, PointType *const p
 
   // Remove distortion time info
   po->intensity = int(pi->intensity);
-}
-/*//}*/
-
-/*//{ callbackOrientationMeas() */
-void AloamOdometry::callbackOrientationMeas(const nav_msgs::OdometryConstPtr &msg) {
-  if (!is_initialized) {
-    return;
-  }
-
-  mrs_lib::Routine profiler_routine = _profiler->createRoutine("callbackOrientationMeas");
-
-  ROS_INFO_ONCE("[AloamOdometry] Received first message with orientation measurement.");
-
-  std::scoped_lock lock(_mutex_orientation_meas);
-  _got_orientation_meas = true;
-  _orientation_meas     = *msg;
 }
 /*//}*/
 
