@@ -1,9 +1,22 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(aloam_velodyne)
+project(aloam_slam)
 
-set(CMAKE_BUILD_TYPE "Release")
-set(CMAKE_CXX_FLAGS "-std=c++11")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall -g")
+
+set(CMAKE_CXX_FLAGS "-g -O3 -DEIGEN_INITIALIZE_MATRICES_BY_NAN -DDEBUG_PARAMS")
+set(CMAKE_CXX_FLAGS_DEBUG "-g -O3 -DEIGEN_INITIALIZE_MATRICES_BY_NAN -DDEBUG_PARAMS")
+set(CMAKE_CXX_FLAGS_RELEASE "-Werror -O3 -g -O0 -DEIGEN_INITIALIZE_MATRICES_BY_NAN -DDEBUG_PARAMS")
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-g -O3")
+# set(CMAKE_CXX_FLAGS "-g -O0 -DEIGEN_INITIALIZE_MATRICES_BY_NAN -DDEBUG_PARAMS")
+# set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DEIGEN_INITIALIZE_MATRICES_BY_NAN -DDEBUG_PARAMS")
+# set(CMAKE_CXX_FLAGS_RELEASE "-g -O0 -DEIGEN_INITIALIZE_MATRICES_BY_NAN -DDEBUG_PARAMS")
+# set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-g -O0 -DEIGEN_INITIALIZE_MATRICES_BY_NAN -DDEBUG_PARAMS")
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+add_compile_options("-Wall")
+add_compile_options("-Wextra")
 
 find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
@@ -16,33 +29,52 @@ find_package(catkin REQUIRED COMPONENTS
   image_transport
   cv_bridge
   tf
+  mrs_lib
+  eigen_conversions
+  tf_conversions
+  nodelet
+  pcl_ros
+  os1_driver
 )
 
-#find_package(Eigen3 REQUIRED)
-find_package(PCL REQUIRED)
+find_package(PCL REQUIRED COMPONENTS)
 find_package(OpenCV REQUIRED)
 find_package(Ceres REQUIRED)
+
+find_package(Eigen3 REQUIRED)
+set(Eigen_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIRS})
+set(Eigen_LIBRARIES ${Eigen_LIBRARIES})
+
+catkin_package(
+  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs mrs_lib eigen_conversions tf_conversions pcl_ros
+)
 
 include_directories(
   include
 	${catkin_INCLUDE_DIRS} 
 	${PCL_INCLUDE_DIRS}
   ${CERES_INCLUDE_DIRS}
-  ${OpenCV_INCLUDE_DIRS})
+  ${OpenCV_INCLUDE_DIRS}
+  ${Eigen_INCLUDE_DIRS}
+  )
 
-catkin_package(
-  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs
-  DEPENDS EIGEN3 PCL 
-  INCLUDE_DIRS include
+link_directories(
+  ${PCL_LIBRARY_DIRS}
+)
+add_definitions(
+  ${PCL_DEFINITIONS}
 )
 
+add_library(AloamSlam src/aloam.cpp src/odometry.cpp src/mapping.cpp src/feature_extractor.cpp)
 
-add_executable(ascanRegistration src/scanRegistration.cpp)
-target_link_libraries(ascanRegistration ${catkin_LIBRARIES} ${PCL_LIBRARIES})
+add_dependencies(AloamSlam
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+  )
 
-add_executable(alaserOdometry src/laserOdometry.cpp)
-target_link_libraries(alaserOdometry ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${CERES_LIBRARIES})
-
-add_executable(alaserMapping src/laserMapping.cpp)
-target_link_libraries(alaserMapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${CERES_LIBRARIES})
-
+target_link_libraries(AloamSlam
+  ${catkin_LIBRARIES}
+  ${PCL_LIBRARIES}
+  ${Eigen_LIBRARIES}
+  ${CERES_LIBRARIES}
+  )

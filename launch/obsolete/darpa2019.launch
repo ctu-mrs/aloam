@@ -1,0 +1,151 @@
+<launch>
+
+  <!-- DEFAULT PARAMETERS AND FRAMES -->
+  <arg name="RUN_TYPE" default="$(env RUN_TYPE)" />
+  <arg name="uav_name" default="$(env UAV_NAME)" />
+  <arg name="fcu_frame" default="$(arg uav_name)/fcu"/>
+  <arg name="sensor_frame" default="$(arg uav_name)/os1_sensor"/>
+  <arg name="lidar_frame" default="$(arg uav_name)/os1_lidar"/>
+  <arg name="map_frame" default="$(arg uav_name)/aloam_origin"/>
+
+  <!-- OUSTER PARAMETERS -->
+  <arg name="vertical_fov" default="33.2" />
+  <arg name="frequency" default="10.0" />
+  <arg name="publish_lidar_2d" default="false" />
+  <arg name="cable_front" default="false"/>
+
+  <!-- DATA PROCESSING PARAMETERS -->
+  <arg name="custom_preprocessing" default="false" />
+  <arg name="min_range" default="0.25" />
+  <arg name="max_range" default="30.0" />
+  <arg name="filter/intensity/value" default="100.0" />
+  <arg name="filter/intensity/range" default="10.0" />
+
+  <!-- MAP BUILDER PARAMETERS -->
+  <arg name="map_builder" default="false" />
+  <arg name="map_builder/add_free_space_ray_len" default="3.0" />
+  <arg name="map_builder/resolution" default="0.20" />
+  <arg name="map_builder/alpha/occupied" default="1.0" />
+  <arg name="map_builder/alpha/free" default="1.0" />
+  <arg name="map_builder/sensor_model/p_hit" default="0.90" />
+  <arg name="map_builder/sensor_model/p_miss" default="0.40" />
+  <arg name="map_builder/sensor_model/clamp_min" default="0.3" />
+  <arg name="map_builder/sensor_model/clamp_max" default="0.9" />
+
+  <!-- LAUNCH PARAMETERS -->
+  <arg name="standalone" default="$(optenv STANDALONE_LOCALIZATION true)" />
+  <arg name="debug" default="$(optenv DEBUG false)" />
+  <arg     if="$(eval arg('standalone') or arg('debug'))" name="nodelet" value="standalone" />
+  <arg unless="$(eval arg('standalone') or arg('debug'))" name="nodelet" value="load" />
+  <arg     if="$(eval arg('standalone') or arg('debug'))" name="nodelet_manager" value="" />
+  <arg unless="$(eval arg('standalone') or arg('debug'))" name="nodelet_manager" value="$(arg uav_name)_ouster_nodelet_manager" />
+  <arg unless="$(arg debug)" name="launch_prefix" value=""/>
+  <arg     if="$(arg debug)" name="launch_prefix" value="gdb -ex run --args"/>
+
+  <!-- TOPICS THROTTLE -->
+  <arg name="throttle" default="true" />
+  <arg name="throttle/ouster/raw" default="2.0" />
+  <arg name="throttle/ouster/scan" default="0.1" />
+  <arg name="throttle/ouster/processed" default="2.0" />
+  <arg name="throttle/ouster/over_max_range" default="0.5" />
+  <arg name="throttle/map/occupied" default="0.2" />
+  <arg name="throttle/map/free" default="0.2" />
+  <arg name="throttle/aloam/path" default="1.0" />
+
+  <!-- NODELET MANAGER -->
+  <group ns="$(arg uav_name)" if="$(eval arg('standalone') == 0)">
+    <node pkg="nodelet" type="nodelet" name="$(arg nodelet_manager)" args="manager" output="screen" launch-prefix="$(arg launch_prefix)">
+      <param name="num_worker_threads" value="8" />
+    </node>
+  </group>
+
+  <!-- OUSTER NODE -->
+  <include if="$(eval arg('RUN_TYPE') == 'uav')" file="$(find os1_driver)/launch/uav.launch">
+    <arg name="nodelet" value="$(arg nodelet)" />
+    <arg name="nodelet_manager" value="$(arg nodelet_manager)" />
+    <arg name="launch_prefix" value="$(arg launch_prefix)" />
+    
+    <arg name="fcu_frame" value="$(arg fcu_frame)" />
+    <arg name="sensor_frame" value="$(arg sensor_frame)" />
+
+    <arg name="publish_lidar_2d" value="$(arg publish_lidar_2d)" />
+
+    <arg name="cable_front" value="$(arg cable_front)" />
+  </include>
+
+  <!-- DATA PROCESSING NODE -->
+  <include if="$(arg custom_preprocessing)" file="$(find aloam_slam)/launch/data_processing.launch">
+    <arg name="nodelet" value="$(arg nodelet)" />
+    <arg name="nodelet_manager" value="$(arg nodelet_manager)" />
+    <arg name="launch_prefix" value="$(arg launch_prefix)" />
+
+    <arg name="uav_name" value="$(arg uav_name)" />
+
+    <arg name="ouster_republish" value="true" />
+    <arg name="ouster_min_range" value="$(arg min_range)" />
+    <arg name="ouster_max_range" value="$(arg max_range)" />
+
+    <arg if="$(eval arg('RUN_TYPE') == 'uav')" name="ouster_filter_intensity_thrd" value="$(arg filter/intensity/value)" />
+    <arg unless="$(eval arg('RUN_TYPE') == 'uav')" name="ouster_filter_intensity_thrd" value="0" />
+    <arg if="$(eval arg('RUN_TYPE') == 'uav')" name="ouster_filter_intensity_range" value="$(arg filter/intensity/range)" />
+    <arg unless="$(eval arg('RUN_TYPE') == 'uav')" name="ouster_filter_intensity_range" value="0.0" />
+
+    <arg name="realsense_republish" value="false" />
+    <arg name="rplidar_republish" value="false" />
+  </include>
+
+  <!-- MAP BUILDER -->
+  <include if="$(arg map_builder)" file="$(find aloam_slam)/launch/map_builder.launch">
+    <arg name="nodelet" value="$(arg nodelet)" />
+    <arg name="nodelet_manager" value="$(arg nodelet_manager)" />
+    <arg name="launch_prefix" value="$(arg launch_prefix)" />
+
+    <arg name="uav_name" value="$(arg uav_name)" />
+    <arg name="map_frame" value="$(arg map_frame)" />
+
+    <arg name="pointcloud2_in" value="/$(arg uav_name)/aloam_mapping/sensor_cloud_registered" />
+    <arg name="pointcloud2_over_max_range_in" value="/$(arg uav_name)/os1_cloud_node/points_over_max_range" />
+
+    <arg name="add_free_space_ray_len" value="$(arg map_builder/add_free_space_ray_len)" />
+    <arg name="resolution" value="$(arg map_builder/resolution)" />
+    <arg name="alpha_occupied" value="$(arg map_builder/alpha/occupied)" />
+    <arg name="alpha_free" value="$(arg map_builder/alpha/free)" />
+    <arg name="sensor_model_hit" value="$(arg map_builder/sensor_model/p_hit)" />
+    <arg name="sensor_model_miss" value="$(arg map_builder/sensor_model/p_miss)" />
+    <arg name="sensor_model_min" value="$(arg map_builder/sensor_model/clamp_min)" />
+    <arg name="sensor_model_max" value="$(arg map_builder/sensor_model/clamp_max)" />
+  </include>
+
+  <!-- ALOAM NODE -->
+  <include file="$(find aloam_slam)/launch/aloam.launch">
+    <arg name="nodelet" value="$(arg nodelet)" />
+    <arg name="nodelet_manager" value="$(arg nodelet_manager)" />
+    <arg name="launch_prefix" value="$(arg launch_prefix)" />
+
+    <arg name="uav_name" value="$(arg uav_name)" />
+    <arg name="fcu_frame" value="$(arg fcu_frame)" />
+    <arg name="lidar_frame" value="$(arg lidar_frame)" />
+    <arg name="map_frame" value="$(arg map_frame)" />
+
+    <arg name="vertical_fov" value="$(arg vertical_fov)" />
+    <arg name="frequency" value="$(arg frequency)" />
+
+    <arg name="custom_preprocessing" value="$(arg custom_preprocessing)" />
+    <arg name="min_range" value="$(arg min_range)" />
+    <arg name="max_range" value="$(arg max_range)" />
+  </include>
+
+  <!-- TOPICS THROTTLE -->
+  <group ns="$(arg uav_name)" if="$(arg throttle)">
+    <node name="ouster_throttler" type="throttle" pkg="topic_tools" args="messages /$(arg uav_name)/os1_cloud_node/points $(arg throttle/ouster/raw) /$(arg uav_name)/os1_cloud_node/points/throttled" />
+    <node name="ouster_scan_throttler" type="throttle" pkg="topic_tools" args="messages /$(arg uav_name)/os1_cloud_node/scan $(arg throttle/ouster/scan) /$(arg uav_name)/os1_cloud_node/scan/throttled" />
+    <node name="ouster_processed_throttler" type="throttle" pkg="topic_tools" args="messages /$(arg uav_name)/os1_cloud_node/points_processed $(arg throttle/ouster/processed) /$(arg uav_name)/os1_cloud_node/points_processed/throttled" />
+    <node name="ouster_over_max_range_throttler" type="throttle" pkg="topic_tools" args="messages /$(arg uav_name)/os1_cloud_node/points_over_max_range $(arg throttle/ouster/over_max_range) /$(arg uav_name)/os1_cloud_node/points_over_max_range/throttled" />
+
+    <node name="map_occupied_throttler" type="throttle" pkg="topic_tools" args="messages /$(arg uav_name)/occupied_cells_vis_array $(arg throttle/map/occupied) /$(arg uav_name)/map/occupied/throttled" />
+    <node name="map_free_throttler" type="throttle" pkg="topic_tools" args="messages /$(arg uav_name)/free_cells_vis_array $(arg throttle/map/free) /$(arg uav_name)/map/free/throttled" />
+    
+    <node name="aloam_path_throttler" type="throttle" pkg="topic_tools" args="messages /$(arg uav_name)/aloam_mapping/aft_mapped_path $(arg throttle/aloam/path) /$(arg uav_name)/aloam_mapping/aft_mapped_path/throttled" />
+  </group>
+
+</launch>
