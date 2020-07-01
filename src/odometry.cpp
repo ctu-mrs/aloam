@@ -5,10 +5,10 @@ namespace aloam_slam
 {
 
 /* //{ AloamOdometry() */
-AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::shared_ptr<mrs_lib::Profiler> profiler, std::shared_ptr<AloamMapping> mapper,
+AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::shared_ptr<mrs_lib::Profiler> profiler, std::shared_ptr<AloamMapping> aloam_mapping,
                              std::string frame_fcu, std::string frame_lidar, std::string frame_odom, float scan_period_sec, tf::Transform tf_lidar_to_fcu)
     : _profiler(profiler),
-      _mapper(mapper),
+      _aloam_mapping(aloam_mapping),
       _frame_fcu(frame_fcu),
       _frame_lidar(frame_lidar),
       _frame_odom(frame_odom),
@@ -21,12 +21,12 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::shared_ptr<m
 
   // Objects initialization
   _tf_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>();
-  /* _transformer    = std::make_shared<mrs_lib::Transformer>("AloamOdometry", "uav1"); */
 
-  _features_corners_last = boost::make_shared<pcl::PointCloud<PointType>>();
-  _features_surfs_last   = boost::make_shared<pcl::PointCloud<PointType>>();
-  _kdtree_corners_last   = boost::make_shared<pcl::KdTreeFLANN<pcl::PointXYZI>>();
-  _kdtree_surfs_last     = boost::make_shared<pcl::KdTreeFLANN<pcl::PointXYZI>>();
+  {
+    std::scoped_lock lock(_mutex_odometry_process);
+    _features_corners_last = boost::make_shared<pcl::PointCloud<PointType>>();
+    _features_surfs_last   = boost::make_shared<pcl::PointCloud<PointType>>();
+  }
 
   _q_w_curr = Eigen::Quaterniond(1, 0, 0, 0);  // eigen has qw, qx, qy, qz notation
   _t_w_curr = Eigen::Vector3d(0, 0, 0);
@@ -54,7 +54,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   /*//{ Load latest features */
   bool has_new_data;
   {
-    std::scoped_lock lock(_mutex_features_data);
+    std::scoped_lock lock(_mutex_extracted_features);
     has_new_data = _has_new_data;
   }
 
@@ -68,7 +68,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   pcl::PointCloud<PointType>::Ptr surf_points_less_flat;
   pcl::PointCloud<PointType>::Ptr laser_cloud_full_res;
   {
-    std::scoped_lock lock(_mutex_features_data);
+    std::scoped_lock lock(_mutex_extracted_features);
     _has_new_data            = false;
     corner_points_sharp      = _corner_points_sharp;
     corner_points_less_sharp = _corner_points_less_sharp;
@@ -92,8 +92,16 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   float time_opt              = 0.0f;
 
   if (_frame_count > 0) {
+    std::scoped_lock lock(_mutex_odometry_process);
+
     int cornerPointsSharpNum = corner_points_sharp->points.size();
     int surfPointsFlatNum    = surf_points_flat->points.size();
+
+    pcl::KdTreeFLANN<pcl::PointXYZI> _kdtree_corners_last;
+    pcl::KdTreeFLANN<pcl::PointXYZI> _kdtree_surfs_last;
+
+    _kdtree_corners_last.setInputCloud(_features_corners_last);
+    _kdtree_surfs_last.setInputCloud(_features_surfs_last);
 
     TicToc t_opt;
     for (size_t opti_counter = 0; opti_counter < 2; ++opti_counter) {
@@ -118,7 +126,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
       // find correspondence for corner features
       for (int i = 0; i < cornerPointsSharpNum; ++i) {
         TransformToStart(&(corner_points_sharp->points.at(i)), &pointSel);
-        _kdtree_corners_last->nearestKSearch(pointSel, 1, pointSearchInd, pointSearchSqDis);
+        _kdtree_corners_last.nearestKSearch(pointSel, 1, pointSearchInd, pointSearchSqDis);
 
         int closestPointInd = -1, minPointInd2 = -1;
         if (pointSearchSqDis.at(0) < DISTANCE_SQ_THRESHOLD) {
@@ -191,7 +199,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
       // find correspondence for plane features
       for (int i = 0; i < surfPointsFlatNum; ++i) {
         TransformToStart(&(surf_points_flat->points.at(i)), &pointSel);
-        _kdtree_surfs_last->nearestKSearch(pointSel, 1, pointSearchInd, pointSearchSqDis);
+        _kdtree_surfs_last.nearestKSearch(pointSel, 1, pointSearchInd, pointSearchSqDis);
 
         int closestPointInd = -1, minPointInd2 = -1, minPointInd3 = -1;
         if (pointSearchSqDis.at(0) < DISTANCE_SQ_THRESHOLD) {
@@ -350,26 +358,26 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   tf_lidar.setRotation(tf_q);
 
   /*//{ Save odometry data to AloamMapping */
-  pcl::PointCloud<PointType>::Ptr laserCloudTemp = corner_points_less_sharp;
-  corner_points_less_sharp                       = _features_corners_last;
-  _features_corners_last                         = laserCloudTemp;
+  {
+    std::scoped_lock                lock(_mutex_odometry_process);
+    pcl::PointCloud<PointType>::Ptr laserCloudTemp = corner_points_less_sharp;
+    corner_points_less_sharp                       = _features_corners_last;
+    _features_corners_last                         = laserCloudTemp;
 
-  laserCloudTemp        = surf_points_less_flat;
-  surf_points_less_flat = _features_surfs_last;
-  _features_surfs_last  = laserCloudTemp;
+    laserCloudTemp        = surf_points_less_flat;
+    surf_points_less_flat = _features_surfs_last;
+    _features_surfs_last  = laserCloudTemp;
 
-  _kdtree_corners_last->setInputCloud(_features_corners_last);
-  _kdtree_surfs_last->setInputCloud(_features_surfs_last);
+    _features_corners_last->header.stamp = laser_cloud_full_res->header.stamp;
+    _features_surfs_last->header.stamp   = laser_cloud_full_res->header.stamp;
+    laser_cloud_full_res->header.stamp   = laser_cloud_full_res->header.stamp;
 
-  _features_corners_last->header.stamp = laser_cloud_full_res->header.stamp;
-  _features_surfs_last->header.stamp   = laser_cloud_full_res->header.stamp;
-  laser_cloud_full_res->header.stamp   = laser_cloud_full_res->header.stamp;
+    _features_corners_last->header.frame_id = _frame_lidar;
+    _features_surfs_last->header.frame_id   = _frame_lidar;
+    laser_cloud_full_res->header.frame_id   = _frame_lidar;
 
-  _features_corners_last->header.frame_id = _frame_lidar;
-  _features_surfs_last->header.frame_id   = _frame_lidar;
-  laser_cloud_full_res->header.frame_id   = _frame_lidar;
-
-  _mapper->setData(stamp, tf_lidar, _features_corners_last, _features_surfs_last, laser_cloud_full_res);
+    _aloam_mapping->setData(stamp, tf_lidar, _features_corners_last, _features_surfs_last, laser_cloud_full_res);
+  }
   /*//}*/
 
   /*//{ Publish odometry */
@@ -429,7 +437,7 @@ void AloamOdometry::setData(pcl::PointCloud<PointType>::Ptr corner_points_sharp,
 
   mrs_lib::Routine profiler_routine = _profiler->createRoutine("aloamOdometrySetData");
 
-  std::scoped_lock lock(_mutex_features_data);
+  std::scoped_lock lock(_mutex_extracted_features);
   _has_new_data             = true;
   _corner_points_sharp      = corner_points_sharp;
   _corner_points_less_sharp = corner_points_less_sharp;
@@ -440,7 +448,6 @@ void AloamOdometry::setData(pcl::PointCloud<PointType>::Ptr corner_points_sharp,
 /*//}*/
 
 /*//{ TransformToStart() */
-// undistort lidar point
 void AloamOdometry::TransformToStart(PointType const *const pi, PointType *const po) {
   // interpolation ratio
   double s = 1.0;
@@ -456,25 +463,6 @@ void AloamOdometry::TransformToStart(PointType const *const pi, PointType *const
   po->y         = un_point.y();
   po->z         = un_point.z();
   po->intensity = pi->intensity;
-}
-/*//}*/
-
-/*//{ TransformToEnd() */
-// transform all lidar points to the start of the next frame
-void AloamOdometry::TransformToEnd(PointType const *const pi, PointType *const po) {
-  // undistort point first
-  pcl::PointXYZI un_point_tmp;
-  TransformToStart(pi, &un_point_tmp);
-
-  Eigen::Vector3d un_point(un_point_tmp.x, un_point_tmp.y, un_point_tmp.z);
-  Eigen::Vector3d point_end = _q_last_curr.inverse() * (un_point - _t_last_curr);
-
-  po->x = point_end.x();
-  po->y = point_end.y();
-  po->z = point_end.z();
-
-  // Remove distortion time info
-  po->intensity = int(pi->intensity);
 }
 /*//}*/
 

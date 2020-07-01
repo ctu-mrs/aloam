@@ -10,7 +10,7 @@ namespace aloam_slam
 class AloamOdometry {
 
 public:
-  AloamOdometry(const ros::NodeHandle &parent_nh, std::shared_ptr<mrs_lib::Profiler> profiler, std::shared_ptr<AloamMapping> mapper, std::string frame_fcu,
+  AloamOdometry(const ros::NodeHandle &parent_nh, std::shared_ptr<mrs_lib::Profiler> profiler, std::shared_ptr<AloamMapping> aloam_mapping, std::string frame_fcu,
                 std::string frame_lidar, std::string frame_odom, float scan_period_sec, tf::Transform tf_lidar_to_fcu);
 
   bool is_initialized = false;
@@ -22,22 +22,21 @@ public:
 private:
   // member objects
   std::shared_ptr<mrs_lib::Profiler>             _profiler;
-  std::shared_ptr<AloamMapping>                  _mapper;
+  std::shared_ptr<AloamMapping>                  _aloam_mapping;
   std::shared_ptr<tf2_ros::TransformBroadcaster> _tf_broadcaster;
   ros::Timer                                     _timer_odometry_loop;
 
-  /* std::shared_ptr<mrs_lib::Transformer>         _transformer; */
   mrs_lib::SubscribeHandler<nav_msgs::Odometry> _sub_handler_orientation;
 
-  pcl::PointCloud<PointType>::Ptr       _features_corners_last;
-  pcl::PointCloud<PointType>::Ptr       _features_surfs_last;
-  pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr _kdtree_corners_last;
-  pcl::KdTreeFLANN<pcl::PointXYZI>::Ptr _kdtree_surfs_last;
+  std::mutex                      _mutex_odometry_process;
+  pcl::PointCloud<PointType>::Ptr _features_corners_last;
+  pcl::PointCloud<PointType>::Ptr _features_surfs_last;
 
   Eigen::Quaterniond _q_w_curr;
   Eigen::Vector3d    _t_w_curr;
 
   // Feature extractor newest data
+  std::mutex                      _mutex_extracted_features;
   bool                            _has_new_data = false;
   pcl::PointCloud<PointType>::Ptr _corner_points_sharp;
   pcl::PointCloud<PointType>::Ptr _corner_points_less_sharp;
@@ -47,12 +46,6 @@ private:
 
   // publishers and subscribers
   ros::Publisher _pub_odometry_local;
-
-  // mutexes
-  std::mutex _mutex_features_data;
-
-  // ROS msgs
-  nav_msgs::Odometry _orientation_meas;
 
   // member variables
   std::string _frame_fcu;
