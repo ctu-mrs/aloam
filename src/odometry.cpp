@@ -401,12 +401,12 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   // Publish nav_msgs::Odometry msg in odom frame
   if (_pub_odometry_local.getNumSubscribers() > 0) {
     // Publish nav_msgs::Odometry msg
-    nav_msgs::Odometry laser_odometry_msg;
-    laser_odometry_msg.header.stamp    = stamp;
-    laser_odometry_msg.header.frame_id = _frame_odom;
-    laser_odometry_msg.child_frame_id  = _frame_fcu;
-    tf::pointTFToMsg(tf_fcu.getOrigin(), laser_odometry_msg.pose.pose.position);
-    tf::quaternionTFToMsg(tf_fcu.getRotation(), laser_odometry_msg.pose.pose.orientation);
+    nav_msgs::Odometry::Ptr laser_odometry_msg = boost::make_shared<nav_msgs::Odometry>();
+    laser_odometry_msg->header.stamp           = stamp;
+    laser_odometry_msg->header.frame_id        = _frame_odom;
+    laser_odometry_msg->child_frame_id         = _frame_fcu;
+    tf::pointTFToMsg(tf_fcu.getOrigin(), laser_odometry_msg->pose.pose.position);
+    tf::quaternionTFToMsg(tf_fcu.getRotation(), laser_odometry_msg->pose.pose.orientation);
 
     try {
       _pub_odometry_local.publish(laser_odometry_msg);

@@ -31,11 +31,14 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
   _q_wodom_curr = Eigen::Quaterniond(1, 0, 0, 0);
   _t_wodom_curr = Eigen::Vector3d(0, 0, 0);
 
-  _cloud_corners.resize(_cloud_volume);
-  _cloud_surfs.resize(_cloud_volume);
-  for (int i = 0; i < _cloud_volume; i++) {
-    _cloud_corners.at(i) = boost::make_shared<pcl::PointCloud<PointType>>();
-    _cloud_surfs.at(i)   = boost::make_shared<pcl::PointCloud<PointType>>();
+  {
+    std::scoped_lock lock(_mutex_cloud_features);
+    _cloud_corners.resize(_cloud_volume);
+    _cloud_surfs.resize(_cloud_volume);
+    for (int i = 0; i < _cloud_volume; i++) {
+      _cloud_corners.at(i) = boost::make_shared<pcl::PointCloud<PointType>>();
+      _cloud_surfs.at(i)   = boost::make_shared<pcl::PointCloud<PointType>>();
+    }
   }
 
   _pub_laser_cloud_map        = nh_.advertise<sensor_msgs::PointCloud2>("map_out", 1);
@@ -107,10 +110,13 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   tf::vectorTFToEigen(aloam_odometry.getOrigin(), _t_wodom_curr);
   tf::quaternionTFToEigen(aloam_odometry.getRotation(), _q_wodom_curr);
 
+  pcl::PointCloud<PointType>::Ptr map_features_corners = boost::make_shared<pcl::PointCloud<PointType>>();
+  pcl::PointCloud<PointType>::Ptr map_features_surfs   = boost::make_shared<pcl::PointCloud<PointType>>();
+
+  std::vector<int> cloud_valid_indices;
+
   /*//{ Associate odometry features to map features */
   TicToc t_whole;
-
-  transformAssociateToMap();
 
   float time_shift        = 0.0f;
   float time_build_tree   = 0.0f;
@@ -133,162 +139,164 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     center_cube_K--;
   }
 
-  while (center_cube_I < 3) {
-    for (int j = 0; j < _cloud_height; j++) {
-      for (int k = 0; k < _cloud_depth; k++) {
-        int                             i             = _cloud_width - 1;
-        pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-        pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-        for (; i >= 1; i--) {
-          _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
-              _cloud_corners.at(i - 1 + _cloud_width * j + _cloud_width * _cloud_height * k);
-          _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
-              _cloud_surfs.at(i - 1 + _cloud_width * j + _cloud_width * _cloud_height * k);
-        }
-        _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) = local_corners;
-        _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k)   = local_surfs;
-        local_corners->clear();
-        local_surfs->clear();
-      }
-    }
+  {
+    std::scoped_lock lock(_mutex_cloud_features);
 
-    center_cube_I++;
-    _cloud_center_width++;
-  }
+    transformAssociateToMap();
 
-  while (center_cube_I >= _cloud_width - 3) {
-    for (int j = 0; j < _cloud_height; j++) {
-      for (int k = 0; k < _cloud_depth; k++) {
-        int                             i             = 0;
-        pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-        pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-        for (; i < _cloud_width - 1; i++) {
-          _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
-              _cloud_corners.at(i + 1 + _cloud_width * j + _cloud_width * _cloud_height * k);
-          _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
-              _cloud_surfs.at(i + 1 + _cloud_width * j + _cloud_width * _cloud_height * k);
-        }
-        _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) = local_corners;
-        _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k)   = local_surfs;
-        local_corners->clear();
-        local_surfs->clear();
-      }
-    }
-
-    center_cube_I--;
-    _cloud_center_width--;
-  }
-
-  while (center_cube_J < 3) {
-    for (int i = 0; i < _cloud_width; i++) {
-      for (int k = 0; k < _cloud_depth; k++) {
-        int                             j             = _cloud_height - 1;
-        pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-        pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-        for (; j >= 1; j--) {
-          _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
-              _cloud_corners.at(i + _cloud_width * (j - 1) + _cloud_width * _cloud_height * k);
-          _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
-              _cloud_surfs.at(i + _cloud_width * (j - 1) + _cloud_width * _cloud_height * k);
-        }
-        _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) = local_corners;
-        _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k)   = local_surfs;
-        local_corners->clear();
-        local_surfs->clear();
-      }
-    }
-
-    center_cube_J++;
-    _cloud_center_height++;
-  }
-
-  while (center_cube_J >= _cloud_height - 3) {
-    for (int i = 0; i < _cloud_width; i++) {
-      for (int k = 0; k < _cloud_depth; k++) {
-        int                             j             = 0;
-        pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-        pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-        for (; j < _cloud_height - 1; j++) {
-          _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
-              _cloud_corners.at(i + _cloud_width * (j + 1) + _cloud_width * _cloud_height * k);
-          _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
-              _cloud_surfs.at(i + _cloud_width * (j + 1) + _cloud_width * _cloud_height * k);
-        }
-        _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) = local_corners;
-        _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k)   = local_surfs;
-        local_corners->clear();
-        local_surfs->clear();
-      }
-    }
-
-    center_cube_J--;
-    _cloud_center_height--;
-  }
-
-  while (center_cube_K < 3) {
-    for (int i = 0; i < _cloud_width; i++) {
+    while (center_cube_I < 3) {
       for (int j = 0; j < _cloud_height; j++) {
-        int                             k             = _cloud_depth - 1;
-        pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-        pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-        for (; k >= 1; k--) {
-          _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
-              _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * (k - 1));
-          _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
-              _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * (k - 1));
+        for (int k = 0; k < _cloud_depth; k++) {
+          int                             i             = _cloud_width - 1;
+          pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          for (; i >= 1; i--) {
+            _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
+                _cloud_corners.at(i - 1 + _cloud_width * j + _cloud_width * _cloud_height * k);
+            _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
+                _cloud_surfs.at(i - 1 + _cloud_width * j + _cloud_width * _cloud_height * k);
+          }
+          _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) = local_corners;
+          _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k)   = local_surfs;
+          local_corners->clear();
+          local_surfs->clear();
         }
-        _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) = local_corners;
-        _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k)   = local_surfs;
-        local_corners->clear();
-        local_surfs->clear();
       }
+
+      center_cube_I++;
+      _cloud_center_width++;
     }
 
-    center_cube_K++;
-    _cloud_center_depth++;
-  }
-
-  while (center_cube_K >= _cloud_depth - 3) {
-    for (int i = 0; i < _cloud_width; i++) {
+    while (center_cube_I >= _cloud_width - 3) {
       for (int j = 0; j < _cloud_height; j++) {
-        int                             k             = 0;
-        pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-        pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-        for (; k < _cloud_depth - 1; k++) {
-          _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
-              _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * (k + 1));
-          _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
-              _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * (k + 1));
-        }
-        _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) = local_corners;
-        _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k)   = local_surfs;
-        local_corners->clear();
-        local_surfs->clear();
-      }
-    }
-
-    center_cube_K--;
-    _cloud_center_depth--;
-  }
-
-  std::vector<int> cloud_valid_indices;
-
-  for (int i = center_cube_I - 2; i <= center_cube_I + 2; i++) {
-    for (int j = center_cube_J - 2; j <= center_cube_J + 2; j++) {
-      for (int k = center_cube_K - 1; k <= center_cube_K + 1; k++) {
-        if (i >= 0 && i < _cloud_width && j >= 0 && j < _cloud_height && k >= 0 && k < _cloud_depth) {
-          cloud_valid_indices.push_back(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+        for (int k = 0; k < _cloud_depth; k++) {
+          int                             i             = 0;
+          pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          for (; i < _cloud_width - 1; i++) {
+            _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
+                _cloud_corners.at(i + 1 + _cloud_width * j + _cloud_width * _cloud_height * k);
+            _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
+                _cloud_surfs.at(i + 1 + _cloud_width * j + _cloud_width * _cloud_height * k);
+          }
+          _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) = local_corners;
+          _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k)   = local_surfs;
+          local_corners->clear();
+          local_surfs->clear();
         }
       }
-    }
-  }
-  /*//}*/
 
-  pcl::PointCloud<PointType>::Ptr map_features_corners = boost::make_shared<pcl::PointCloud<PointType>>();
-  pcl::PointCloud<PointType>::Ptr map_features_surfs   = boost::make_shared<pcl::PointCloud<PointType>>();
-  for (unsigned int i = 0; i < cloud_valid_indices.size(); i++) {
-    *map_features_corners += *_cloud_corners.at(cloud_valid_indices.at(i));
-    *map_features_surfs += *_cloud_surfs.at(cloud_valid_indices.at(i));
+      center_cube_I--;
+      _cloud_center_width--;
+    }
+
+    while (center_cube_J < 3) {
+      for (int i = 0; i < _cloud_width; i++) {
+        for (int k = 0; k < _cloud_depth; k++) {
+          int                             j             = _cloud_height - 1;
+          pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          for (; j >= 1; j--) {
+            _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
+                _cloud_corners.at(i + _cloud_width * (j - 1) + _cloud_width * _cloud_height * k);
+            _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
+                _cloud_surfs.at(i + _cloud_width * (j - 1) + _cloud_width * _cloud_height * k);
+          }
+          _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) = local_corners;
+          _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k)   = local_surfs;
+          local_corners->clear();
+          local_surfs->clear();
+        }
+      }
+
+      center_cube_J++;
+      _cloud_center_height++;
+    }
+
+    while (center_cube_J >= _cloud_height - 3) {
+      for (int i = 0; i < _cloud_width; i++) {
+        for (int k = 0; k < _cloud_depth; k++) {
+          int                             j             = 0;
+          pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          for (; j < _cloud_height - 1; j++) {
+            _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
+                _cloud_corners.at(i + _cloud_width * (j + 1) + _cloud_width * _cloud_height * k);
+            _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
+                _cloud_surfs.at(i + _cloud_width * (j + 1) + _cloud_width * _cloud_height * k);
+          }
+          _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) = local_corners;
+          _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k)   = local_surfs;
+          local_corners->clear();
+          local_surfs->clear();
+        }
+      }
+
+      center_cube_J--;
+      _cloud_center_height--;
+    }
+
+    while (center_cube_K < 3) {
+      for (int i = 0; i < _cloud_width; i++) {
+        for (int j = 0; j < _cloud_height; j++) {
+          int                             k             = _cloud_depth - 1;
+          pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          for (; k >= 1; k--) {
+            _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
+                _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * (k - 1));
+            _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
+                _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * (k - 1));
+          }
+          _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) = local_corners;
+          _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k)   = local_surfs;
+          local_corners->clear();
+          local_surfs->clear();
+        }
+      }
+
+      center_cube_K++;
+      _cloud_center_depth++;
+    }
+
+    while (center_cube_K >= _cloud_depth - 3) {
+      for (int i = 0; i < _cloud_width; i++) {
+        for (int j = 0; j < _cloud_height; j++) {
+          int                             k             = 0;
+          pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          for (; k < _cloud_depth - 1; k++) {
+            _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
+                _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * (k + 1));
+            _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
+                _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * (k + 1));
+          }
+          _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) = local_corners;
+          _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k)   = local_surfs;
+          local_corners->clear();
+          local_surfs->clear();
+        }
+      }
+
+      center_cube_K--;
+      _cloud_center_depth--;
+    }
+
+    for (int i = center_cube_I - 2; i <= center_cube_I + 2; i++) {
+      for (int j = center_cube_J - 2; j <= center_cube_J + 2; j++) {
+        for (int k = center_cube_K - 1; k <= center_cube_K + 1; k++) {
+          if (i >= 0 && i < _cloud_width && j >= 0 && j < _cloud_height && k >= 0 && k < _cloud_depth) {
+            cloud_valid_indices.push_back(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          }
+        }
+      }
+    }
+    /*//}*/
+
+    for (unsigned int i = 0; i < cloud_valid_indices.size(); i++) {
+      *map_features_corners += *_cloud_corners.at(cloud_valid_indices.at(i));
+      *map_features_surfs += *_cloud_surfs.at(cloud_valid_indices.at(i));
+    }
   }
 
   pcl::VoxelGrid<PointType> filter_downsize_corners;
@@ -435,70 +443,76 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   }
   /*//}*/
 
-  transformUpdate();
 
-  float  time_add = 0.0f;
-  TicToc t_add;
-  for (unsigned int i = 0; i < features_corners_stack->points.size(); i++) {
-    PointType point_sel;
-    pointAssociateToMap(&features_corners_stack->points.at(i), &point_sel);
+  float time_add    = 0.0f;
+  float time_filter = 0.0f;
+  {
+    std::scoped_lock lock(_mutex_cloud_features);
 
-    int cubeI = int((point_sel.x + 25.0) / 50.0) + _cloud_center_width;
-    int cubeJ = int((point_sel.y + 25.0) / 50.0) + _cloud_center_height;
-    int cubeK = int((point_sel.z + 25.0) / 50.0) + _cloud_center_depth;
+    transformUpdate();
 
-    if (point_sel.x + 25.0 < 0)
-      cubeI--;
-    if (point_sel.y + 25.0 < 0)
-      cubeJ--;
-    if (point_sel.z + 25.0 < 0)
-      cubeK--;
+    TicToc t_add;
 
-    if (cubeI >= 0 && cubeI < _cloud_width && cubeJ >= 0 && cubeJ < _cloud_height && cubeK >= 0 && cubeK < _cloud_depth) {
-      int cubeInd = cubeI + _cloud_width * cubeJ + _cloud_width * _cloud_height * cubeK;
-      _cloud_corners.at(cubeInd)->push_back(point_sel);
+    for (unsigned int i = 0; i < features_corners_stack->points.size(); i++) {
+      PointType point_sel;
+      pointAssociateToMap(&features_corners_stack->points.at(i), &point_sel);
+
+      int cubeI = int((point_sel.x + 25.0) / 50.0) + _cloud_center_width;
+      int cubeJ = int((point_sel.y + 25.0) / 50.0) + _cloud_center_height;
+      int cubeK = int((point_sel.z + 25.0) / 50.0) + _cloud_center_depth;
+
+      if (point_sel.x + 25.0 < 0)
+        cubeI--;
+      if (point_sel.y + 25.0 < 0)
+        cubeJ--;
+      if (point_sel.z + 25.0 < 0)
+        cubeK--;
+
+      if (cubeI >= 0 && cubeI < _cloud_width && cubeJ >= 0 && cubeJ < _cloud_height && cubeK >= 0 && cubeK < _cloud_depth) {
+        int cubeInd = cubeI + _cloud_width * cubeJ + _cloud_width * _cloud_height * cubeK;
+        _cloud_corners.at(cubeInd)->push_back(point_sel);
+      }
     }
-  }
 
-  for (unsigned int i = 0; i < features_surfs_stack->points.size(); i++) {
-    PointType point_sel;
-    pointAssociateToMap(&features_surfs_stack->points.at(i), &point_sel);
+    for (unsigned int i = 0; i < features_surfs_stack->points.size(); i++) {
+      PointType point_sel;
+      pointAssociateToMap(&features_surfs_stack->points.at(i), &point_sel);
 
-    int cubeI = int((point_sel.x + 25.0) / 50.0) + _cloud_center_width;
-    int cubeJ = int((point_sel.y + 25.0) / 50.0) + _cloud_center_height;
-    int cubeK = int((point_sel.z + 25.0) / 50.0) + _cloud_center_depth;
+      int cubeI = int((point_sel.x + 25.0) / 50.0) + _cloud_center_width;
+      int cubeJ = int((point_sel.y + 25.0) / 50.0) + _cloud_center_height;
+      int cubeK = int((point_sel.z + 25.0) / 50.0) + _cloud_center_depth;
 
-    if (point_sel.x + 25.0 < 0)
-      cubeI--;
-    if (point_sel.y + 25.0 < 0)
-      cubeJ--;
-    if (point_sel.z + 25.0 < 0)
-      cubeK--;
+      if (point_sel.x + 25.0 < 0)
+        cubeI--;
+      if (point_sel.y + 25.0 < 0)
+        cubeJ--;
+      if (point_sel.z + 25.0 < 0)
+        cubeK--;
 
-    if (cubeI >= 0 && cubeI < _cloud_width && cubeJ >= 0 && cubeJ < _cloud_height && cubeK >= 0 && cubeK < _cloud_depth) {
-      int cubeInd = cubeI + _cloud_width * cubeJ + _cloud_width * _cloud_height * cubeK;
-      _cloud_surfs.at(cubeInd)->push_back(point_sel);
+      if (cubeI >= 0 && cubeI < _cloud_width && cubeJ >= 0 && cubeJ < _cloud_height && cubeK >= 0 && cubeK < _cloud_depth) {
+        int cubeInd = cubeI + _cloud_width * cubeJ + _cloud_width * _cloud_height * cubeK;
+        _cloud_surfs.at(cubeInd)->push_back(point_sel);
+      }
     }
+    /* printf("add points time %f ms\n", t_add.toc()); */
+    time_add = t_add.toc();
+
+    TicToc t_filter;
+    for (unsigned int i = 0; i < cloud_valid_indices.size(); i++) {
+      int ind = cloud_valid_indices.at(i);
+
+      pcl::PointCloud<PointType>::Ptr tmpCorner = boost::make_shared<pcl::PointCloud<PointType>>();
+      filter_downsize_corners.setInputCloud(_cloud_corners.at(ind));
+      filter_downsize_corners.filter(*tmpCorner);
+      _cloud_corners.at(ind) = tmpCorner;
+
+      pcl::PointCloud<PointType>::Ptr tmpSurf = boost::make_shared<pcl::PointCloud<PointType>>();
+      filter_downsize_surfs.setInputCloud(_cloud_surfs.at(ind));
+      filter_downsize_surfs.filter(*tmpSurf);
+      _cloud_surfs.at(ind) = tmpSurf;
+    }
+    time_filter = t_filter.toc();
   }
-  /* printf("add points time %f ms\n", t_add.toc()); */
-  time_add = t_add.toc();
-
-  float  time_filter = 0.0f;
-  TicToc t_filter;
-  for (unsigned int i = 0; i < cloud_valid_indices.size(); i++) {
-    int ind = cloud_valid_indices.at(i);
-
-    pcl::PointCloud<PointType>::Ptr tmpCorner = boost::make_shared<pcl::PointCloud<PointType>>();
-    filter_downsize_corners.setInputCloud(_cloud_corners.at(ind));
-    filter_downsize_corners.filter(*tmpCorner);
-    _cloud_corners.at(ind) = tmpCorner;
-
-    pcl::PointCloud<PointType>::Ptr tmpSurf = boost::make_shared<pcl::PointCloud<PointType>>();
-    filter_downsize_surfs.setInputCloud(_cloud_surfs.at(ind));
-    filter_downsize_surfs.filter(*tmpSurf);
-    _cloud_surfs.at(ind) = tmpSurf;
-  }
-  time_filter = t_filter.toc();
 
   /*//{ Publish data */
 
@@ -529,12 +543,12 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
   if (_pub_odom_global.getNumSubscribers() > 0 || _pub_path.getNumSubscribers() > 0) {
     // Publish nav_msgs::Odometry msg
-    nav_msgs::Odometry fcu_odom_msg;
-    fcu_odom_msg.header.frame_id = _frame_map;
-    fcu_odom_msg.header.stamp    = time_aloam_odometry;
-    fcu_odom_msg.child_frame_id  = _frame_fcu;
-    tf::pointTFToMsg(tf_fcu.getOrigin(), fcu_odom_msg.pose.pose.position);
-    tf::quaternionTFToMsg(tf_fcu.getRotation(), fcu_odom_msg.pose.pose.orientation);
+    nav_msgs::Odometry::Ptr fcu_odom_msg = boost::make_shared<nav_msgs::Odometry>();
+    fcu_odom_msg->header.frame_id        = _frame_map;
+    fcu_odom_msg->header.stamp           = time_aloam_odometry;
+    fcu_odom_msg->child_frame_id         = _frame_fcu;
+    tf::pointTFToMsg(tf_fcu.getOrigin(), fcu_odom_msg->pose.pose.position);
+    tf::quaternionTFToMsg(tf_fcu.getRotation(), fcu_odom_msg->pose.pose.orientation);
 
     try {
       _pub_odom_global.publish(fcu_odom_msg);
@@ -545,10 +559,10 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
     // Publish nav_msgs::Path msg
     geometry_msgs::PoseStamped fcu_pose_msg;
-    fcu_pose_msg.header    = fcu_odom_msg.header;
-    fcu_pose_msg.pose      = fcu_odom_msg.pose.pose;
-    _laser_path_msg.header = fcu_odom_msg.header;
-    _laser_path_msg.poses.push_back(fcu_pose_msg);
+    fcu_pose_msg.header     = fcu_odom_msg->header;
+    fcu_pose_msg.pose       = fcu_odom_msg->pose.pose;
+    _laser_path_msg->header = fcu_odom_msg->header;
+    _laser_path_msg->poses.push_back(fcu_pose_msg);
     try {
       _pub_path.publish(_laser_path_msg);
     }
@@ -560,14 +574,17 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   // Publish entire map
   if (_pub_laser_cloud_map.getNumSubscribers() > 0 && (ros::Time::now() - _time_last_map_publish).toSec() > _map_publish_period) {
     pcl::PointCloud<PointType> map_pcl;
-    for (int i = 0; i < _cloud_volume; i++) {
-      map_pcl += *_cloud_corners.at(i);
-      map_pcl += *_cloud_surfs.at(i);
+    {
+      std::scoped_lock lock(_mutex_cloud_features);
+      for (int i = 0; i < _cloud_volume; i++) {
+        map_pcl += *_cloud_corners.at(i);
+        map_pcl += *_cloud_surfs.at(i);
+      }
     }
-    sensor_msgs::PointCloud2 map_msg;
-    pcl::toROSMsg(map_pcl, map_msg);
-    map_msg.header.stamp    = time_aloam_odometry;
-    map_msg.header.frame_id = _frame_map;
+    sensor_msgs::PointCloud2::Ptr map_msg = boost::make_shared<sensor_msgs::PointCloud2>();
+    pcl::toROSMsg(map_pcl, *map_msg);
+    map_msg->header.stamp    = time_aloam_odometry;
+    map_msg->header.frame_id = _frame_map;
 
     try {
       _pub_laser_cloud_map.publish(map_msg);
@@ -640,17 +657,6 @@ void AloamMapping::pointAssociateToMap(PointType const *const pi, PointType *con
   po->z                   = point_w.z();
   po->intensity           = pi->intensity;
   // po->intensity = 1.0;
-}
-/*//}*/
-
-/*//{ pointAssociateTobeMapped() */
-void AloamMapping::pointAssociateTobeMapped(PointType const *const pi, PointType *const po) {
-  Eigen::Vector3d point_w(pi->x, pi->y, pi->z);
-  Eigen::Vector3d point_curr = _q_w_curr.inverse() * (point_w - _t_w_curr);
-  po->x                      = point_curr.x();
-  po->y                      = point_curr.y();
-  po->z                      = point_curr.z();
-  po->intensity              = pi->intensity;
 }
 /*//}*/
 

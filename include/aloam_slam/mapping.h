@@ -71,16 +71,18 @@ public:
 
 private:
   // member objects
-  std::shared_ptr<mrs_lib::Profiler> _profiler;
+  std::shared_ptr<mrs_lib::Profiler>             _profiler;
   std::shared_ptr<tf2_ros::TransformBroadcaster> _tf_broadcaster;
 
   ros::Timer _timer_mapping_loop;
   ros::Time  _time_last_map_publish;
 
+  std::mutex                                   _mutex_cloud_features;
   std::vector<pcl::PointCloud<PointType>::Ptr> _cloud_corners;
   std::vector<pcl::PointCloud<PointType>::Ptr> _cloud_surfs;
 
   // Feature extractor newest data
+  std::mutex                      _mutex_odometry_data;
   bool                            _has_new_data = false;
   ros::Time                       _time_aloam_odometry;
   tf::Transform                   _aloam_odometry;
@@ -94,11 +96,8 @@ private:
   ros::Publisher _pub_odom_global;
   ros::Publisher _pub_path;
 
-  // mutexes
-  std::mutex _mutex_odometry_data;
-
   // ROS messages
-  nav_msgs::Path _laser_path_msg;
+  nav_msgs::Path::Ptr _laser_path_msg = boost::make_shared<nav_msgs::Path>();
 
   // member variables
   std::string _frame_fcu;
@@ -141,7 +140,6 @@ private:
   void transformAssociateToMap();
   void transformUpdate();
   void pointAssociateToMap(PointType const *const pi, PointType *const po);
-  void pointAssociateTobeMapped(PointType const *const pi, PointType *const po);
 };
 }  // namespace aloam_slam
 #endif
