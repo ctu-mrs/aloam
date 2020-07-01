@@ -1,0 +1,101 @@
+<launch>
+
+  <!-- ENV VARS -->
+  <arg name="UAV_NAME" default="$(env UAV_NAME)" />
+  <arg name="RUN_TYPE" default="$(env RUN_TYPE)" />
+  <arg name="enable_profiler" default="$(optenv PROFILER false)" />
+
+  <!-- DEFAULT PARAMETERS AND FRAMES -->
+  <arg name="fcu_frame" default="$(arg UAV_NAME)/fcu"/>
+  <arg name="lidar_frame" default="$(arg UAV_NAME)/os1_lidar"/>
+  <arg name="odom_frame" default="$(arg UAV_NAME)/aloam_odom_origin"/>
+  <arg name="map_frame" default="$(arg UAV_NAME)/aloam_origin"/>
+
+  <!-- SENSOR PARAMETERS -->
+  <arg name="points_topic" default="os1_cloud_node/points_processed" />
+  <arg name="number_of_rings" default="16" />
+  <arg name="vertical_fov" default="33.2" />
+  <arg name="sensor_frequency" default="10.0" />
+  <arg name="min_range" default="0.6" />
+  <arg name="max_range" default="20.0" />
+  <arg name="filter/intensity" default="false" />
+  <arg name="filter/intensity/value" default="100" />
+  <arg name="filter/intensity/range" default="10.0" />
+
+  <!-- MAPPING PARAMETERS -->
+  <arg name="mapping_rate" default="$(arg sensor_frequency)" />
+  <arg name="map_publish_rate" default="0.5" />
+  <arg name="mapping_line_resolution" default="0.4" />
+  <arg name="mapping_plane_resolution" default="0.8" />
+
+  <!-- LAUNCH PARAMETERS -->
+  <arg name="verbose" default="false" />
+  <arg name="standalone" default="$(optenv OUSTER_STANDALONE false)" />
+  <arg name="debug" default="$(optenv DEBUG false)" />
+  <arg     if="$(eval arg('standalone') or arg('debug'))" name="nodelet" value="standalone" />
+  <arg unless="$(eval arg('standalone') or arg('debug'))" name="nodelet" value="load" />
+  <arg     if="$(eval arg('standalone') or arg('debug'))" name="nodelet_manager" value="" />
+  <arg unless="$(eval arg('standalone') or arg('debug'))" name="nodelet_manager" value="$(arg UAV_NAME)_ouster_nodelet_manager" />
+  <arg unless="$(arg debug)" name="launch_prefix" value=""/>
+  <arg     if="$(arg debug)" name="launch_prefix" value="debug_roslaunch"/>
+
+  <group ns="$(arg UAV_NAME)">
+
+    <!-- LAUNCH NODELET MANAGER (SIMULATION ONLY) -->
+    <node if="$(eval arg('RUN_TYPE') == 'simulation' and arg('nodelet') == 'load')" pkg="nodelet" type="nodelet" name="$(arg nodelet_manager)" args="manager" output="screen" launch-prefix="$(arg launch_prefix)">
+      <param name="num_worker_threads" value="8" />
+    </node>
+    
+    <!-- LAUNCH ALOAM SLAM -->
+    <node pkg="nodelet" type="nodelet" name="aloam_slam" args="$(arg nodelet) aloam_slam/AloamSlam $(arg nodelet_manager)" output="screen" launch-prefix="$(arg launch_prefix)">
+      <param name="verbose" type="bool" value="$(arg verbose)"/>
+      <param name="enable_profiler" type="bool" value="$(arg enable_profiler)" />
+
+      <param name="scan_line" type="int" value="$(arg number_of_rings)" />
+      <param name="vertical_fov" type="double" value="$(arg vertical_fov)"/>
+      <param name="sensor_frequency" type="double" value="$(arg sensor_frequency)"/>
+
+      <param name="uav_name" type="string" value="$(arg UAV_NAME)"/>
+      <param name="fcu_frame" type="string" value="$(arg fcu_frame)"/>
+      <param name="odom_frame" type="string" value="$(arg odom_frame)"/>
+      <param name="map_frame" type="string" value="$(arg map_frame)"/>
+      <param name="lidar_frame" type="string" value="$(arg lidar_frame)"/>
+
+      <param name="mapping_rate" type="double" value="$(arg mapping_rate)" />
+      <param name="map_publish_rate" type="double" value="$(arg map_publish_rate)" />
+      <param name="mapping_line_resolution" type="double" value="$(arg mapping_line_resolution)" />
+      <param name="mapping_plane_resolution" type="double" value="$(arg mapping_plane_resolution)" />
+
+      <!-- Subscribers -->
+      <remap from="~laser_cloud_in" to="$(arg points_topic)"/>
+      <remap from="~orientation_in" to="odometry/orientation"/>
+
+      <!-- Publishers -->
+      <remap from="~odom_local_out" to="aloam/odom_local"/>
+      <remap from="~path_out" to="aloam/path"/>
+      <remap from="~odom_global_out" to="aloam/odom"/>
+      <remap from="~map_out" to="aloam/map"/>
+      <remap from="~scan_registered_out" to="aloam/scan_registered"/>
+
+    </node>
+
+  </group>
+  
+  <!-- LAUNCH DATA PROCESSING -->
+  <include file="$(find mrs_pcl_tools)/launch/uav_os1_filtration.launch">
+    <arg name="nodelet" value="$(arg nodelet)" />
+    <arg name="nodelet_manager" value="$(arg nodelet_manager)" />
+    <arg name="launch_prefix" value="$(arg launch_prefix)" />
+
+    <arg name="ouster_republish" value="true" />
+    <arg name="ouster_min_range" value="$(arg min_range)" />
+    <arg name="ouster_max_range" value="$(arg max_range)" />
+
+    <arg if="$(eval arg('RUN_TYPE') == 'simulation')" name="ouster_filter_intensity_en" value="false" />
+    <arg unless="$(eval arg('RUN_TYPE') == 'simulation')" name="ouster_filter_intensity_en" value="$(arg filter/intensity)" />
+    <arg name="ouster_filter_intensity_thrd" value="$(arg filter/intensity/value)" />
+    <arg name="ouster_filter_intensity_range" value="$(arg filter/intensity/range)" />
+
+  </include>
+
+</launch>
