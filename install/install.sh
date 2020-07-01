@@ -20,6 +20,9 @@ sudo apt-get install --yes libeigen3-dev
 #   you can use the SuiteSparse package in the main Ubuntu package
 #   repository:
 sudo apt-get install --yes libsuitesparse-dev
+ 
+# PCL
+sudo apt-get install --yes ros-melodic-pcl-ros ros-melodic-pcl-conversions ros-melodic-pcl-msgs
 
 # download ceres solver
 cd $SCRIPT_PATH
@@ -43,4 +46,4 @@ rm -rf tmp
 
 # build catkin package
 cd $SCRIPT_PATH
-catkin build aloam
+catkin build aloam_slam
