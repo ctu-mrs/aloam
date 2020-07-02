@@ -43,7 +43,3 @@ sudo make install
 # clean tmp files
 cd $SCRIPT_PATH
 rm -rf tmp
-
-# build catkin package
-cd $SCRIPT_PATH
-catkin build aloam_slam
