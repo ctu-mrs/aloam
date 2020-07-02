@@ -21,6 +21,9 @@ FeatureExtractor::FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::Pa
     ros::shutdown();
   }
 
+  // In OS1 rev. 1 sensor, all 64 rings are filled (those we did not pay for are filled with 0s)
+  _os1_rings_diff = 64 / _number_of_rings;
+
   _ray_vert_delta = _vertical_fov_half / float(_number_of_rings - 1);  // vertical resolution
   _vertical_fov_half /= 2.0;                                           // get half fov
 
@@ -376,7 +379,7 @@ void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2Co
     point.z = cloud_pcl.points.at(i).z;
 
     // Read row (ring) directly from msg
-    int   point_ring    = cloud_pcl.points.at(i).ring;
+    int   point_ring    = cloud_pcl.points.at(i).ring / _os1_rings_diff;
 
     // Compute intensity TODO: can we polish this crazy ifs?
     float point_azimuth = -std::atan2(point.y, point.x);

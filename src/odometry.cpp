@@ -37,7 +37,7 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::shared_ptr<m
   shopts.node_name  = "AloamOdometry";
   shopts.threadsafe = true;
 
-  _sub_handler_orientation = mrs_lib::SubscribeHandler<nav_msgs::Odometry>(shopts, "orientation_in", ros::Duration(0.5));
+  /* _sub_handler_orientation = mrs_lib::SubscribeHandler<nav_msgs::Odometry>(shopts, "orientation_in", ros::Duration(0.5)); */
 
   _pub_odometry_local = nh_.advertise<nav_msgs::Odometry>("odom_local_out", 1);
 

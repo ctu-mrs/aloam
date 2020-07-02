@@ -35,6 +35,7 @@ private:
   long int _frame_count = 0;
 
   int _number_of_rings;
+  int _os1_rings_diff;
 
   bool _data_have_ring_field = false;
 
