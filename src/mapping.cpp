@@ -541,28 +541,33 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     ROS_ERROR("[AloamMapping]: Exception caught during publishing TF: %s - %s.", tf_msg.child_frame_id.c_str(), tf_msg.header.frame_id.c_str());
   }
 
-  if (_pub_odom_global.getNumSubscribers() > 0 || _pub_path.getNumSubscribers() > 0) {
-    // Publish nav_msgs::Odometry msg
-    nav_msgs::Odometry::Ptr fcu_odom_msg = boost::make_shared<nav_msgs::Odometry>();
-    fcu_odom_msg->header.frame_id        = _frame_map;
-    fcu_odom_msg->header.stamp           = time_aloam_odometry;
-    fcu_odom_msg->child_frame_id         = _frame_fcu;
-    tf::pointTFToMsg(tf_fcu.getOrigin(), fcu_odom_msg->pose.pose.position);
-    tf::quaternionTFToMsg(tf_fcu.getRotation(), fcu_odom_msg->pose.pose.orientation);
+  // Create nav_msgs::Odometry msg
+  nav_msgs::Odometry::Ptr fcu_odom_msg = boost::make_shared<nav_msgs::Odometry>();
+  fcu_odom_msg->header.frame_id        = _frame_map;
+  fcu_odom_msg->header.stamp           = time_aloam_odometry;
+  tf::pointTFToMsg(tf_fcu.getOrigin(), fcu_odom_msg->pose.pose.position);
+  tf::quaternionTFToMsg(tf_fcu.getRotation(), fcu_odom_msg->pose.pose.orientation);
 
+  // Create geometry_msgs::PoseStamped msg
+  geometry_msgs::PoseStamped fcu_pose_msg;
+  fcu_pose_msg.header     = fcu_odom_msg->header;
+  fcu_pose_msg.pose       = fcu_odom_msg->pose.pose;
+  _laser_path_msg->header = fcu_odom_msg->header;
+  _laser_path_msg->poses.push_back(fcu_pose_msg);
+
+  // Publish nav_msgs::Odometry msg
+  if (_pub_odom_global.getNumSubscribers() > 0) {
+    fcu_odom_msg->child_frame_id = _frame_fcu;
     try {
       _pub_odom_global.publish(fcu_odom_msg);
     }
     catch (...) {
       ROS_ERROR("[AloamMapping]: Exception caught during publishing topic %s.", _pub_odom_global.getTopic().c_str());
     }
+  }
 
-    // Publish nav_msgs::Path msg
-    geometry_msgs::PoseStamped fcu_pose_msg;
-    fcu_pose_msg.header     = fcu_odom_msg->header;
-    fcu_pose_msg.pose       = fcu_odom_msg->pose.pose;
-    _laser_path_msg->header = fcu_odom_msg->header;
-    _laser_path_msg->poses.push_back(fcu_pose_msg);
+  // Publish nav_msgs::Path msg
+  if (_pub_path.getNumSubscribers() > 0) {
     try {
       _pub_path.publish(_laser_path_msg);
     }

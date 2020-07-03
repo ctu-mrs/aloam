@@ -19,7 +19,7 @@ public:
 private:
   // member objects
   std::shared_ptr<mrs_lib::Profiler> _profiler;
-  ros::Subscriber _sub_laser_cloud;
+  ros::Subscriber                    _sub_laser_cloud;
 
   std::shared_ptr<AloamOdometry> _odometry;
 
@@ -37,13 +37,17 @@ private:
   int _number_of_rings;
   int _os1_rings_diff;
 
-  bool _data_have_ring_field = false;
+  bool _data_have_ring_field;
 
-  void parseRowsFromCloudMsg(const sensor_msgs::PointCloud2ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr cloud_processed, std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices, float &processing_time);
-  void parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr cloud_processed, std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices, float &processing_time);
+  void parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr cloud_processed,
+                             std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices, float &processing_time);
+  void parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr cloud_processed,
+                                std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices, float &processing_time);
+
+  bool hasField(const std::string field, const sensor_msgs::PointCloud2::ConstPtr &msg);
 
   // callbacks
-  void callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr &laserCloudMsg);
+  void callbackLaserCloud(const sensor_msgs::PointCloud2::ConstPtr &laserCloudMsg);
 };
 }  // namespace aloam_slam
 #endif
