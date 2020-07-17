@@ -382,37 +382,39 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
 
   /*//{ Publish odometry */
 
-  // Publish inverse TF transform (lidar -> odom)
-  tf::Transform tf_fcu = tf_lidar * _tf_lidar_to_fcu;
+  if (_frame_count > 0) {
+    // Publish inverse TF transform (lidar -> odom)
+    tf::Transform tf_fcu = tf_lidar * _tf_lidar_to_fcu;
 
-  geometry_msgs::TransformStamped tf_msg;
-  tf_msg.header.stamp    = stamp;
-  tf_msg.header.frame_id = _frame_fcu;
-  tf_msg.child_frame_id  = _frame_odom;
-  tf::transformTFToMsg(tf_fcu.inverse(), tf_msg.transform);
-
-  try {
-    _tf_broadcaster->sendTransform(tf_msg);
-  }
-  catch (...) {
-    ROS_ERROR("[AloamOdometry]: Exception caught during publishing TF: %s - %s.", tf_msg.child_frame_id.c_str(), tf_msg.header.frame_id.c_str());
-  }
-
-  // Publish nav_msgs::Odometry msg in odom frame
-  if (_pub_odometry_local.getNumSubscribers() > 0) {
-    // Publish nav_msgs::Odometry msg
-    nav_msgs::Odometry::Ptr laser_odometry_msg = boost::make_shared<nav_msgs::Odometry>();
-    laser_odometry_msg->header.stamp           = stamp;
-    laser_odometry_msg->header.frame_id        = _frame_odom;
-    laser_odometry_msg->child_frame_id         = _frame_fcu;
-    tf::pointTFToMsg(tf_fcu.getOrigin(), laser_odometry_msg->pose.pose.position);
-    tf::quaternionTFToMsg(tf_fcu.getRotation(), laser_odometry_msg->pose.pose.orientation);
+    geometry_msgs::TransformStamped tf_msg;
+    tf_msg.header.stamp    = stamp;
+    tf_msg.header.frame_id = _frame_fcu;
+    tf_msg.child_frame_id  = _frame_odom;
+    tf::transformTFToMsg(tf_fcu.inverse(), tf_msg.transform);
 
     try {
-      _pub_odometry_local.publish(laser_odometry_msg);
+      _tf_broadcaster->sendTransform(tf_msg);
     }
     catch (...) {
-      ROS_ERROR("[AloamOdometry]: Exception caught during publishing topic %s.", _pub_odometry_local.getTopic().c_str());
+      ROS_ERROR("[AloamOdometry]: Exception caught during publishing TF: %s - %s.", tf_msg.child_frame_id.c_str(), tf_msg.header.frame_id.c_str());
+    }
+
+    // Publish nav_msgs::Odometry msg in odom frame
+    if (_pub_odometry_local.getNumSubscribers() > 0) {
+      // Publish nav_msgs::Odometry msg
+      nav_msgs::Odometry::Ptr laser_odometry_msg = boost::make_shared<nav_msgs::Odometry>();
+      laser_odometry_msg->header.stamp           = stamp;
+      laser_odometry_msg->header.frame_id        = _frame_odom;
+      laser_odometry_msg->child_frame_id         = _frame_fcu;
+      tf::pointTFToMsg(tf_fcu.getOrigin(), laser_odometry_msg->pose.pose.position);
+      tf::quaternionTFToMsg(tf_fcu.getRotation(), laser_odometry_msg->pose.pose.orientation);
+
+      try {
+        _pub_odometry_local.publish(laser_odometry_msg);
+      }
+      catch (...) {
+        ROS_ERROR("[AloamOdometry]: Exception caught during publishing topic %s.", _pub_odometry_local.getTopic().c_str());
+      }
     }
   }
 

@@ -26,11 +26,12 @@
   <arg name="verbose" default="false" />
   <arg name="nodelet" default="standalone" />
   <arg name="nodelet_manager" default="" />
+  <arg name="launch_delay" default=""/>
   <arg name="launch_prefix" default=""/>
 
   <group ns="$(arg UAV_NAME)">
     
-    <node pkg="nodelet" type="nodelet" name="aloam_slam" args="$(arg nodelet) aloam_slam/AloamSlam $(arg nodelet_manager)" output="screen" launch-prefix="$(arg launch_prefix)">
+    <node pkg="nodelet" type="nodelet" name="aloam_slam" args="$(arg nodelet) aloam_slam/AloamSlam $(arg nodelet_manager)" output="screen" launch-prefix="bash -c 'sleep $(arg launch_delay); $0 $@'; $(arg launch_prefix)">
       <param name="verbose" type="bool" value="$(arg verbose)"/>
       <param name="enable_profiler" type="bool" value="$(arg enable_profiler)" />
 
