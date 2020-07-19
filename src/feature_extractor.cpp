@@ -252,11 +252,9 @@ void FeatureExtractor::parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::Con
   pcl::PointCloud<PointType> cloud_pcl;
   pcl::fromROSMsg(*cloud, cloud_pcl);
 
-  std::vector<int> indices;
-
   /*//{ Precompute points indices */
   const int cloud_size    = cloud_pcl.points.size();
-  float     azimuth_start = -std::atan2(cloud_pcl.points.at(0).y, cloud_pcl.points.at(0).x);
+  const float     azimuth_start = -std::atan2(cloud_pcl.points.at(0).y, cloud_pcl.points.at(0).x);
   float     azimuth_end   = -std::atan2(cloud_pcl.points.at(cloud_size - 1).y, cloud_pcl.points.at(cloud_size - 1).x) + 2 * M_PI;
 
   if (azimuth_end - azimuth_start > 3 * M_PI) {
@@ -327,7 +325,7 @@ void FeatureExtractor::parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::Con
       }
     }
 
-    float rel_time  = (point_azimuth - azimuth_start) / (azimuth_end - azimuth_start);
+    const float rel_time  = (point_azimuth - azimuth_start) / (azimuth_end - azimuth_start);
     point.intensity = point_ring + _scan_period_sec * rel_time;
     laser_cloud_rows.at(point_ring).push_back(point);
   }
@@ -352,12 +350,10 @@ void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::
   pcl::PointCloud<ouster_ros::OS1::PointOS1>::Ptr cloud_pcl = boost::make_shared<pcl::PointCloud<ouster_ros::OS1::PointOS1>>();
   pcl::fromROSMsg(*cloud, *cloud_pcl);
 
-  std::vector<int> indices;
-
   /*//{ Precompute points indices */
-  const int cloud_size    = cloud_pcl->points.size();
-  float     azimuth_start = -std::atan2(cloud_pcl->points.at(0).y, cloud_pcl->points.at(0).x);
-  float     azimuth_end   = -std::atan2(cloud_pcl->points.at(cloud_size - 1).y, cloud_pcl->points.at(cloud_size - 1).x) + 2 * M_PI;
+  const int   cloud_size    = cloud_pcl->points.size();
+  const float azimuth_start = -std::atan2(cloud_pcl->points.at(0).y, cloud_pcl->points.at(0).x);
+  float azimuth_end   = -std::atan2(cloud_pcl->points.at(cloud_size - 1).y, cloud_pcl->points.at(cloud_size - 1).x) + 2 * M_PI;
 
   if (azimuth_end - azimuth_start > 3 * M_PI) {
     azimuth_end -= 2 * M_PI;
@@ -374,7 +370,7 @@ void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::
     point.z = cloud_pcl->points.at(i).z;
 
     // Read row (ring) directly from msg
-    int point_ring = cloud_pcl->points.at(i).ring / _os1_rings_diff;
+    const int point_ring = cloud_pcl->points.at(i).ring / _os1_rings_diff;
 
     // Compute intensity TODO: can we polish this crazy ifs?
     float point_azimuth = -std::atan2(point.y, point.x);
@@ -398,7 +394,7 @@ void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::
     }
 
     // TODO: can we use `t` fiels from OS1 message?
-    float rel_time  = (point_azimuth - azimuth_start) / (azimuth_end - azimuth_start);
+    const float rel_time  = (point_azimuth - azimuth_start) / (azimuth_end - azimuth_start);
     point.intensity = point_ring + _scan_period_sec * rel_time;
     laser_cloud_rows.at(point_ring).push_back(point);
   }

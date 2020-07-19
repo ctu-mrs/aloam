@@ -10,8 +10,8 @@ namespace aloam_slam
 class AloamOdometry {
 
 public:
-  AloamOdometry(const ros::NodeHandle &parent_nh, std::shared_ptr<mrs_lib::Profiler> profiler, std::shared_ptr<AloamMapping> aloam_mapping, std::string frame_fcu,
-                std::string frame_lidar, std::string frame_odom, float scan_period_sec, tf::Transform tf_lidar_to_fcu);
+  AloamOdometry(const ros::NodeHandle &parent_nh, std::string uav_name, std::shared_ptr<mrs_lib::Profiler> profiler, std::shared_ptr<AloamMapping> aloam_mapping,
+                std::string frame_fcu, std::string frame_lidar, std::string frame_odom, float scan_period_sec, tf::Transform tf_lidar_to_fcu);
 
   bool is_initialized = false;
 
@@ -26,6 +26,7 @@ private:
   std::shared_ptr<tf2_ros::TransformBroadcaster> _tf_broadcaster;
   ros::Timer                                     _timer_odometry_loop;
 
+  std::shared_ptr<mrs_lib::Transformer>         _transformer;
   mrs_lib::SubscribeHandler<nav_msgs::Odometry> _sub_handler_orientation;
 
   std::mutex                      _mutex_odometry_process;
