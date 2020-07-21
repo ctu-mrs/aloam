@@ -548,12 +548,28 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   tf::pointTFToMsg(tf_fcu.getOrigin(), fcu_odom_msg->pose.pose.position);
   tf::quaternionTFToMsg(tf_fcu.getRotation(), fcu_odom_msg->pose.pose.orientation);
 
-  // Create geometry_msgs::PoseStamped msg
-  geometry_msgs::PoseStamped fcu_pose_msg;
-  fcu_pose_msg.header     = fcu_odom_msg->header;
-  fcu_pose_msg.pose       = fcu_odom_msg->pose.pose;
-  _laser_path_msg->header = fcu_odom_msg->header;
-  _laser_path_msg->poses.push_back(fcu_pose_msg);
+
+  // add points distant only 10cm (idea: throttle bandwidth)
+  if ((_t_w_curr - _path_last_added_pos).norm() > 0.1) {
+    _path_last_added_pos = _t_w_curr;
+
+    // Create geometry_msgs::PoseStamped msg
+    geometry_msgs::PoseStamped fcu_pose_msg;
+    fcu_pose_msg.header = fcu_odom_msg->header;
+    fcu_pose_msg.pose   = fcu_odom_msg->pose.pose;
+    _laser_path_msg->header = fcu_odom_msg->header;
+    _laser_path_msg->poses.push_back(fcu_pose_msg);
+
+    // Publish nav_msgs::Path msg
+    if (_pub_path.getNumSubscribers() > 0) {
+      try {
+        _pub_path.publish(_laser_path_msg);
+      }
+      catch (...) {
+        ROS_ERROR("[AloamMapping]: Exception caught during publishing topic %s.", _pub_path.getTopic().c_str());
+      }
+    }
+  }
 
   // Publish nav_msgs::Odometry msg
   if (_pub_odom_global.getNumSubscribers() > 0) {
@@ -564,17 +580,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     catch (...) {
       ROS_ERROR("[AloamMapping]: Exception caught during publishing topic %s.", _pub_odom_global.getTopic().c_str());
     }
-  }
-
-  // Publish nav_msgs::Path msg
-  if (_pub_path.getNumSubscribers() > 0) {
-    try {
-      _pub_path.publish(_laser_path_msg);
-    }
-    catch (...) {
-      ROS_ERROR("[AloamMapping]: Exception caught during publishing topic %s.", _pub_path.getTopic().c_str());
-    }
-  }
+  } 
 
   // Publish entire map
   if (_pub_laser_cloud_map.getNumSubscribers() > 0 && (ros::Time::now() - _time_last_map_publish).toSec() > _map_publish_period) {

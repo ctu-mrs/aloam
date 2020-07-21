@@ -97,7 +97,8 @@ private:
   ros::Publisher _pub_path;
 
   // ROS messages
-  nav_msgs::Path::Ptr _laser_path_msg = boost::make_shared<nav_msgs::Path>();
+  nav_msgs::Path::Ptr _laser_path_msg      = boost::make_shared<nav_msgs::Path>();
+  Eigen::Vector3d     _path_last_added_pos = Eigen::Vector3d::Identity();
 
   // member variables
   std::string _frame_fcu;
