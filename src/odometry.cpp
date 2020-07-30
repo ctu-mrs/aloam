@@ -7,7 +7,7 @@ namespace aloam_slam
 /* //{ AloamOdometry() */
 AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::string uav_name, std::shared_ptr<mrs_lib::Profiler> profiler,
                              std::shared_ptr<AloamMapping> aloam_mapping, std::string frame_fcu, std::string frame_lidar, std::string frame_odom,
-                             float scan_period_sec, tf::Transform tf_lidar_to_fcu)
+                             float scan_period_sec, tf::Transform tf_lidar_to_fcu, std::string orientation_type)
     : _profiler(profiler),
       _aloam_mapping(aloam_mapping),
       _frame_fcu(frame_fcu),
@@ -15,6 +15,7 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::string uav_n
       _frame_odom(frame_odom),
       _scan_period_sec(scan_period_sec),
       _tf_lidar_to_fcu(tf_lidar_to_fcu),
+      _orientation_type(orientation_type),
       _q_last_curr(_para_q),
       _t_last_curr(_para_t) {
 
@@ -39,7 +40,15 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::string uav_n
   shopts.node_name  = "AloamOdometry";
   shopts.threadsafe = true;
 
-  _sub_handler_orientation = mrs_lib::SubscribeHandler<nav_msgs::Odometry>(shopts, "orientation_in", ros::Duration(0.5));
+
+  if (_orientation_type == "odometry") {
+  _sub_handler_orientation_odom = mrs_lib::SubscribeHandler<nav_msgs::Odometry>(shopts, "orientation_in", ros::Duration(0.5));
+  } else if (_orientation_type == "imu") {
+  _sub_handler_orientation_imu = mrs_lib::SubscribeHandler<sensor_msgs::Imu>(shopts, "orientation_in", ros::Duration(0.5));
+  } else {
+    ROS_ERROR("[AloamOdometry]: Unknown orientation type: %s. Shutting down", _orientation_type.c_str());
+    ros::shutdown();
+  }
 
   _pub_odometry_local = nh_.advertise<nav_msgs::Odometry>("odom_local_out", 1);
 
@@ -308,14 +317,31 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
 
   /*//{ Correct orientation using inertial measurements */
 
-  if (_sub_handler_orientation.hasMsg()) {
+  bool new_msg = false;
+  geometry_msgs::QuaternionStamped msg_ori;
+  if (_orientation_type  == "odometry" && _sub_handler_orientation_odom.hasMsg()) {
     // Get orientation msg
-    auto odom_msg = _sub_handler_orientation.getMsg();
+    auto odom_msg = _sub_handler_orientation_odom.getMsg();
 
-    // Convert orientation to the odometry frame
-    geometry_msgs::QuaternionStamped msg_ori;
     msg_ori.header     = odom_msg->header;
     msg_ori.quaternion = odom_msg->pose.pose.orientation;
+
+    new_msg = true;
+
+  } else if (_orientation_type  == "imu" && _sub_handler_orientation_imu.hasMsg()) {
+    // Get orientation msg
+    auto imu_msg = _sub_handler_orientation_imu.getMsg();
+
+    msg_ori.header     = imu_msg->header;
+    msg_ori.quaternion = imu_msg->orientation;
+
+    new_msg = true;
+
+  }
+
+  if (new_msg) {
+
+    // Convert orientation to the odometry frame
     auto ret           = _transformer->transformSingle(_frame_odom, msg_ori);
 
     if (ret) {

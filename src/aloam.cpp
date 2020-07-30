@@ -46,6 +46,7 @@ void AloamSlam::onInit() {
   std::string   frame_fcu;
   std::string   frame_odom;
   std::string   frame_map;
+  std::string   orientation_type;
   float         frequency;
   tf::Transform tf_lidar_in_fcu_frame;
   bool          verbose;
@@ -56,6 +57,7 @@ void AloamSlam::onInit() {
   param_loader.loadParam("fcu_frame", frame_fcu);
   param_loader.loadParam("odom_frame", frame_odom);
   param_loader.loadParam("map_frame", frame_map);
+  param_loader.loadParam("orientation_type", orientation_type);
   param_loader.loadParam("sensor_frequency", frequency);
   param_loader.loadParam("verbose", verbose, false);
   param_loader.loadParam("enable_profiler", enable_profiler, false);
@@ -73,7 +75,7 @@ void AloamSlam::onInit() {
   // | ----------------------- SLAM handlers  ------------------- |
 
   aloam_mapping     = std::make_shared<AloamMapping>(nh_, param_loader, profiler, frame_fcu, frame_map, frequency, tf_lidar_in_fcu_frame);
-  aloam_odometry    = std::make_shared<AloamOdometry>(nh_, uav_name, profiler, aloam_mapping, frame_fcu, frame_lidar, frame_odom, 1.0f / frequency, tf_lidar_in_fcu_frame);
+  aloam_odometry    = std::make_shared<AloamOdometry>(nh_, uav_name, profiler, aloam_mapping, frame_fcu, frame_lidar, frame_odom, 1.0f / frequency, tf_lidar_in_fcu_frame, orientation_type);
   feature_extractor = std::make_shared<FeatureExtractor>(nh_, param_loader, profiler, aloam_odometry, frame_map, 1.0f / frequency);
 
   if (!param_loader.loadedSuccessfully()) {

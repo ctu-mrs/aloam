@@ -11,7 +11,7 @@ class AloamOdometry {
 
 public:
   AloamOdometry(const ros::NodeHandle &parent_nh, std::string uav_name, std::shared_ptr<mrs_lib::Profiler> profiler, std::shared_ptr<AloamMapping> aloam_mapping,
-                std::string frame_fcu, std::string frame_lidar, std::string frame_odom, float scan_period_sec, tf::Transform tf_lidar_to_fcu);
+                std::string frame_fcu, std::string frame_lidar, std::string frame_odom, float scan_period_sec, tf::Transform tf_lidar_to_fcu, std::string orientation_type);
 
   bool is_initialized = false;
 
@@ -27,7 +27,8 @@ private:
   ros::Timer                                     _timer_odometry_loop;
 
   std::shared_ptr<mrs_lib::Transformer>         _transformer;
-  mrs_lib::SubscribeHandler<nav_msgs::Odometry> _sub_handler_orientation;
+  mrs_lib::SubscribeHandler<nav_msgs::Odometry> _sub_handler_orientation_odom;
+  mrs_lib::SubscribeHandler<sensor_msgs::Imu> _sub_handler_orientation_imu;
 
   std::mutex                      _mutex_odometry_process;
   pcl::PointCloud<PointType>::Ptr _features_corners_last;
@@ -58,6 +59,8 @@ private:
   long int _frame_count = 0;
 
   tf::Transform _tf_lidar_to_fcu;
+
+  std::string _orientation_type;
 
   double                         _para_q[4] = {0, 0, 0, 1};
   double                         _para_t[3] = {0, 0, 0};

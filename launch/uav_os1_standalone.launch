@@ -21,6 +21,7 @@
   <arg name="filter/intensity" default="false" />
   <arg name="filter/intensity/value" default="100" />
   <arg name="filter/intensity/range" default="10.0" />
+  <arg name="orientation_type" default="odometry" />
 
   <!-- MAPPING PARAMETERS -->
   <arg name="mapping_rate" default="$(arg sensor_frequency)" />
@@ -54,6 +55,7 @@
       <param name="scan_line" type="int" value="$(arg number_of_rings)" />
       <param name="vertical_fov" type="double" value="$(arg vertical_fov)"/>
       <param name="sensor_frequency" type="double" value="$(arg sensor_frequency)"/>
+      <param name="orientation_type" type="string" value="$(arg orientation_type)"/>
 
       <param name="uav_name" type="string" value="$(arg UAV_NAME)"/>
       <param name="fcu_frame" type="string" value="$(arg fcu_frame)"/>

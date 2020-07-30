@@ -43,6 +43,7 @@
 #include <geometry_msgs/PoseStamped.h>
 
 #include <sensor_msgs/PointCloud2.h>
+#include <sensor_msgs/Imu.h>
 
 #include <mrs_lib/profiler.h>
 #include <mrs_lib/param_loader.h>
