@@ -52,6 +52,8 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
 
   _tf_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>();
 
+  _srv_reset_mapping = nh_.advertiseService("srv_reset_mapping", &AloamMapping::callbackResetMapping, this);
+
   _time_last_map_publish = ros::Time::now();
 }
 /*//}*/
@@ -555,8 +557,8 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
     // Create geometry_msgs::PoseStamped msg
     geometry_msgs::PoseStamped fcu_pose_msg;
-    fcu_pose_msg.header = fcu_odom_msg->header;
-    fcu_pose_msg.pose   = fcu_odom_msg->pose.pose;
+    fcu_pose_msg.header     = fcu_odom_msg->header;
+    fcu_pose_msg.pose       = fcu_odom_msg->pose.pose;
     _laser_path_msg->header = fcu_odom_msg->header;
     _laser_path_msg->poses.push_back(fcu_pose_msg);
 
@@ -580,7 +582,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     catch (...) {
       ROS_ERROR("[AloamMapping]: Exception caught during publishing topic %s.", _pub_odom_global.getTopic().c_str());
     }
-  } 
+  }
 
   // Publish entire map
   if (_pub_laser_cloud_map.getNumSubscribers() > 0 && (ros::Time::now() - _time_last_map_publish).toSec() > _map_publish_period) {
@@ -668,6 +670,21 @@ void AloamMapping::pointAssociateToMap(PointType const *const pi, PointType *con
   po->z                   = point_w.z();
   po->intensity           = pi->intensity;
   // po->intensity = 1.0;
+}
+/*//}*/
+
+/*//{ callbackResetMapping() */
+bool AloamMapping::callbackResetMapping(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res) {
+  std::scoped_lock lock(_mutex_cloud_features);
+  _cloud_corners.resize(_cloud_volume);
+  _cloud_surfs.resize(_cloud_volume);
+  for (int i = 0; i < _cloud_volume; i++) {
+    _cloud_corners.at(i) = boost::make_shared<pcl::PointCloud<PointType>>();
+    _cloud_surfs.at(i)   = boost::make_shared<pcl::PointCloud<PointType>>();
+  }
+  res.success = true;
+  res.message = "ALOAM map features were cleared.";
+  return true;
 }
 /*//}*/
 
