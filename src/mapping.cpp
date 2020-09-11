@@ -52,7 +52,7 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
 
   _tf_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>();
 
-  _srv_reset_mapping = nh_.advertiseService("srv_reset_mapping", &AloamMapping::callbackResetMapping, this);
+  _srv_reset_mapping = nh_.advertiseService("srv_reset_mapping_in", &AloamMapping::callbackResetMapping, this);
 
   _time_last_map_publish = ros::Time::now();
 }
@@ -674,7 +674,7 @@ void AloamMapping::pointAssociateToMap(PointType const *const pi, PointType *con
 /*//}*/
 
 /*//{ callbackResetMapping() */
-bool AloamMapping::callbackResetMapping(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res) {
+bool AloamMapping::callbackResetMapping([[maybe_unused]] std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res) {
   std::scoped_lock lock(_mutex_cloud_features);
   _cloud_corners.resize(_cloud_volume);
   _cloud_surfs.resize(_cloud_volume);
@@ -682,8 +682,10 @@ bool AloamMapping::callbackResetMapping(std_srvs::Trigger::Request &req, std_srv
     _cloud_corners.at(i) = boost::make_shared<pcl::PointCloud<PointType>>();
     _cloud_surfs.at(i)   = boost::make_shared<pcl::PointCloud<PointType>>();
   }
+  ROS_INFO("[AloamMapping] Reset: map features were cleared.");
+
   res.success = true;
-  res.message = "ALOAM map features were cleared.";
+  res.message = "AloamMapping features were cleared.";
   return true;
 }
 /*//}*/

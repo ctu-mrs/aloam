@@ -50,16 +50,19 @@
       <param name="mapping_line_resolution" type="double" value="$(arg mapping_line_resolution)" />
       <param name="mapping_plane_resolution" type="double" value="$(arg mapping_plane_resolution)" />
 
-        <!-- Subscribers -->
+      <!-- Subscribers -->
       <remap from="~laser_cloud_in" to="$(arg points_topic)"/>
       <remap from="~orientation_in" to="odometry/orientation"/>
 
-        <!-- Publishers -->
+      <!-- Publishers -->
       <remap from="~odom_local_out" to="aloam/odom_local"/>
       <remap from="~path_out" to="aloam/path"/>
       <remap from="~odom_global_out" to="aloam/odom"/>
       <remap from="~map_out" to="aloam/map"/>
       <remap from="~scan_registered_out" to="aloam/scan_registered"/>
+        
+      <!-- Service servers -->
+      <remap from="~srv_reset_mapping_in" to="aloam/reset/mapping"/>
 
     </node>
 
