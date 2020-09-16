@@ -96,8 +96,8 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   if (_frame_count > 0) {
     std::scoped_lock lock(_mutex_odometry_process);
 
-    int cornerPointsSharpNum = corner_points_sharp->points.size();
-    int surfPointsFlatNum    = surf_points_flat->points.size();
+    const int cornerPointsSharpNum = corner_points_sharp->points.size();
+    const int surfPointsFlatNum    = surf_points_flat->points.size();
 
     pcl::KdTreeFLANN<pcl::PointXYZI> _kdtree_corners_last;
     pcl::KdTreeFLANN<pcl::PointXYZI> _kdtree_surfs_last;
@@ -182,11 +182,11 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
         }
         if (minPointInd2 >= 0)  // both closestPointInd and minPointInd2 is valid
         {
-          Eigen::Vector3d curr_point(corner_points_sharp->points.at(i).x, corner_points_sharp->points.at(i).y, corner_points_sharp->points.at(i).z);
-          Eigen::Vector3d last_point_a(_features_corners_last->points.at(closestPointInd).x, _features_corners_last->points.at(closestPointInd).y,
-                                       _features_corners_last->points.at(closestPointInd).z);
-          Eigen::Vector3d last_point_b(_features_corners_last->points.at(minPointInd2).x, _features_corners_last->points.at(minPointInd2).y,
-                                       _features_corners_last->points.at(minPointInd2).z);
+          const Eigen::Vector3d curr_point(corner_points_sharp->points.at(i).x, corner_points_sharp->points.at(i).y, corner_points_sharp->points.at(i).z);
+          const Eigen::Vector3d last_point_a(_features_corners_last->points.at(closestPointInd).x, _features_corners_last->points.at(closestPointInd).y,
+                                             _features_corners_last->points.at(closestPointInd).z);
+          const Eigen::Vector3d last_point_b(_features_corners_last->points.at(minPointInd2).x, _features_corners_last->points.at(minPointInd2).y,
+                                             _features_corners_last->points.at(minPointInd2).z);
 
           double s = 1.0;
           if (DISTORTION) {
@@ -208,8 +208,8 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
           closestPointInd = pointSearchInd.at(0);
 
           // get closest point's scan ID
-          int    closestPointScanID = int(_features_surfs_last->points.at(closestPointInd).intensity);
-          double minPointSqDis2 = DISTANCE_SQ_THRESHOLD, minPointSqDis3 = DISTANCE_SQ_THRESHOLD;
+          const int closestPointScanID = int(_features_surfs_last->points.at(closestPointInd).intensity);
+          double    minPointSqDis2 = DISTANCE_SQ_THRESHOLD, minPointSqDis3 = DISTANCE_SQ_THRESHOLD;
 
           // search in the direction of increasing scan line
           for (int j = closestPointInd + 1; j < (int)_features_surfs_last->points.size(); ++j) {
@@ -217,9 +217,9 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
             if (int(_features_surfs_last->points.at(j).intensity) > (closestPointScanID + NEARBY_SCAN))
               break;
 
-            double pointSqDis = (_features_surfs_last->points.at(j).x - pointSel.x) * (_features_surfs_last->points.at(j).x - pointSel.x) +
-                                (_features_surfs_last->points.at(j).y - pointSel.y) * (_features_surfs_last->points.at(j).y - pointSel.y) +
-                                (_features_surfs_last->points.at(j).z - pointSel.z) * (_features_surfs_last->points.at(j).z - pointSel.z);
+            const double pointSqDis = (_features_surfs_last->points.at(j).x - pointSel.x) * (_features_surfs_last->points.at(j).x - pointSel.x) +
+                                      (_features_surfs_last->points.at(j).y - pointSel.y) * (_features_surfs_last->points.at(j).y - pointSel.y) +
+                                      (_features_surfs_last->points.at(j).z - pointSel.z) * (_features_surfs_last->points.at(j).z - pointSel.z);
 
             // if in the same or lower scan line
             if (int(_features_surfs_last->points.at(j).intensity) <= closestPointScanID && pointSqDis < minPointSqDis2) {
@@ -239,9 +239,9 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
             if (int(_features_surfs_last->points.at(j).intensity) < (closestPointScanID - NEARBY_SCAN))
               break;
 
-            double pointSqDis = (_features_surfs_last->points.at(j).x - pointSel.x) * (_features_surfs_last->points.at(j).x - pointSel.x) +
-                                (_features_surfs_last->points.at(j).y - pointSel.y) * (_features_surfs_last->points.at(j).y - pointSel.y) +
-                                (_features_surfs_last->points.at(j).z - pointSel.z) * (_features_surfs_last->points.at(j).z - pointSel.z);
+            const double pointSqDis = (_features_surfs_last->points.at(j).x - pointSel.x) * (_features_surfs_last->points.at(j).x - pointSel.x) +
+                                      (_features_surfs_last->points.at(j).y - pointSel.y) * (_features_surfs_last->points.at(j).y - pointSel.y) +
+                                      (_features_surfs_last->points.at(j).z - pointSel.z) * (_features_surfs_last->points.at(j).z - pointSel.z);
 
             // if in the same or higher scan line
             if (int(_features_surfs_last->points.at(j).intensity) >= closestPointScanID && pointSqDis < minPointSqDis2) {
@@ -256,13 +256,13 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
 
           if (minPointInd2 >= 0 && minPointInd3 >= 0) {
 
-            Eigen::Vector3d curr_point(surf_points_flat->points.at(i).x, surf_points_flat->points.at(i).y, surf_points_flat->points.at(i).z);
-            Eigen::Vector3d last_point_a(_features_surfs_last->points.at(closestPointInd).x, _features_surfs_last->points.at(closestPointInd).y,
-                                         _features_surfs_last->points.at(closestPointInd).z);
-            Eigen::Vector3d last_point_b(_features_surfs_last->points.at(minPointInd2).x, _features_surfs_last->points.at(minPointInd2).y,
-                                         _features_surfs_last->points.at(minPointInd2).z);
-            Eigen::Vector3d last_point_c(_features_surfs_last->points.at(minPointInd3).x, _features_surfs_last->points.at(minPointInd3).y,
-                                         _features_surfs_last->points.at(minPointInd3).z);
+            const Eigen::Vector3d curr_point(surf_points_flat->points.at(i).x, surf_points_flat->points.at(i).y, surf_points_flat->points.at(i).z);
+            const Eigen::Vector3d last_point_a(_features_surfs_last->points.at(closestPointInd).x, _features_surfs_last->points.at(closestPointInd).y,
+                                               _features_surfs_last->points.at(closestPointInd).z);
+            const Eigen::Vector3d last_point_b(_features_surfs_last->points.at(minPointInd2).x, _features_surfs_last->points.at(minPointInd2).y,
+                                               _features_surfs_last->points.at(minPointInd2).z);
+            const Eigen::Vector3d last_point_c(_features_surfs_last->points.at(minPointInd3).x, _features_surfs_last->points.at(minPointInd3).y,
+                                               _features_surfs_last->points.at(minPointInd3).z);
 
             double s = 1.0;
             if (DISTORTION) {
@@ -439,10 +439,10 @@ void AloamOdometry::TransformToStart(PointType const *const pi, PointType *const
   if (DISTORTION) {
     s = (pi->intensity - int(pi->intensity)) / _scan_period_sec;
   }
-  Eigen::Quaterniond q_point_last = Eigen::Quaterniond::Identity().slerp(s, _q_last_curr);
-  Eigen::Vector3d    t_point_last = s * _t_last_curr;
-  Eigen::Vector3d    point(pi->x, pi->y, pi->z);
-  Eigen::Vector3d    un_point = q_point_last * point + t_point_last;
+  const Eigen::Quaterniond q_point_last = Eigen::Quaterniond::Identity().slerp(s, _q_last_curr);
+  const Eigen::Vector3d    t_point_last = s * _t_last_curr;
+  const Eigen::Vector3d    point(pi->x, pi->y, pi->z);
+  const Eigen::Vector3d    un_point = q_point_last * point + t_point_last;
 
   po->x         = un_point.x();
   po->y         = un_point.y();

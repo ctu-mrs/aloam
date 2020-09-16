@@ -120,7 +120,6 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   /*//{ Associate odometry features to map features */
   TicToc t_whole;
 
-  float time_shift        = 0.0f;
   float time_build_tree   = 0.0f;
   float time_association  = 0.0f;
   float time_optimization = 0.0f;
@@ -317,7 +316,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
   /* printf("map prepare time %f ms\n", t_shift.toc()); */
   /* printf("map corner num %d  surf num %d \n", laserCloudCornerFromMapNum, laserCloudSurfFromMapNum); */
-  time_shift = t_shift.toc();
+  const float time_shift = t_shift.toc();
 
   if (map_features_corners->points.size() > 10 && map_features_surfs->points.size() > 50) {
     TicToc                           t_tree;
@@ -345,8 +344,8 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
       int    corner_num = 0;
 
       for (unsigned int i = 0; i < features_corners_stack->points.size(); i++) {
-        PointType point_ori = features_corners_stack->points.at(i);
-        PointType point_sel;
+        const PointType point_ori = features_corners_stack->points.at(i);
+        PointType       point_sel;
         // double sqrtDis = point_ori.x * point_ori.x + point_ori.y * point_ori.y + point_ori.z * point_ori.z;
         pointAssociateToMap(&point_ori, &point_sel);
         kdtree_map_corners->nearestKSearch(point_sel, 5, point_search_indices, point_search_sq_dist);
@@ -355,8 +354,9 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
           std::vector<Eigen::Vector3d> nearCorners;
           Eigen::Vector3d              center(0, 0, 0);
           for (int j = 0; j < 5; j++) {
-            Eigen::Vector3d tmp(map_features_corners->points.at(point_search_indices.at(j)).x, map_features_corners->points.at(point_search_indices.at(j)).y,
-                                map_features_corners->points.at(point_search_indices.at(j)).z);
+            const Eigen::Vector3d tmp(map_features_corners->points.at(point_search_indices.at(j)).x,
+                                      map_features_corners->points.at(point_search_indices.at(j)).y,
+                                      map_features_corners->points.at(point_search_indices.at(j)).z);
             center = center + tmp;
             nearCorners.push_back(tmp);
           }
@@ -364,16 +364,16 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
           Eigen::Matrix3d covMat = Eigen::Matrix3d::Zero();
           for (int j = 0; j < 5; j++) {
-            Eigen::Matrix<double, 3, 1> tmpZeroMean = nearCorners.at(j) - center;
-            covMat                                  = covMat + tmpZeroMean * tmpZeroMean.transpose();
+            const Eigen::Matrix<double, 3, 1> tmpZeroMean = nearCorners.at(j) - center;
+            covMat                                        = covMat + tmpZeroMean * tmpZeroMean.transpose();
           }
 
           Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> saes(covMat);
 
           // if is indeed line feature
           // note Eigen library sort eigenvalues in increasing order
-          Eigen::Vector3d unit_direction = saes.eigenvectors().col(2);
-          Eigen::Vector3d curr_point(point_ori.x, point_ori.y, point_ori.z);
+          const Eigen::Vector3d unit_direction = saes.eigenvectors().col(2);
+          const Eigen::Vector3d curr_point(point_ori.x, point_ori.y, point_ori.z);
           if (saes.eigenvalues()[2] > 3 * saes.eigenvalues()[1]) {
             Eigen::Vector3d point_a = 0.1 * unit_direction + center;
             Eigen::Vector3d point_b = -0.1 * unit_direction + center;
@@ -387,8 +387,8 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
       int surf_num = 0;
       for (unsigned int i = 0; i < features_surfs_stack->points.size(); i++) {
-        PointType point_ori = features_surfs_stack->points.at(i);
-        PointType point_sel;
+        const PointType point_ori = features_surfs_stack->points.at(i);
+        PointType       point_sel;
         pointAssociateToMap(&point_ori, &point_sel);
         kdtree_map_surfs->nearestKSearch(point_sel, 5, point_search_indices, point_search_sq_dist);
 
@@ -403,7 +403,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
           }
           // find the norm of plane
           Eigen::Vector3d norm                 = matA0.colPivHouseholderQr().solve(matB0);
-          double          negative_OA_dot_norm = 1 / norm.norm();
+          const double    negative_OA_dot_norm = 1 / norm.norm();
           norm.normalize();
 
           // Here n(pa, pb, pc) is unit norm of plane
@@ -417,7 +417,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
               break;
             }
           }
-          Eigen::Vector3d curr_point(point_ori.x, point_ori.y, point_ori.z);
+          const Eigen::Vector3d curr_point(point_ori.x, point_ori.y, point_ori.z);
           if (planeValid) {
             ceres::CostFunction *cost_function = LidarPlaneNormFactor::Create(curr_point, norm, negative_OA_dot_norm);
             problem.AddResidualBlock(cost_function, loss_function, _parameters, _parameters + 4);
@@ -445,7 +445,6 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   }
   /*//}*/
 
-
   float time_add    = 0.0f;
   float time_filter = 0.0f;
   {
@@ -471,7 +470,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
         cubeK--;
 
       if (cubeI >= 0 && cubeI < _cloud_width && cubeJ >= 0 && cubeJ < _cloud_height && cubeK >= 0 && cubeK < _cloud_depth) {
-        int cubeInd = cubeI + _cloud_width * cubeJ + _cloud_width * _cloud_height * cubeK;
+        const int cubeInd = cubeI + _cloud_width * cubeJ + _cloud_width * _cloud_height * cubeK;
         _cloud_corners.at(cubeInd)->push_back(point_sel);
       }
     }
@@ -492,7 +491,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
         cubeK--;
 
       if (cubeI >= 0 && cubeI < _cloud_width && cubeJ >= 0 && cubeJ < _cloud_height && cubeK >= 0 && cubeK < _cloud_depth) {
-        int cubeInd = cubeI + _cloud_width * cubeJ + _cloud_width * _cloud_height * cubeK;
+        const int cubeInd = cubeI + _cloud_width * cubeJ + _cloud_width * _cloud_height * cubeK;
         _cloud_surfs.at(cubeInd)->push_back(point_sel);
       }
     }
@@ -501,7 +500,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
     TicToc t_filter;
     for (unsigned int i = 0; i < cloud_valid_indices.size(); i++) {
-      int ind = cloud_valid_indices.at(i);
+      const int ind = cloud_valid_indices.at(i);
 
       pcl::PointCloud<PointType>::Ptr tmpCorner = boost::make_shared<pcl::PointCloud<PointType>>();
       filter_downsize_corners.setInputCloud(_cloud_corners.at(ind));
@@ -635,7 +634,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   _frame_count++;
 
   // Print diagnostics
-  float time_whole = t_whole.toc();
+  const float time_whole = t_whole.toc();
 
   ROS_INFO_THROTTLE(1.0, "[AloamMapping] Run time: %0.1f ms (%0.1f Hz)", time_whole, std::min(_mapping_frequency, 1000.0f / time_whole));
   ROS_DEBUG_THROTTLE(
@@ -663,12 +662,12 @@ void AloamMapping::transformUpdate() {
 
 /*//{ pointAssociateToMap() */
 void AloamMapping::pointAssociateToMap(PointType const *const pi, PointType *const po) {
-  Eigen::Vector3d point_curr(pi->x, pi->y, pi->z);
-  Eigen::Vector3d point_w = _q_w_curr * point_curr + _t_w_curr;
-  po->x                   = point_w.x();
-  po->y                   = point_w.y();
-  po->z                   = point_w.z();
-  po->intensity           = pi->intensity;
+  const Eigen::Vector3d point_curr(pi->x, pi->y, pi->z);
+  const Eigen::Vector3d point_w = _q_w_curr * point_curr + _t_w_curr;
+  po->x                         = point_w.x();
+  po->y                         = point_w.y();
+  po->z                         = point_w.z();
+  po->intensity                 = pi->intensity;
   // po->intensity = 1.0;
 }
 /*//}*/
