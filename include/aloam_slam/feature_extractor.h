@@ -39,9 +39,9 @@ private:
 
   bool _data_have_ring_field;
 
-  void parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr cloud_processed,
+  void parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr &cloud_processed,
                              std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices, float &processing_time);
-  void parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr cloud_processed,
+  void parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr &cloud_processed,
                                 std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices, float &processing_time);
 
   bool hasField(const std::string field, const sensor_msgs::PointCloud2::ConstPtr &msg);

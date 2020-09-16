@@ -204,15 +204,14 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2::ConstP
       }
     }
 
-    pcl::PointCloud<PointType>::Ptr surfPointsLessFlatScanDS = boost::make_shared<pcl::PointCloud<PointType>>();
-    pcl::VoxelGrid<PointType>       downSizeFilter;
+    pcl::PointCloud<PointType> surfPointsLessFlatScanDS;
+    pcl::VoxelGrid<PointType>  downSizeFilter;
     downSizeFilter.setInputCloud(surfPointsLessFlatScan);
     downSizeFilter.setLeafSize(0.2, 0.2, 0.2);
-    downSizeFilter.filter(*surfPointsLessFlatScanDS);
+    downSizeFilter.filter(surfPointsLessFlatScanDS);
 
-    *surf_points_less_flat += *surfPointsLessFlatScanDS;
+    *surf_points_less_flat += surfPointsLessFlatScanDS;
   }
-
   /*//}*/
 
   const float time_pts = t_pts.toc();
@@ -243,7 +242,7 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2::ConstP
 /*//}*/
 
 /*//{ parseRowsFromCloudMsg() */
-void FeatureExtractor::parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr cloud_processed,
+void FeatureExtractor::parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr &cloud_processed,
                                              std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices, float &processing_time) {
   TicToc t_prepare;
 
@@ -272,7 +271,7 @@ void FeatureExtractor::parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::Con
 
     int point_ring = 0;
 
-    float angle = (M_PI_2 - acos(point.z / sqrt(point.x * point.x + point.y * point.y + point.z * point.z))) * 180.0 / M_PI;
+    const float angle = (M_PI_2 - acos(point.z / sqrt(point.x * point.x + point.y * point.y + point.z * point.z))) * 180.0 / M_PI;
 
     if (_number_of_rings == 16) {
       point_ring = std::round((angle + _vertical_fov_half) / _ray_vert_delta);
@@ -340,7 +339,7 @@ void FeatureExtractor::parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::Con
 /*//}*/
 
 /*//{ parseRowsFromOS1CloudMsg() */
-void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr cloud_processed,
+void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr &cloud_processed,
                                                 std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices, float &processing_time) {
   TicToc t_prepare;
 
@@ -420,4 +419,3 @@ bool FeatureExtractor::hasField(const std::string field, const sensor_msgs::Poin
 /*//}*/
 
 }  // namespace aloam_slam
-
