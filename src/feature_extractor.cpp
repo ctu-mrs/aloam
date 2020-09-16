@@ -1,6 +1,4 @@
 #include "aloam_slam/feature_extractor.h"
-#include "aloam_slam/odometry.h"
-#include "aloam_slam/mapping.h"
 
 namespace aloam_slam
 {
