@@ -53,6 +53,7 @@
       <!-- Subscribers -->
       <remap from="~laser_cloud_in" to="$(arg points_topic)"/>
       <remap from="~orientation_in" to="odometry/orientation"/>
+      <remap from="~imu_in" to="mavros/imu/data_raw"/>
 
       <!-- Publishers -->
       <remap from="~odom_local_out" to="aloam/odom_local"/>

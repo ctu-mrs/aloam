@@ -41,6 +41,9 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
     }
   }
 
+  _sub_imu            = nh_.subscribe("imu_in", 1, &AloamMapping::callbackImu, this, ros::TransportHints().tcpNoDelay());
+  _pub_imu_integrated = nh_.advertise<geometry_msgs::PoseStamped>("ins_out", 1);
+
   _pub_laser_cloud_map        = nh_.advertise<sensor_msgs::PointCloud2>("map_out", 1);
   _pub_laser_cloud_registered = nh_.advertise<sensor_msgs::PointCloud2>("scan_registered_out", 1);
   _pub_odom_global            = nh_.advertise<nav_msgs::Odometry>("odom_global_out", 1);
@@ -686,6 +689,85 @@ bool AloamMapping::callbackResetMapping([[maybe_unused]] std_srvs::Trigger::Requ
   res.success = true;
   res.message = "AloamMapping features were cleared.";
   return true;
+}
+/*//}*/
+
+/*//{ callbackImu() */
+void AloamMapping::callbackImu(const sensor_msgs::Imu::ConstPtr &imu_msg) {
+  if (!is_initialized) {
+    return;
+  }
+
+  // TODO: tune lkf_imu_R matrix (measurement noise matrix)
+
+  std::scoped_lock lock(_mutex_imu);
+
+  if (_has_imu) {
+    const double dk = (imu_msg->header.stamp - _imu_time_prev).toSec();
+    if (dk <= 0.0) {
+      return;
+    }
+
+    const Eigen::Matrix3d Idki = (1.0 / dk) * Eigen::Matrix3d::Identity();
+
+    // Correct (integrate acc-to-vel and ang_vel-to-orientation)
+    // little hack with time inversion (is prob. not a rigorous solution)
+    _lkf_imu->H.block<3, 3>(0, 3) = Idki;
+    _lkf_imu->H.block<3, 3>(3, 6) = Idki;
+    imu_z_t z;
+    z << imu_msg->linear_acceleration.x, imu_msg->linear_acceleration.y, imu_msg->linear_acceleration.z - GRAVITY, imu_msg->angular_velocity.x,
+        imu_msg->angular_velocity.y, imu_msg->angular_velocity.z;
+    _lkf_imu_statecov = _lkf_imu->correct(_lkf_imu_statecov, z, _lkf_imu_R);
+
+    // Predict (integrate vel-to-pos)
+    _lkf_imu->A.block<3, 3>(3, 0) = dk * Eigen::Matrix3d::Identity();
+    imu_u_t u                     = imu_u_t::Zero();
+    imu_Q_t Q                     = imu_Q_t::Zero();
+    _lkf_imu_statecov             = _lkf_imu->predict(_lkf_imu_statecov, u, Q, dk);
+
+    // Publish for debug reasons
+    if (_pub_imu_integrated.getNumSubscribers() > 0) {
+      geometry_msgs::PoseStamped pose_msg;
+      pose_msg.header.stamp     = imu_msg->header.stamp;
+      const imu_x_t x           = _lkf_imu_statecov.x;
+      pose_msg.pose.position.x  = x(0);
+      pose_msg.pose.position.y  = x(1);
+      pose_msg.pose.position.z  = x(2);
+      pose_msg.pose.orientation = mrs_lib::AttitudeConverter(x(6), x(7), x(8), mrs_lib::RPY_INTRINSIC);
+      _pub_imu_integrated.publish(pose_msg);
+    }
+  } else {
+    _has_imu = true;
+
+    // Linear KF
+    // states: position, velocity, orientation
+    // inputs: none
+    // measurements: linear acceleration, linear velocity
+
+    imu_A_t A = imu_A_t::Identity();
+    imu_B_t B = imu_B_t::Zero();
+    imu_H_t H = imu_H_t::Zero();
+
+    // Load measurement noise from imu msg
+    _lkf_imu_R       = imu_R_t::Identity();
+    _lkf_imu_R(0, 0) = imu_msg->linear_acceleration_covariance.at(0);
+    _lkf_imu_R(1, 1) = imu_msg->linear_acceleration_covariance.at(4);
+    _lkf_imu_R(2, 2) = imu_msg->linear_acceleration_covariance.at(8);
+    _lkf_imu_R(3, 3) = imu_msg->angular_velocity_covariance.at(0);
+    _lkf_imu_R(4, 4) = imu_msg->angular_velocity_covariance.at(4);
+    _lkf_imu_R(5, 5) = imu_msg->angular_velocity_covariance.at(8);
+
+    // Initial state to zero
+    const imu_x_t        x0 = imu_x_t::Zero();
+    const imu_P_t        P0 = 1000.0 * imu_P_t::Identity() * imu_P_t::Identity().transpose();
+    const imu_statecov_t statecov0({x0, P0});
+    _lkf_imu_statecov = statecov0;
+
+    // Create LKF object
+    _lkf_imu = std::make_unique<lkf_imu_t>(A, B, H);
+  }
+
+  _imu_time_prev = imu_msg->header.stamp;
 }
 /*//}*/
 
