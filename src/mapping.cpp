@@ -372,11 +372,11 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
           // if is indeed line feature
           // note Eigen library sort eigenvalues in increasing order
-          const Eigen::Vector3d unit_direction = saes.eigenvectors().col(2);
-          const Eigen::Vector3d curr_point(point_ori.x, point_ori.y, point_ori.z);
           if (saes.eigenvalues()[2] > 3 * saes.eigenvalues()[1]) {
-            Eigen::Vector3d point_a = 0.1 * unit_direction + center;
-            Eigen::Vector3d point_b = -0.1 * unit_direction + center;
+            const Eigen::Vector3d unit_direction = saes.eigenvectors().col(2);
+            const Eigen::Vector3d curr_point(point_ori.x, point_ori.y, point_ori.z);
+            const Eigen::Vector3d point_a = 0.1 * unit_direction + center;
+            const Eigen::Vector3d point_b = -0.1 * unit_direction + center;
 
             ceres::CostFunction *cost_function = LidarEdgeFactor::Create(curr_point, point_a, point_b, 1.0);
             problem.AddResidualBlock(cost_function, loss_function, _parameters, _parameters + 4);
@@ -417,9 +417,9 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
               break;
             }
           }
-          const Eigen::Vector3d curr_point(point_ori.x, point_ori.y, point_ori.z);
           if (planeValid) {
-            ceres::CostFunction *cost_function = LidarPlaneNormFactor::Create(curr_point, norm, negative_OA_dot_norm);
+            const Eigen::Vector3d curr_point(point_ori.x, point_ori.y, point_ori.z);
+            ceres::CostFunction * cost_function = LidarPlaneNormFactor::Create(curr_point, norm, negative_OA_dot_norm);
             problem.AddResidualBlock(cost_function, loss_function, _parameters, _parameters + 4);
             surf_num++;
           }
