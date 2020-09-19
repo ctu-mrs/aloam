@@ -35,6 +35,10 @@ find_package(Eigen3 REQUIRED)
 set(Eigen_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIRS})
 set(Eigen_LIBRARIES ${Eigen_LIBRARIES})
 
+generate_dynamic_reconfigure_options(
+  cfg/aloam_dynparam.cfg
+  )
+
 catkin_package(
   CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs mrs_lib eigen_conversions tf_conversions pcl_ros
 )
@@ -59,6 +63,7 @@ add_library(AloamSlam src/aloam.cpp src/odometry.cpp src/mapping.cpp src/feature
 
 add_dependencies(AloamSlam
   ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${${PROJECT_NAME}_gencfg}
   ${catkin_EXPORTED_TARGETS}
   )
 

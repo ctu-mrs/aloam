@@ -20,6 +20,22 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
   param_loader.loadParam("mapping_plane_resolution", _resolution_plane, 0.4f);
   param_loader.loadParam("mapping_rate", _mapping_frequency, 5.0f);
   param_loader.loadParam("map_publish_rate", _map_publish_period, 0.5f);
+  param_loader.loadParam("map_publish_rate", _map_publish_period, 0.5f);
+
+  // Load LKF parameters
+  param_loader.loadParam("lkf/imu/R/lin_acc", lkf_imu_R_lin_acc, 1.0);
+  param_loader.loadParam("lkf/imu/R/ang_vel", lkf_imu_R_ang_vel, 1.0);
+  param_loader.loadParam("lkf/imu/Q/pos", lkf_imu_Q_pos, 1.0);
+  param_loader.loadParam("lkf/imu/Q/vel", lkf_imu_Q_vel, 1.0);
+  param_loader.loadParam("lkf/imu/Q/att", lkf_imu_Q_att, 1.0);
+
+  lkf_imu_R = imu_R_t::Identity();
+  lkf_imu_R.block<3, 3>(0, 0) *= lkf_imu_R_lin_acc;
+  lkf_imu_R.block<3, 3>(3, 3) *= lkf_imu_R_ang_vel;
+  lkf_imu_Q = imu_Q_t::Identity();
+  lkf_imu_Q.block<3, 3>(0, 0) *= lkf_imu_Q_pos;
+  lkf_imu_Q.block<3, 3>(3, 3) *= lkf_imu_Q_vel;
+  lkf_imu_Q.block<3, 3>(6, 6) *= lkf_imu_Q_att;
 
   _mapping_frequency = std::min(scan_frequency, _mapping_frequency);  // cannot be higher than scan frequency
 
@@ -710,6 +726,11 @@ void AloamMapping::callbackImu(const sensor_msgs::Imu::ConstPtr &imu_msg) {
 
     const Eigen::Matrix3d Idki = (1.0 / dk) * Eigen::Matrix3d::Identity();
 
+    // Predict (integrate vel-to-pos)
+    _lkf_imu->A.block<3, 3>(3, 0) = dk * Eigen::Matrix3d::Identity();
+    imu_u_t u                     = imu_u_t::Zero();
+    _lkf_imu_statecov             = _lkf_imu->predict(_lkf_imu_statecov, u, lkf_imu_Q, dk);
+
     // Correct (integrate acc-to-vel and ang_vel-to-orientation)
     // little hack with time inversion (is prob. not a rigorous solution)
     _lkf_imu->H.block<3, 3>(0, 3) = Idki;
@@ -717,13 +738,7 @@ void AloamMapping::callbackImu(const sensor_msgs::Imu::ConstPtr &imu_msg) {
     imu_z_t z;
     z << imu_msg->linear_acceleration.x, imu_msg->linear_acceleration.y, imu_msg->linear_acceleration.z - GRAVITY, imu_msg->angular_velocity.x,
         imu_msg->angular_velocity.y, imu_msg->angular_velocity.z;
-    _lkf_imu_statecov = _lkf_imu->correct(_lkf_imu_statecov, z, _lkf_imu_R);
-
-    // Predict (integrate vel-to-pos)
-    _lkf_imu->A.block<3, 3>(3, 0) = dk * Eigen::Matrix3d::Identity();
-    imu_u_t u                     = imu_u_t::Zero();
-    imu_Q_t Q                     = imu_Q_t::Zero();
-    _lkf_imu_statecov             = _lkf_imu->predict(_lkf_imu_statecov, u, Q, dk);
+    _lkf_imu_statecov = _lkf_imu->correct(_lkf_imu_statecov, z, lkf_imu_R);
 
     // Publish for debug reasons
     if (_pub_imu_integrated.getNumSubscribers() > 0) {
@@ -747,15 +762,6 @@ void AloamMapping::callbackImu(const sensor_msgs::Imu::ConstPtr &imu_msg) {
     imu_A_t A = imu_A_t::Identity();
     imu_B_t B = imu_B_t::Zero();
     imu_H_t H = imu_H_t::Zero();
-
-    // Load measurement noise from imu msg
-    _lkf_imu_R       = imu_R_t::Identity();
-    _lkf_imu_R(0, 0) = imu_msg->linear_acceleration_covariance.at(0);
-    _lkf_imu_R(1, 1) = imu_msg->linear_acceleration_covariance.at(4);
-    _lkf_imu_R(2, 2) = imu_msg->linear_acceleration_covariance.at(8);
-    _lkf_imu_R(3, 3) = imu_msg->angular_velocity_covariance.at(0);
-    _lkf_imu_R(4, 4) = imu_msg->angular_velocity_covariance.at(4);
-    _lkf_imu_R(5, 5) = imu_msg->angular_velocity_covariance.at(8);
 
     // Initial state to zero
     const imu_x_t        x0 = imu_x_t::Zero();

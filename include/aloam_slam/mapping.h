@@ -6,6 +6,9 @@
 #include <ros/ros.h>
 #include <nodelet/nodelet.h>
 
+#include <dynamic_reconfigure/server.h>
+#include <aloam_slam/aloam_dynparamConfig.h>
+
 #include <math.h>
 #include <cmath>
 #include <vector>
@@ -91,6 +94,15 @@ public:
   void setData(ros::Time time_of_data, tf::Transform aloam_odometry, pcl::PointCloud<PointType>::Ptr laserCloudCornerLast,
                pcl::PointCloud<PointType>::Ptr laserCloudSurfLast, pcl::PointCloud<PointType>::Ptr laserCloudFullRes);
 
+  // public variables
+  imu_R_t lkf_imu_R;
+  imu_Q_t lkf_imu_Q;
+  double  lkf_imu_R_lin_acc;
+  double  lkf_imu_R_ang_vel;
+  double  lkf_imu_Q_pos;
+  double  lkf_imu_Q_vel;
+  double  lkf_imu_Q_att;
+
 private:
   // member objects
   std::shared_ptr<mrs_lib::Profiler>             _profiler;
@@ -174,7 +186,6 @@ private:
   // IMU LKF
   std::unique_ptr<lkf_imu_t> _lkf_imu;
   imu_statecov_t             _lkf_imu_statecov;
-  imu_R_t                    _lkf_imu_R;
 
   // member methods
   void timerMapping([[maybe_unused]] const ros::TimerEvent &event);
