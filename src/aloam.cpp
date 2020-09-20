@@ -93,14 +93,10 @@ void AloamSlam::onInit() {
   aloam_odometry->is_initialized    = true;
   aloam_mapping->is_initialized     = true;
 
-  _config_last_reconfigure.R_acc_lin = aloam_mapping->lkf_imu_R_lin_acc;
-  _config_last_reconfigure.R_ang_vel = aloam_mapping->lkf_imu_R_ang_vel;
-  _config_last_reconfigure.Q_pos     = aloam_mapping->lkf_imu_Q_pos;
-  _config_last_reconfigure.Q_vel     = aloam_mapping->lkf_imu_Q_vel;
-  _config_last_reconfigure.Q_att     = aloam_mapping->lkf_imu_Q_att;
+  /* _config_last_reconfigure.consistency_limit_height = aloam_mapping->limit_mavros_mapping_height_divergence; */
 
   _reconfigure_server.reset(new ReconfigureServer(_mutex_reconfigure_config, nh_));
-  _reconfigure_server->updateConfig(_config_last_reconfigure);
+  /* _reconfigure_server->updateConfig(_config_last_reconfigure); */
   ReconfigureServer::CallbackType f = boost::bind(&AloamSlam::callbackReconfigure, this, _1, _2);
   _reconfigure_server->setCallback(f);
 
@@ -128,28 +124,7 @@ tf::Transform AloamSlam::getStaticTf(std::string frame_from, std::string frame_t
 
 /* //{ callbackReconfigure() */
 void AloamSlam::callbackReconfigure([[maybe_unused]] aloam_slam::aloam_dynparamConfig &config, [[maybe_unused]] uint32_t level) {
-  if (feature_extractor->is_initialized) {
-  }
-  if (aloam_odometry->is_initialized) {
-  }
-  if (aloam_mapping->is_initialized) {
-    ROS_INFO(
-        "[FeatureExtractor] Reconfigure Request:\n"
-        "Measurement noise (cov. matrix R scale):\n"
-        "- linear acceleration (cov. scale): %0.10f\n"
-        "- angular velocity (cov. scale):    %0.10f\n"
-        "Process noise (cov. matrix Q scale):\n"
-        "- position: %0.10f\n"
-        "- velocity: %0.10f\n"
-        "- attitude: %0.10f\n",
-        config.R_acc_lin, config.R_ang_vel, config.Q_pos, config.Q_vel, config.Q_att);
-
-    aloam_mapping->lkf_imu_R.block<3, 3>(0, 0) = config.R_acc_lin * Eigen::Matrix3d::Identity();
-    aloam_mapping->lkf_imu_R.block<3, 3>(3, 3) = config.R_ang_vel * Eigen::Matrix3d::Identity();
-    aloam_mapping->lkf_imu_Q.block<3, 3>(0, 0) = config.Q_pos * Eigen::Matrix3d::Identity();
-    aloam_mapping->lkf_imu_Q.block<3, 3>(3, 3) = config.Q_vel * Eigen::Matrix3d::Identity();
-    aloam_mapping->lkf_imu_Q.block<3, 3>(6, 6) = config.Q_att * Eigen::Matrix3d::Identity();
-  }
+  aloam_mapping->reconfigure(config);
 }
 //}
 

@@ -48,38 +48,20 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/Imu.h>
 
+#include <mrs_msgs/ControlManagerDiagnostics.h>
+
 #include <mrs_lib/profiler.h>
 #include <mrs_lib/param_loader.h>
 #include <mrs_lib/mutex.h>
 #include <mrs_lib/transformer.h>
 #include <mrs_lib/attitude_converter.h>
-#include <mrs_lib/lkf.h>
+#include <mrs_lib/median_filter.h>
 
 #include "aloam_slam/common.h"
 #include "aloam_slam/tic_toc.h"
 #include "aloam_slam/lidarFactor.hpp"
 
 //}
-
-/*//{ typedefs*/
-
-// imu lkf
-#define IMU_N_STATES 9
-#define IMU_M_INPUTS 0
-#define IMU_P_MEASUREMENTS 6
-typedef mrs_lib::LKF<IMU_N_STATES, IMU_M_INPUTS, IMU_P_MEASUREMENTS> lkf_imu_t;
-typedef lkf_imu_t::statecov_t                                        imu_statecov_t;
-typedef lkf_imu_t::x_t                                               imu_x_t;
-typedef lkf_imu_t::u_t                                               imu_u_t;
-typedef lkf_imu_t::z_t                                               imu_z_t;
-typedef lkf_imu_t::A_t                                               imu_A_t;
-typedef lkf_imu_t::B_t                                               imu_B_t;
-typedef lkf_imu_t::H_t                                               imu_H_t;
-typedef lkf_imu_t::R_t                                               imu_R_t;
-typedef lkf_imu_t::Q_t                                               imu_Q_t;
-typedef lkf_imu_t::P_t                                               imu_P_t;
-
-/*//}*/
 
 namespace aloam_slam
 {
@@ -93,15 +75,7 @@ public:
 
   void setData(ros::Time time_of_data, tf::Transform aloam_odometry, pcl::PointCloud<PointType>::Ptr laserCloudCornerLast,
                pcl::PointCloud<PointType>::Ptr laserCloudSurfLast, pcl::PointCloud<PointType>::Ptr laserCloudFullRes);
-
-  // public variables
-  imu_R_t lkf_imu_R;
-  imu_Q_t lkf_imu_Q;
-  double  lkf_imu_R_lin_acc;
-  double  lkf_imu_R_ang_vel;
-  double  lkf_imu_Q_pos;
-  double  lkf_imu_Q_vel;
-  double  lkf_imu_Q_att;
+  void reconfigure(aloam_slam::aloam_dynparamConfig &config);
 
 private:
   // member objects
@@ -172,20 +146,34 @@ private:
   float _resolution_line;
   float _resolution_plane;
 
-  // IMU
-  const double    GRAVITY = 9.81;
-  std::mutex      _mutex_imu;
-  ros::Subscriber _sub_imu;
-  ros::Publisher  _pub_imu_integrated;
-  void            callbackImu(const sensor_msgs::Imu::ConstPtr &imu_msg);
-  bool            _has_imu = false;
-  ros::Time       _imu_time_prev;
-  /* Eigen::Matrix4d _imu_integrated_pose = Eigen::Matrix4d::Identity(); */
-  /* Eigen::Vector3d _imu_vel             = Eigen::Vector3d::Zero(); */
+  // Control manager diagnostics
+  ros::Subscriber _sub_control_manager_diag;
 
-  // IMU LKF
-  std::unique_ptr<lkf_imu_t> _lkf_imu;
-  imu_statecov_t             _lkf_imu_statecov;
+  // Mavros odometry
+  ros::Subscriber _sub_mavros_odom;
+  void            callbackMavrosOdom(const nav_msgs::Odometry::ConstPtr &odom_msg);
+  std::mutex      _mutex_mavros_odom;
+  bool            _has_mavros_odom  = false;
+  Eigen::Matrix4d _mavros_odom      = Eigen::Matrix4d::Identity();
+  Eigen::Matrix4d _mavros_odom_prev = Eigen::Matrix4d::Identity();
+  double          _limit_consistency_height;
+
+  // IMU
+  const double                  GRAVITY           = 9.81;
+  bool                          _takeoff_detected = false;
+  std::mutex                    _mutex_imu;
+  ros::Subscriber               _sub_imu;
+  ros::Publisher                _pub_imu_integrated;
+  void                          callbackImu(const sensor_msgs::Imu::ConstPtr &imu_msg);
+  void                          callbackControlManagerDiagnostics(const mrs_msgs::ControlManagerDiagnostics::ConstPtr &diag_msg);
+  bool                          _has_imu = false;
+  ros::Time                     _imu_time_prev;
+  std::unique_ptr<MedianFilter> _medfilt_acc_x;
+  std::unique_ptr<MedianFilter> _medfilt_acc_y;
+  std::unique_ptr<MedianFilter> _medfilt_acc_z;
+  Eigen::Matrix4d               _imu_pose     = Eigen::Matrix4d::Identity();
+  Eigen::Vector3d               _imu_bias_acc = Eigen::Vector3d::Zero();
+  Eigen::Vector3d               _imu_lin_vel  = Eigen::Vector3d::Zero();
 
   // member methods
   void timerMapping([[maybe_unused]] const ros::TimerEvent &event);

@@ -22,20 +22,7 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
   param_loader.loadParam("map_publish_rate", _map_publish_period, 0.5f);
   param_loader.loadParam("map_publish_rate", _map_publish_period, 0.5f);
 
-  // Load LKF parameters
-  param_loader.loadParam("lkf/imu/R/lin_acc", lkf_imu_R_lin_acc, 1.0);
-  param_loader.loadParam("lkf/imu/R/ang_vel", lkf_imu_R_ang_vel, 1.0);
-  param_loader.loadParam("lkf/imu/Q/pos", lkf_imu_Q_pos, 1.0);
-  param_loader.loadParam("lkf/imu/Q/vel", lkf_imu_Q_vel, 1.0);
-  param_loader.loadParam("lkf/imu/Q/att", lkf_imu_Q_att, 1.0);
-
-  lkf_imu_R = imu_R_t::Identity();
-  lkf_imu_R.block<3, 3>(0, 0) *= lkf_imu_R_lin_acc;
-  lkf_imu_R.block<3, 3>(3, 3) *= lkf_imu_R_ang_vel;
-  lkf_imu_Q = imu_Q_t::Identity();
-  lkf_imu_Q.block<3, 3>(0, 0) *= lkf_imu_Q_pos;
-  lkf_imu_Q.block<3, 3>(3, 3) *= lkf_imu_Q_vel;
-  lkf_imu_Q.block<3, 3>(6, 6) *= lkf_imu_Q_att;
+  param_loader.loadParam("mapping/mapping_consistency/limit/height", _limit_consistency_height, 100.0);
 
   _mapping_frequency = std::min(scan_frequency, _mapping_frequency);  // cannot be higher than scan frequency
 
@@ -57,9 +44,20 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
     }
   }
 
-  _sub_imu            = nh_.subscribe("imu_in", 1, &AloamMapping::callbackImu, this, ros::TransportHints().tcpNoDelay());
-  _pub_imu_integrated = nh_.advertise<geometry_msgs::PoseStamped>("ins_out", 1);
+  const int    buffer_size = 100;
+  const double min_val     = -10.0;
+  const double max_val     = 10.0;
+  const double max_diff    = 1.5;
+  _medfilt_acc_x           = std::make_unique<MedianFilter>(buffer_size, max_val, min_val, max_diff);
+  _medfilt_acc_y           = std::make_unique<MedianFilter>(buffer_size, max_val, min_val, max_diff);
+  _medfilt_acc_z           = std::make_unique<MedianFilter>(buffer_size, max_val, min_val, max_diff);
 
+  _sub_mavros_odom = nh_.subscribe("mavros_odom_in", 1, &AloamMapping::callbackMavrosOdom, this, ros::TransportHints().tcpNoDelay());
+  /* _sub_control_manager_diag = */
+  /*     nh_.subscribe("control_manager_diag_in", 1, &AloamMapping::callbackControlManagerDiagnostics, this, ros::TransportHints().tcpNoDelay()); */
+  /* _sub_imu = nh_.subscribe("imu_in", 1, &AloamMapping::callbackImu, this, ros::TransportHints().tcpNoDelay()); */
+
+  _pub_imu_integrated         = nh_.advertise<nav_msgs::Odometry>("ins_out", 1);
   _pub_laser_cloud_map        = nh_.advertise<sensor_msgs::PointCloud2>("map_out", 1);
   _pub_laser_cloud_registered = nh_.advertise<sensor_msgs::PointCloud2>("scan_registered_out", 1);
   _pub_odom_global            = nh_.advertise<nav_msgs::Odometry>("odom_global_out", 1);
@@ -123,6 +121,16 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     features_corners_last = _features_corners_last;
     features_surfs_last   = _features_surfs_last;
     cloud_full_res        = _cloud_full_res;
+  }
+
+  bool               has_mavros_odom;
+  Eigen::Matrix4d    mavros_odom;
+  Eigen::Quaterniond orientation_prev = _q_w_curr;
+  Eigen::Vector3d    translation_prev = _t_w_curr;
+  {
+    std::scoped_lock lock(_mutex_mavros_odom);
+    has_mavros_odom = _has_mavros_odom;
+    mavros_odom     = _mavros_odom;
   }
   /*//}*/
 
@@ -464,6 +472,24 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   }
   /*//}*/
 
+  // TODO: check for consistency with mavros
+  if (has_mavros_odom) {
+    /* T_curr = T * T_prev */
+    std::scoped_lock      lock(_mutex_mavros_odom);
+    const Eigen::Matrix4d T_mavros  = _mavros_odom * _mavros_odom_prev.inverse();
+    const Eigen::Vector3d t_mapping = _t_w_curr - translation_prev;
+    const Eigen::Vector3d t_mavros  = Eigen::Vector3d(T_mavros(0, 3), T_mavros(1, 3), T_mavros(2, 3));
+    const Eigen::Vector3d t_diff    = t_mavros - t_mapping;
+    /* ROS_ERROR("[DEBUG] mavros odom change:  xyz (%0.2f, %0.2f, %0.2f)", T_mavros(0, 3), T_mavros(1, 3), T_mavros(2, 3)); */
+    /* ROS_ERROR("[DEBUG] mapping odom change: xyz (%0.2f, %0.2f, %0.2f)", t_mapping(0), t_mapping(1), t_mapping(2)); */
+    ROS_ERROR("[DEBUG] odoms divergence: total=%0.2f, z=%0.2f", t_diff.norm(), t_mavros(2) - t_mapping(2));
+    if (t_diff(2) > _limit_consistency_height) {
+      _t_w_curr += t_diff;
+    }
+
+    _mavros_odom_prev = _mavros_odom;
+  }
+
   float time_add    = 0.0f;
   float time_filter = 0.0f;
   {
@@ -708,15 +734,45 @@ bool AloamMapping::callbackResetMapping([[maybe_unused]] std_srvs::Trigger::Requ
 }
 /*//}*/
 
-/*//{ callbackImu() */
-void AloamMapping::callbackImu(const sensor_msgs::Imu::ConstPtr &imu_msg) {
+/*//{ callbackMavrosOdom() */
+void AloamMapping::callbackMavrosOdom(const nav_msgs::Odometry::ConstPtr &odom_msg) {
   if (!is_initialized) {
     return;
   }
 
-  // TODO: tune lkf_imu_R matrix (measurement noise matrix)
+  std::scoped_lock lock(_mutex_mavros_odom);
+
+  _has_mavros_odom                      = true;
+  _mavros_odom(0, 3)                    = odom_msg->pose.pose.position.x;
+  _mavros_odom(1, 3)                    = odom_msg->pose.pose.position.y;
+  _mavros_odom(2, 3)                    = odom_msg->pose.pose.position.z;
+  const mrs_lib::AttitudeConverter atti = mrs_lib::AttitudeConverter(odom_msg->pose.pose.orientation);
+  _mavros_odom.block<3, 3>(0, 0)        = Eigen::Matrix3d(atti);
+}
+/*//}*/
+
+/*//{ callbackImu() */
+void AloamMapping::callbackImu(const sensor_msgs::Imu::ConstPtr &imu_msg) {
+  /* TODO: Method required validation testing */
+  if (!is_initialized) {
+    return;
+  }
 
   std::scoped_lock lock(_mutex_imu);
+
+  double acc_x = imu_msg->linear_acceleration.x;
+  double acc_y = imu_msg->linear_acceleration.y;
+  double acc_z = imu_msg->linear_acceleration.z - GRAVITY;
+
+  if (!_medfilt_acc_x->isValid(acc_x)) {
+    acc_x = _medfilt_acc_x->getMedian();
+  }
+  if (!_medfilt_acc_y->isValid(acc_y)) {
+    acc_y = _medfilt_acc_y->getMedian();
+  }
+  if (!_medfilt_acc_z->isValid(acc_z)) {
+    acc_z = _medfilt_acc_z->getMedian();
+  }
 
   if (_has_imu) {
     const double dk = (imu_msg->header.stamp - _imu_time_prev).toSec();
@@ -724,56 +780,88 @@ void AloamMapping::callbackImu(const sensor_msgs::Imu::ConstPtr &imu_msg) {
       return;
     }
 
-    const Eigen::Matrix3d Idki = (1.0 / dk) * Eigen::Matrix3d::Identity();
+    Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
 
-    // Predict (integrate vel-to-pos)
-    _lkf_imu->A.block<3, 3>(3, 0) = dk * Eigen::Matrix3d::Identity();
-    imu_u_t u                     = imu_u_t::Zero();
-    _lkf_imu_statecov             = _lkf_imu->predict(_lkf_imu_statecov, u, lkf_imu_Q, dk);
+    // Get translation change
+    Eigen::Vector3d imu_lin_acc;
+    if (_takeoff_detected) {
+      imu_lin_acc = Eigen::Vector3d(acc_x, acc_y, acc_z) - _imu_bias_acc;
+    } else {
+      imu_lin_acc = Eigen::Vector3d::Zero();
+    }
+    _imu_lin_vel                = _imu_lin_vel + dk * imu_lin_acc;
+    const Eigen::Vector3d imu_t = dk * _imu_lin_vel;
+    T(0, 3)                     = imu_t(0);
+    T(1, 3)                     = imu_t(1);
+    T(2, 3)                     = imu_t(2);
 
-    // Correct (integrate acc-to-vel and ang_vel-to-orientation)
-    // little hack with time inversion (is prob. not a rigorous solution)
-    _lkf_imu->H.block<3, 3>(0, 3) = Idki;
-    _lkf_imu->H.block<3, 3>(3, 6) = Idki;
-    imu_z_t z;
-    z << imu_msg->linear_acceleration.x, imu_msg->linear_acceleration.y, imu_msg->linear_acceleration.z - GRAVITY, imu_msg->angular_velocity.x,
-        imu_msg->angular_velocity.y, imu_msg->angular_velocity.z;
-    _lkf_imu_statecov = _lkf_imu->correct(_lkf_imu_statecov, z, lkf_imu_R);
+    // Get attitude change
+    const Eigen::Vector3d            imu_ang_vel = Eigen::Vector3d(imu_msg->angular_velocity.x, imu_msg->angular_velocity.y, imu_msg->angular_velocity.z);
+    const mrs_lib::AttitudeConverter imu_R = mrs_lib::AttitudeConverter(dk * imu_ang_vel(0), dk * imu_ang_vel(1), dk * imu_ang_vel(2), mrs_lib::RPY_EXTRINSIC);
+    T.block<3, 3>(0, 0)                    = Eigen::Matrix3d(imu_R);
+
+    // Propagate change
+    _imu_pose = T * _imu_pose;
 
     // Publish for debug reasons
     if (_pub_imu_integrated.getNumSubscribers() > 0) {
-      geometry_msgs::PoseStamped pose_msg;
-      pose_msg.header.stamp     = imu_msg->header.stamp;
-      const imu_x_t x           = _lkf_imu_statecov.x;
-      pose_msg.pose.position.x  = x(0);
-      pose_msg.pose.position.y  = x(1);
-      pose_msg.pose.position.z  = x(2);
-      pose_msg.pose.orientation = mrs_lib::AttitudeConverter(x(6), x(7), x(8), mrs_lib::RPY_INTRINSIC);
-      _pub_imu_integrated.publish(pose_msg);
+      nav_msgs::Odometry odom_msg;
+      odom_msg.header.stamp          = imu_msg->header.stamp;
+      odom_msg.pose.pose.position.x  = _imu_pose(0, 3);
+      odom_msg.pose.pose.position.y  = _imu_pose(1, 3);
+      odom_msg.pose.pose.position.z  = _imu_pose(2, 3);
+      odom_msg.pose.pose.orientation = mrs_lib::AttitudeConverter(_imu_pose.block<3, 3>(0, 0));
+      odom_msg.twist.twist.linear.x  = _imu_lin_vel(0);
+      odom_msg.twist.twist.linear.y  = _imu_lin_vel(1);
+      odom_msg.twist.twist.linear.z  = _imu_lin_vel(2);
+      odom_msg.twist.twist.angular.x = imu_ang_vel(0);
+      odom_msg.twist.twist.angular.y = imu_ang_vel(1);
+      odom_msg.twist.twist.angular.z = imu_ang_vel(2);
+      _pub_imu_integrated.publish(odom_msg);
     }
   } else {
     _has_imu = true;
-
-    // Linear KF
-    // states: position, velocity, orientation
-    // inputs: none
-    // measurements: linear acceleration, linear velocity
-
-    imu_A_t A = imu_A_t::Identity();
-    imu_B_t B = imu_B_t::Zero();
-    imu_H_t H = imu_H_t::Zero();
-
-    // Initial state to zero
-    const imu_x_t        x0 = imu_x_t::Zero();
-    const imu_P_t        P0 = 1000.0 * imu_P_t::Identity() * imu_P_t::Identity().transpose();
-    const imu_statecov_t statecov0({x0, P0});
-    _lkf_imu_statecov = statecov0;
-
-    // Create LKF object
-    _lkf_imu = std::make_unique<lkf_imu_t>(A, B, H);
   }
 
   _imu_time_prev = imu_msg->header.stamp;
+}
+/*//}*/
+
+/*//{ callbackControlManagerDiagnostics() */
+void AloamMapping::callbackControlManagerDiagnostics(const mrs_msgs::ControlManagerDiagnostics::ConstPtr &diag_msg) {
+  if (!is_initialized) {
+    return;
+  }
+
+  if (diag_msg->flying_normally) {
+
+    if (!_takeoff_detected) {
+      _takeoff_detected = true;
+    }
+
+    if (diag_msg->tracker_status.active && !diag_msg->tracker_status.have_goal && !diag_msg->tracker_status.tracking_trajectory) {
+
+      std::scoped_lock lock(_mutex_imu);
+      _imu_bias_acc = Eigen::Vector3d(_medfilt_acc_x->getMedian(), _medfilt_acc_y->getMedian(), _medfilt_acc_z->getMedian());
+      _imu_lin_vel  = Eigen::Vector3d::Zero();
+    }
+  }
+}
+/*//}*/
+
+/*//{ reconfigure() */
+void AloamMapping::reconfigure(aloam_slam::aloam_dynparamConfig &config) {
+  if (!is_initialized) {
+    return;
+  }
+
+  ROS_INFO(
+      "[AloamMapping] Reconfigure Request:\n"
+      "Consistency limit:\n"
+      "- height: %0.2f",
+      config.consistency_limit_height);
+
+  _limit_consistency_height = config.consistency_limit_height;
 }
 /*//}*/
 

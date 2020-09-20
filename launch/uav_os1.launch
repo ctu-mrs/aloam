@@ -49,17 +49,15 @@
       <param name="map_publish_rate" type="double" value="$(arg map_publish_rate)" />
       <param name="mapping_line_resolution" type="double" value="$(arg mapping_line_resolution)" />
       <param name="mapping_plane_resolution" type="double" value="$(arg mapping_plane_resolution)" />
-      
-      <param name="lkf/imu/R/lin_acc" type="double" value="1e3" />
-      <param name="lkf/imu/R/ang_vel" type="double" value="1e3" />
-      <param name="lkf/imu/Q/pos" type="double" value="1e1" />
-      <param name="lkf/imu/Q/vel" type="double" value="1e1" />
-      <param name="lkf/imu/Q/att" type="double" value="1e1" />
+
+      <param name="mapping/mapping_consistency/limit/height" type="double" value="0.2" />
 
       <!-- Subscribers -->
       <remap from="~laser_cloud_in" to="$(arg points_topic)"/>
       <remap from="~orientation_in" to="odometry/orientation"/>
-      <remap from="~imu_in" to="mavros/imu/data_raw"/>
+      <remap from="~mavros_odom_in" to="mavros/local_position/odom"/>
+      <!-- <remap from="~imu_in" to="mavros/imu/data_raw"/> -->
+      <!-- <remap from="~control_manager_diag_in" to="control_manager/diagnostics"/> -->
 
       <!-- Publishers -->
       <remap from="~odom_local_out" to="aloam/odom_local"/>
@@ -67,7 +65,7 @@
       <remap from="~odom_global_out" to="aloam/odom"/>
       <remap from="~map_out" to="aloam/map"/>
       <remap from="~scan_registered_out" to="aloam/scan_registered"/>
-        
+
       <!-- Service servers -->
       <remap from="~srv_reset_mapping_in" to="aloam/reset/mapping"/>
 
