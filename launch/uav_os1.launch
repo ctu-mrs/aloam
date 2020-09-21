@@ -50,14 +50,14 @@
       <param name="mapping_line_resolution" type="double" value="$(arg mapping_line_resolution)" />
       <param name="mapping_plane_resolution" type="double" value="$(arg mapping_plane_resolution)" />
 
-      <param name="mapping/mapping_consistency/limit/height" type="double" value="0.2" />
+      <param name="mapping/mapping_consistency/limit/height" type="double" value="0.03" />
 
       <!-- Subscribers -->
       <remap from="~laser_cloud_in" to="$(arg points_topic)"/>
       <remap from="~orientation_in" to="odometry/orientation"/>
       <remap from="~mavros_odom_in" to="mavros/local_position/odom"/>
       <!-- <remap from="~imu_in" to="mavros/imu/data_raw"/> -->
-      <!-- <remap from="~control_manager_diag_in" to="control_manager/diagnostics"/> -->
+      <remap from="~control_manager_diag_in" to="control_manager/diagnostics"/>
 
       <!-- Publishers -->
       <remap from="~odom_local_out" to="aloam/odom_local"/>

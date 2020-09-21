@@ -77,6 +77,8 @@ public:
                pcl::PointCloud<PointType>::Ptr laserCloudSurfLast, pcl::PointCloud<PointType>::Ptr laserCloudFullRes);
   void reconfigure(aloam_slam::aloam_dynparamConfig &config);
 
+  double limit_consistency_height;
+
 private:
   // member objects
   std::shared_ptr<mrs_lib::Profiler>             _profiler;
@@ -148,6 +150,7 @@ private:
 
   // Control manager diagnostics
   ros::Subscriber _sub_control_manager_diag;
+  void            callbackControlManagerDiagnostics(const mrs_msgs::ControlManagerDiagnostics::ConstPtr &diag_msg);
 
   // Mavros odometry
   ros::Subscriber _sub_mavros_odom;
@@ -156,7 +159,6 @@ private:
   bool            _has_mavros_odom  = false;
   Eigen::Matrix4d _mavros_odom      = Eigen::Matrix4d::Identity();
   Eigen::Matrix4d _mavros_odom_prev = Eigen::Matrix4d::Identity();
-  double          _limit_consistency_height;
 
   // IMU
   const double                  GRAVITY           = 9.81;
@@ -165,7 +167,6 @@ private:
   ros::Subscriber               _sub_imu;
   ros::Publisher                _pub_imu_integrated;
   void                          callbackImu(const sensor_msgs::Imu::ConstPtr &imu_msg);
-  void                          callbackControlManagerDiagnostics(const mrs_msgs::ControlManagerDiagnostics::ConstPtr &diag_msg);
   bool                          _has_imu = false;
   ros::Time                     _imu_time_prev;
   std::unique_ptr<MedianFilter> _medfilt_acc_x;

@@ -22,7 +22,7 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
   param_loader.loadParam("map_publish_rate", _map_publish_period, 0.5f);
   param_loader.loadParam("map_publish_rate", _map_publish_period, 0.5f);
 
-  param_loader.loadParam("mapping/mapping_consistency/limit/height", _limit_consistency_height, 100.0);
+  param_loader.loadParam("mapping/mapping_consistency/limit/height", limit_consistency_height, 100.0);
 
   _mapping_frequency = std::min(scan_frequency, _mapping_frequency);  // cannot be higher than scan frequency
 
@@ -53,8 +53,8 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
   _medfilt_acc_z           = std::make_unique<MedianFilter>(buffer_size, max_val, min_val, max_diff);
 
   _sub_mavros_odom = nh_.subscribe("mavros_odom_in", 1, &AloamMapping::callbackMavrosOdom, this, ros::TransportHints().tcpNoDelay());
-  /* _sub_control_manager_diag = */
-  /*     nh_.subscribe("control_manager_diag_in", 1, &AloamMapping::callbackControlManagerDiagnostics, this, ros::TransportHints().tcpNoDelay()); */
+  _sub_control_manager_diag =
+      nh_.subscribe("control_manager_diag_in", 1, &AloamMapping::callbackControlManagerDiagnostics, this, ros::TransportHints().tcpNoDelay());
   /* _sub_imu = nh_.subscribe("imu_in", 1, &AloamMapping::callbackImu, this, ros::TransportHints().tcpNoDelay()); */
 
   _pub_imu_integrated         = nh_.advertise<nav_msgs::Odometry>("ins_out", 1);
@@ -472,23 +472,23 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   }
   /*//}*/
 
-  // TODO: check for consistency with mavros
-  if (has_mavros_odom) {
+  // compensate height drift with mavros odometry
+  if (has_mavros_odom && _takeoff_detected) {
     /* T_curr = T * T_prev */
-    std::scoped_lock      lock(_mutex_mavros_odom);
-    const Eigen::Matrix4d T_mavros  = _mavros_odom * _mavros_odom_prev.inverse();
+    const Eigen::Matrix4d T_mavros  = mavros_odom * _mavros_odom_prev.inverse();
     const Eigen::Vector3d t_mapping = _t_w_curr - translation_prev;
     const Eigen::Vector3d t_mavros  = Eigen::Vector3d(T_mavros(0, 3), T_mavros(1, 3), T_mavros(2, 3));
     const Eigen::Vector3d t_diff    = t_mavros - t_mapping;
     /* ROS_ERROR("[DEBUG] mavros odom change:  xyz (%0.2f, %0.2f, %0.2f)", T_mavros(0, 3), T_mavros(1, 3), T_mavros(2, 3)); */
     /* ROS_ERROR("[DEBUG] mapping odom change: xyz (%0.2f, %0.2f, %0.2f)", t_mapping(0), t_mapping(1), t_mapping(2)); */
-    ROS_ERROR("[DEBUG] odoms divergence: total=%0.2f, z=%0.2f", t_diff.norm(), t_mavros(2) - t_mapping(2));
-    if (t_diff(2) > _limit_consistency_height) {
-      _t_w_curr += t_diff;
+    /* ROS_ERROR("[DEBUG] odoms divergence: total=%0.2f, z=%0.2f", t_diff.norm(), t_diff(2)); */
+    if (std::fabs(t_diff(2)) > limit_consistency_height) {
+      ROS_DEBUG("[AloamMapping] Compensating height drift with mavros odometry (height before=%0.2f, height after=%0.2f)", _t_w_curr(2),
+                _t_w_curr(2) + t_diff(2));
+      _t_w_curr(2) += t_diff(2);
     }
-
-    _mavros_odom_prev = _mavros_odom;
   }
+  _mavros_odom_prev = mavros_odom;
 
   float time_add    = 0.0f;
   float time_filter = 0.0f;
@@ -839,12 +839,12 @@ void AloamMapping::callbackControlManagerDiagnostics(const mrs_msgs::ControlMana
       _takeoff_detected = true;
     }
 
-    if (diag_msg->tracker_status.active && !diag_msg->tracker_status.have_goal && !diag_msg->tracker_status.tracking_trajectory) {
+    /* if (diag_msg->tracker_status.active && !diag_msg->tracker_status.have_goal && !diag_msg->tracker_status.tracking_trajectory) { */
 
-      std::scoped_lock lock(_mutex_imu);
-      _imu_bias_acc = Eigen::Vector3d(_medfilt_acc_x->getMedian(), _medfilt_acc_y->getMedian(), _medfilt_acc_z->getMedian());
-      _imu_lin_vel  = Eigen::Vector3d::Zero();
-    }
+    /*   std::scoped_lock lock(_mutex_imu); */
+    /*   _imu_bias_acc = Eigen::Vector3d(_medfilt_acc_x->getMedian(), _medfilt_acc_y->getMedian(), _medfilt_acc_z->getMedian()); */
+    /*   _imu_lin_vel  = Eigen::Vector3d::Zero(); */
+    /* } */
   }
 }
 /*//}*/
@@ -861,7 +861,7 @@ void AloamMapping::reconfigure(aloam_slam::aloam_dynparamConfig &config) {
       "- height: %0.2f",
       config.consistency_limit_height);
 
-  _limit_consistency_height = config.consistency_limit_height;
+  limit_consistency_height = config.consistency_limit_height;
 }
 /*//}*/
 

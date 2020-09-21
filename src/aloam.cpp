@@ -93,10 +93,10 @@ void AloamSlam::onInit() {
   aloam_odometry->is_initialized    = true;
   aloam_mapping->is_initialized     = true;
 
-  /* _config_last_reconfigure.consistency_limit_height = aloam_mapping->limit_mavros_mapping_height_divergence; */
+  _config_last_reconfigure.consistency_limit_height = aloam_mapping->limit_consistency_height;
 
   _reconfigure_server.reset(new ReconfigureServer(_mutex_reconfigure_config, nh_));
-  /* _reconfigure_server->updateConfig(_config_last_reconfigure); */
+  _reconfigure_server->updateConfig(_config_last_reconfigure);
   ReconfigureServer::CallbackType f = boost::bind(&AloamSlam::callbackReconfigure, this, _1, _2);
   _reconfigure_server->setCallback(f);
 
