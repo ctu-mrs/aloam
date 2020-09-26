@@ -21,6 +21,7 @@
   <arg name="map_publish_rate" default="0.5" />
   <arg name="mapping_line_resolution" default="0.4" />
   <arg name="mapping_plane_resolution" default="0.8" />
+  <arg name="mapping_consistency_limit_height" default="0.03" />
 
   <!-- LAUNCH PARAMETERS -->
   <arg name="verbose" default="false" />
@@ -45,12 +46,12 @@
       <param name="map_frame" type="string" value="$(arg map_frame)"/>
       <param name="lidar_frame" type="string" value="$(arg lidar_frame)"/>
 
-      <param name="mapping_rate" type="double" value="$(arg mapping_rate)" />
-      <param name="map_publish_rate" type="double" value="$(arg map_publish_rate)" />
-      <param name="mapping_line_resolution" type="double" value="$(arg mapping_line_resolution)" />
-      <param name="mapping_plane_resolution" type="double" value="$(arg mapping_plane_resolution)" />
+      <param name="mapping/rate" type="double" value="$(arg mapping_rate)" />
+      <param name="mapping/map_publish_rate" type="double" value="$(arg map_publish_rate)" />
+      <param name="mapping/line_resolution" type="double" value="$(arg mapping_line_resolution)" />
+      <param name="mapping/plane_resolution" type="double" value="$(arg mapping_plane_resolution)" />
 
-      <param name="mapping/mapping_consistency/limit/height" type="double" value="0.03" />
+      <param name="mapping/mapping_consistency/limit/height" type="double" value="$(arg mapping_consistency_limit_height)" />
 
       <!-- Subscribers -->
       <remap from="~laser_cloud_in" to="$(arg points_topic)"/>

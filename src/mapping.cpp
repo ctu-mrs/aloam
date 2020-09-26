@@ -16,11 +16,10 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
 
   ros::NodeHandle nh_(parent_nh);
 
-  param_loader.loadParam("mapping_line_resolution", _resolution_line, 0.2f);
-  param_loader.loadParam("mapping_plane_resolution", _resolution_plane, 0.4f);
-  param_loader.loadParam("mapping_rate", _mapping_frequency, 5.0f);
-  param_loader.loadParam("map_publish_rate", _map_publish_period, 0.5f);
-  param_loader.loadParam("map_publish_rate", _map_publish_period, 0.5f);
+  param_loader.loadParam("mapping/line_resolution", _resolution_line, 0.2f);
+  param_loader.loadParam("mapping/plane_resolution", _resolution_plane, 0.4f);
+  param_loader.loadParam("mapping/rate", _mapping_frequency, 5.0f);
+  param_loader.loadParam("mapping/map_publish_rate", _map_publish_period, 0.5f);
 
   param_loader.loadParam("mapping/mapping_consistency/limit/height", limit_consistency_height, 100.0);
 
@@ -473,7 +472,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   /*//}*/
 
   // compensate height drift with mavros odometry
-  if (has_mavros_odom && _takeoff_detected) {
+  if (has_mavros_odom && _takeoff_detected && std::fabs((_mavros_odom_time - time_aloam_odometry).toSec()) < 0.2f) {
     /* T_curr = T * T_prev */
     const Eigen::Matrix4d T_mavros  = mavros_odom * _mavros_odom_prev.inverse();
     const Eigen::Vector3d t_mapping = _t_w_curr - translation_prev;
@@ -483,8 +482,8 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     /* ROS_ERROR("[DEBUG] mapping odom change: xyz (%0.2f, %0.2f, %0.2f)", t_mapping(0), t_mapping(1), t_mapping(2)); */
     /* ROS_ERROR("[DEBUG] odoms divergence: total=%0.2f, z=%0.2f", t_diff.norm(), t_diff(2)); */
     if (std::fabs(t_diff(2)) > limit_consistency_height) {
-      ROS_DEBUG("[AloamMapping] Compensating height drift with mavros odometry (height before=%0.2f, height after=%0.2f)", _t_w_curr(2),
-                _t_w_curr(2) + t_diff(2));
+      ROS_WARN_THROTTLE(0.5, "[AloamMapping] Compensating height drift with mavros odometry (height before=%0.2f, height after=%0.2f)", _t_w_curr(2),
+                        _t_w_curr(2) + t_diff(2));
       _t_w_curr(2) += t_diff(2);
     }
   }
@@ -743,6 +742,7 @@ void AloamMapping::callbackMavrosOdom(const nav_msgs::Odometry::ConstPtr &odom_m
   std::scoped_lock lock(_mutex_mavros_odom);
 
   _has_mavros_odom                      = true;
+  _mavros_odom_time                     = odom_msg->header.stamp;
   _mavros_odom(0, 3)                    = odom_msg->pose.pose.position.x;
   _mavros_odom(1, 3)                    = odom_msg->pose.pose.position.y;
   _mavros_odom(2, 3)                    = odom_msg->pose.pose.position.z;

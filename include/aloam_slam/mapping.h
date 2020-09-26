@@ -156,7 +156,8 @@ private:
   ros::Subscriber _sub_mavros_odom;
   void            callbackMavrosOdom(const nav_msgs::Odometry::ConstPtr &odom_msg);
   std::mutex      _mutex_mavros_odom;
-  bool            _has_mavros_odom  = false;
+  bool            _has_mavros_odom = false;
+  ros::Time       _mavros_odom_time;
   Eigen::Matrix4d _mavros_odom      = Eigen::Matrix4d::Identity();
   Eigen::Matrix4d _mavros_odom_prev = Eigen::Matrix4d::Identity();
 
