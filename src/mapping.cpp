@@ -480,10 +480,10 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     const Eigen::Vector3d t_diff    = t_mavros - t_mapping;
     /* ROS_ERROR("[DEBUG] mavros odom change:  xyz (%0.2f, %0.2f, %0.2f)", T_mavros(0, 3), T_mavros(1, 3), T_mavros(2, 3)); */
     /* ROS_ERROR("[DEBUG] mapping odom change: xyz (%0.2f, %0.2f, %0.2f)", t_mapping(0), t_mapping(1), t_mapping(2)); */
-    /* ROS_ERROR("[DEBUG] odoms divergence: total=%0.2f, z=%0.2f", t_diff.norm(), t_diff(2)); */
+    /* ROS_ERROR("[DEBUG] odoms divergence: total=%0.2f, z=%0.2f, limit=%0.2f", t_diff.norm(), std::fabs(t_diff(2)), limit_consistency_height); */
     if (std::fabs(t_diff(2)) > limit_consistency_height) {
-      ROS_WARN_THROTTLE(0.5, "[AloamMapping] Compensating height drift with mavros odometry (height before=%0.2f, height after=%0.2f)", _t_w_curr(2),
-                        _t_w_curr(2) + t_diff(2));
+      ROS_WARN_THROTTLE(0.2, "[AloamMapping] Compensating height drift with mavros odometry (height before=%0.2f, height after=%0.2f)", _t_w_curr(2),
+                _t_w_curr(2) + t_diff(2));
       _t_w_curr(2) += t_diff(2);
     }
   }
@@ -836,6 +836,7 @@ void AloamMapping::callbackControlManagerDiagnostics(const mrs_msgs::ControlMana
   if (diag_msg->flying_normally) {
 
     if (!_takeoff_detected) {
+      ROS_INFO("[AloamMapping] Takeoff detected.");
       _takeoff_detected = true;
     }
 

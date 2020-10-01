@@ -21,7 +21,7 @@
   <arg name="map_publish_rate" default="0.5" />
   <arg name="mapping_line_resolution" default="0.4" />
   <arg name="mapping_plane_resolution" default="0.8" />
-  <arg name="mapping_consistency_limit_height" default="0.03" />
+  <arg name="mapping_consistency_limit_height" default="0.025" />
 
   <!-- LAUNCH PARAMETERS -->
   <arg name="verbose" default="false" />
