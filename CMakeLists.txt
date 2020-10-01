@@ -1,8 +1,7 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(aloam_slam)
 
-set(CMAKE_CXX_FLAGS "-std=c++17 -fno-diagnostics-color")
-set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-g -O3")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -41,12 +40,12 @@ catkin_package(
 
 include_directories(
   include
-	${catkin_INCLUDE_DIRS} 
-	${PCL_INCLUDE_DIRS}
+  ${catkin_INCLUDE_DIRS}
+  ${PCL_INCLUDE_DIRS}
   ${CERES_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
   ${Eigen_INCLUDE_DIRS}
-  )
+)
 
 link_directories(
   ${PCL_LIBRARY_DIRS}
