@@ -3,7 +3,7 @@ project(aloam_slam)
 
 # we really need to replace the general flags because
 # we cannot build this with march=native
-set(CMAKE_CXX_FLAGS "-std=c++17 -fno-diagnostics-color")
+set(CMAKE_CXX_FLAGS "-std=c++17")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
