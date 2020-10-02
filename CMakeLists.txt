@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(aloam_slam)
 
+# we really need to replace the general flags because
+# we cannot build this with march=native
 set(CMAKE_CXX_FLAGS "-std=c++17 -fno-diagnostics-color")
 
 set(CMAKE_CXX_STANDARD 17)
