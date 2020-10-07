@@ -27,7 +27,7 @@ private:
   ros::Timer                                     _timer_odometry_loop;
 
   std::shared_ptr<mrs_lib::Transformer>         _transformer;
-  mrs_lib::SubscribeHandler<nav_msgs::Odometry> _sub_handler_orientation;
+  /* mrs_lib::SubscribeHandler<nav_msgs::Odometry> _sub_handler_orientation; */
 
   std::mutex                      _mutex_odometry_process;
   pcl::PointCloud<PointType>::Ptr _features_corners_last;

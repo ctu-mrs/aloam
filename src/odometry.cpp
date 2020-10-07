@@ -310,28 +310,28 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
 
   /*//{ Correct orientation using inertial measurements */
 
-  if (_sub_handler_orientation.hasMsg()) {
-    // Get orientation msg
-    auto odom_msg = _sub_handler_orientation.getMsg();
+  /* if (_sub_handler_orientation.hasMsg()) { */
+  /*   // Get orientation msg */
+  /*   auto odom_msg = _sub_handler_orientation.getMsg(); */
 
-    // Convert orientation to the odometry frame
-    geometry_msgs::QuaternionStamped msg_ori;
-    msg_ori.header     = odom_msg->header;
-    msg_ori.quaternion = odom_msg->pose.pose.orientation;
-    auto ret           = _transformer->transformSingle(_frame_odom, msg_ori);
+  /*   // Convert orientation to the odometry frame */
+  /*   geometry_msgs::QuaternionStamped msg_ori; */
+  /*   msg_ori.header     = odom_msg->header; */
+  /*   msg_ori.quaternion = odom_msg->pose.pose.orientation; */
+  /*   auto ret           = _transformer->transformSingle(_frame_odom, msg_ori); */
 
-    if (ret) {
-      // Set heading of odometry msg to be the aloam odometry estimated heading
-      mrs_lib::AttitudeConverter q_aloam = _q_w_curr;
-      mrs_lib::AttitudeConverter q_odom  = ret.value().quaternion;
-      mrs_lib::AttitudeConverter q_ret   = q_odom.setHeading(q_aloam.getHeading());
-      tf::quaternionEigenToMsg(q_ret, ori);
+  /*   if (ret) { */
+  /*     // Set heading of odometry msg to be the aloam odometry estimated heading */
+  /*     mrs_lib::AttitudeConverter q_aloam = _q_w_curr; */
+  /*     mrs_lib::AttitudeConverter q_odom  = ret.value().quaternion; */
+  /*     mrs_lib::AttitudeConverter q_ret   = q_odom.setHeading(q_aloam.getHeading()); */
+  /*     tf::quaternionEigenToMsg(q_ret, ori); */
 
-      /* ROS_DEBUG("q_aloam: %0.2f %0.2f %0.2f", q_aloam.getRoll(), q_aloam.getPitch(), q_aloam.getHeading()); */
-      /* ROS_DEBUG("q_odom: %0.2f %0.2f %0.2f", q_odom.getRoll(), q_odom.getPitch(), q_odom.getHeading()); */
-      /* ROS_DEBUG("q_ret (q_aloam heading: %0.2f): %0.2f %0.2f %0.2f", q_aloam.getHeading(), q_ret.getRoll(), q_ret.getPitch(), q_ret.getHeading()); */
-    }
-  }
+  /*     /1* ROS_DEBUG("q_aloam: %0.2f %0.2f %0.2f", q_aloam.getRoll(), q_aloam.getPitch(), q_aloam.getHeading()); *1/ */
+  /*     /1* ROS_DEBUG("q_odom: %0.2f %0.2f %0.2f", q_odom.getRoll(), q_odom.getPitch(), q_odom.getHeading()); *1/ */
+  /*     /1* ROS_DEBUG("q_ret (q_aloam heading: %0.2f): %0.2f %0.2f %0.2f", q_aloam.getHeading(), q_ret.getRoll(), q_ret.getPitch(), q_ret.getHeading()); *1/ */
+  /*   } */
+  /* } */
 
   /*//}*/
 
