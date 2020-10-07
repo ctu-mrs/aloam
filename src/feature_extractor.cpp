@@ -10,6 +10,8 @@ FeatureExtractor::FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::Pa
 
   ros::NodeHandle nh_(parent_nh);
 
+  ros::Time::waitForValid();
+
   param_loader.loadParam("vertical_fov", _vertical_fov_half);
   param_loader.loadParam("scan_line", _number_of_rings);
 

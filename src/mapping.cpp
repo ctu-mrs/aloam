@@ -15,6 +15,8 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
       _t_w_curr(_parameters + 4) {
 
   ros::NodeHandle nh_(parent_nh);
+  
+  ros::Time::waitForValid();
 
   param_loader.loadParam("mapping_line_resolution", _resolution_line, 0.2f);
   param_loader.loadParam("mapping_plane_resolution", _resolution_plane, 0.4f);

@@ -94,6 +94,7 @@ void AloamSlam::onInit() {
 tf::Transform AloamSlam::getStaticTf(std::string frame_from, std::string frame_to) {
   tf::Transform                         tf_ret;
   std::shared_ptr<mrs_lib::Transformer> transformer_ = std::make_shared<mrs_lib::Transformer>("Aloam");
+  ros::Duration(1.0).sleep(); // Wait for TF buffer to fill
 
   ROS_INFO_ONCE("[Aloam]: Looking for transform from %s to %s", frame_from.c_str(), frame_to.c_str());
   auto tf_lidar_fcu = transformer_->getTransform(frame_from, frame_to, ros::Time(0));
