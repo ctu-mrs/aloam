@@ -12,7 +12,7 @@ class FeatureExtractor {
 
 public:
   FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, std::shared_ptr<mrs_lib::Profiler> profiler,
-                   std::shared_ptr<AloamOdometry> odometry, std::string map_frame, float scan_period_sec);
+                   std::shared_ptr<AloamOdometry> odometry, std::string lidar_frame, float scan_period_sec);
 
   bool is_initialized = false;
 
@@ -24,7 +24,7 @@ private:
   std::shared_ptr<AloamOdometry> _odometry;
 
   // member variables
-  std::string _frame_map;
+  std::string _frame_lidar;
 
   float _vertical_fov_half;
   float _ray_vert_delta;

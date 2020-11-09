@@ -47,6 +47,10 @@ private:
 
   // publishers and subscribers
   ros::Publisher _pub_odometry_local;
+  ros::Publisher _pub_features_corners_sharp;
+  ros::Publisher _pub_features_corners_less_sharp;
+  ros::Publisher _pub_features_surfs_flat;
+  ros::Publisher _pub_features_surfs_less_flat;
 
   // member variables
   std::string _frame_fcu;
@@ -71,6 +75,7 @@ private:
 
   // member methods
   void timerOdometry([[maybe_unused]] const ros::TimerEvent &event);
+  void publishCloud(ros::Publisher publisher, const pcl::PointCloud<PointType>::Ptr cloud);
 
   void TransformToStart(PointType const *const pi, PointType *const po);
   void TransformToEnd(PointType const *const pi, PointType *const po);

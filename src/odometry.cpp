@@ -45,6 +45,11 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::string uav_n
 
   _pub_odometry_local = nh_.advertise<nav_msgs::Odometry>("odom_local_out", 1);
 
+  _pub_features_corners_sharp      = nh_.advertise<sensor_msgs::PointCloud2>("features_corners_sharp_out", 1);
+  _pub_features_corners_less_sharp = nh_.advertise<sensor_msgs::PointCloud2>("features_corners_less_sharp_out", 1);
+  _pub_features_surfs_flat         = nh_.advertise<sensor_msgs::PointCloud2>("features_surfs_flat_out", 1);
+  _pub_features_surfs_less_flat    = nh_.advertise<sensor_msgs::PointCloud2>("features_surfs_less_flat_out", 1);
+
   _timer_odometry_loop = nh_.createTimer(ros::Rate(1000), &AloamOdometry::timerOdometry, this, false, true);
 }
 //}
@@ -365,6 +370,13 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   }
   /*//}*/
 
+  /*//{ Publish features */
+  publishCloud(_pub_features_corners_sharp, corner_points_sharp);
+  publishCloud(_pub_features_corners_less_sharp, corner_points_less_sharp);
+  publishCloud(_pub_features_surfs_flat, surf_points_flat);
+  publishCloud(_pub_features_surfs_less_flat, surf_points_less_flat);
+  /*//}*/
+
   /*//{ Publish odometry */
 
   if (_frame_count > 0) {
@@ -450,6 +462,23 @@ void AloamOdometry::TransformToStart(PointType const *const pi, PointType *const
   po->y         = un_point.y();
   po->z         = un_point.z();
   po->intensity = pi->intensity;
+}
+/*//}*/
+
+/*//{ publishCloud() */
+void AloamOdometry::publishCloud(ros::Publisher publisher, const pcl::PointCloud<PointType>::Ptr cloud) {
+  if (publisher.getNumSubscribers() > 0) {
+
+    sensor_msgs::PointCloud2::Ptr cloud_msg = boost::make_shared<sensor_msgs::PointCloud2>();
+    pcl::toROSMsg(*cloud, *cloud_msg);
+
+    try {
+      publisher.publish(cloud_msg);
+    }
+    catch (...) {
+      ROS_ERROR("exception caught during publishing on topic: %s", publisher.getTopic().c_str());
+    }
+  }
 }
 /*//}*/
 

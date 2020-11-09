@@ -5,8 +5,8 @@ namespace aloam_slam
 
 /*//{ FeatureExtractor() */
 FeatureExtractor::FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, std::shared_ptr<mrs_lib::Profiler> profiler,
-                                   std::shared_ptr<AloamOdometry> odometry, std::string map_frame, float scan_period_sec)
-    : _profiler(profiler), _odometry(odometry), _frame_map(map_frame), _scan_period_sec(scan_period_sec) {
+                                   std::shared_ptr<AloamOdometry> odometry, std::string lidar_frame, float scan_period_sec)
+    : _profiler(profiler), _odometry(odometry), _frame_lidar(lidar_frame), _scan_period_sec(scan_period_sec) {
 
   ros::NodeHandle nh_(parent_nh);
 
@@ -218,11 +218,11 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2::ConstP
 
   const float time_pts = t_pts.toc();
 
-  laser_cloud->header.frame_id              = _frame_map;
-  corner_points_sharp->header.frame_id      = _frame_map;
-  corner_points_less_sharp->header.frame_id = _frame_map;
-  surf_points_flat->header.frame_id         = _frame_map;
-  surf_points_less_flat->header.frame_id    = _frame_map;
+  laser_cloud->header.frame_id              = _frame_lidar;
+  corner_points_sharp->header.frame_id      = _frame_lidar;
+  corner_points_less_sharp->header.frame_id = _frame_lidar;
+  surf_points_flat->header.frame_id         = _frame_lidar;
+  surf_points_less_flat->header.frame_id    = _frame_lidar;
 
   pcl::uint64_t stamp;
   pcl_conversions::toPCL(laserCloudMsg->header.stamp, stamp);
