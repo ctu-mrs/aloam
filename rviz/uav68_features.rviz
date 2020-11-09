@@ -29,7 +29,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: Features - corners
+    SyncSource: Features - corners selected
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -564,7 +564,7 @@ Visualization Manager:
       Color: 255; 255; 0
       Color Transformer: FlatColor
       Decay Time: 0
-      Enabled: true
+      Enabled: false
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Max Intensity: 15.08768367767334
@@ -581,7 +581,37 @@ Visualization Manager:
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
-      Value: true
+      Value: false
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz/PointCloud2
+      Color: 255; 255; 0
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: false
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Max Intensity: 15.099413871765137
+      Min Color: 0; 0; 0
+      Min Intensity: 0.001661779242567718
+      Name: Features - corners less flat
+      Position Transformer: XYZ
+      Queue Size: 10
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.10000000149011612
+      Style: Flat Squares
+      Topic: /uav68/aloam/features/corners/sharpless
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: false
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -600,14 +630,14 @@ Visualization Manager:
       Max Intensity: 15.099413871765137
       Min Color: 0; 0; 0
       Min Intensity: 0.001661779242567718
-      Name: Features - corners less flat
+      Name: Features - corners selected
       Position Transformer: XYZ
       Queue Size: 10
       Selectable: true
       Size (Pixels): 3
       Size (m): 0.10000000149011612
       Style: Flat Squares
-      Topic: /uav68/aloam/features/corners/sharpless
+      Topic: /uav68/aloam/features/corners/selected
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
@@ -624,7 +654,7 @@ Visualization Manager:
       Color: 255; 85; 255
       Color Transformer: FlatColor
       Decay Time: 0
-      Enabled: true
+      Enabled: false
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Max Intensity: 15.098142623901367
@@ -641,7 +671,37 @@ Visualization Manager:
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
-      Value: true
+      Value: false
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz/PointCloud2
+      Color: 255; 0; 255
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: false
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Max Intensity: 15.099315643310547
+      Min Color: 0; 0; 0
+      Min Intensity: 0.0007820136961527169
+      Name: Features - surf less flat
+      Position Transformer: XYZ
+      Queue Size: 10
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.10000000149011612
+      Style: Flat Squares
+      Topic: /uav68/aloam/features/surfs/flatless
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: false
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -657,17 +717,17 @@ Visualization Manager:
       Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
-      Max Intensity: 15.099315643310547
+      Max Intensity: 1
       Min Color: 0; 0; 0
-      Min Intensity: 0.0007820136961527169
-      Name: Features - surf less flat
+      Min Intensity: 0.2001345157623291
+      Name: Features - surfs selected
       Position Transformer: XYZ
-      Queue Size: 10
+      Queue Size: 1
       Selectable: true
       Size (Pixels): 3
       Size (m): 0.10000000149011612
       Style: Flat Squares
-      Topic: /uav68/aloam/features/surfs/flatless
+      Topic: /uav68/aloam/features/surfs/selected
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
@@ -730,25 +790,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/ThirdPersonFollower
-      Distance: 27.253084182739258
+      Distance: 18.57221221923828
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -2.449068069458008
-        Y: 5.5762763023376465
-        Z: 1.229417324066162
+        X: 0.13038253784179688
+        Y: -0.5710310935974121
+        Z: 1.2294163703918457
       Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.819797933101654
+      Pitch: 0.5097979307174683
       Target Frame: uav68/aloam_mapping_origin
       Value: ThirdPersonFollower (rviz)
-      Yaw: 1.3203930854797363
+      Yaw: 3.5904035568237305
     Saved: ~
 Window Geometry:
   Displays:

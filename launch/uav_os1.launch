@@ -49,6 +49,11 @@
       <param name="map_publish_rate" type="double" value="$(arg map_publish_rate)" />
       <param name="mapping_line_resolution" type="double" value="$(arg mapping_line_resolution)" />
       <param name="mapping_plane_resolution" type="double" value="$(arg mapping_plane_resolution)" />
+      
+      <param name="feature_selection/surfs/gradient/limit/upper" type="double" value="1.0" />
+      <param name="feature_selection/surfs/gradient/limit/bottom" type="double" value="0.2" />
+      <param name="feature_selection/corners/gradient/limit/upper" type="double" value="1.0" />
+      <param name="feature_selection/corners/gradient/limit/bottom" type="double" value="0.2" />
 
       <!-- Subscribers -->
       <remap from="~laser_cloud_in" to="$(arg points_topic)"/>
@@ -64,6 +69,8 @@
       <remap from="~features_corners_less_sharp_out" to="aloam/features/corners/sharpless"/>
       <remap from="~features_surfs_flat_out" to="aloam/features/surfs/flat"/>
       <remap from="~features_surfs_less_flat_out" to="aloam/features/surfs/flatless"/>
+      <remap from="~features_corners_selected_out" to="aloam/features/corners/selected"/>
+      <remap from="~features_surfs_selected_out" to="aloam/features/surfs/selected"/>
         
       <!-- Service servers -->
       <remap from="~srv_reset_mapping_in" to="aloam/reset/mapping"/>

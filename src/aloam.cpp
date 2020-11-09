@@ -73,7 +73,7 @@ void AloamSlam::onInit() {
   // | ----------------------- SLAM handlers  ------------------- |
 
   aloam_mapping     = std::make_shared<AloamMapping>(nh_, param_loader, profiler, frame_fcu, frame_map, frequency, tf_lidar_in_fcu_frame);
-  aloam_odometry    = std::make_shared<AloamOdometry>(nh_, uav_name, profiler, aloam_mapping, frame_fcu, frame_lidar, frame_odom, 1.0f / frequency, tf_lidar_in_fcu_frame);
+  aloam_odometry    = std::make_shared<AloamOdometry>(nh_, param_loader, uav_name, profiler, aloam_mapping, frame_fcu, frame_lidar, frame_odom, 1.0f / frequency, tf_lidar_in_fcu_frame);
   feature_extractor = std::make_shared<FeatureExtractor>(nh_, param_loader, profiler, aloam_odometry, frame_lidar, 1.0f / frequency);
 
   if (!param_loader.loadedSuccessfully()) {

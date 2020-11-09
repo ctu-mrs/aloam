@@ -5,9 +5,9 @@ namespace aloam_slam
 {
 
 /* //{ AloamOdometry() */
-AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::string uav_name, std::shared_ptr<mrs_lib::Profiler> profiler,
-                             std::shared_ptr<AloamMapping> aloam_mapping, std::string frame_fcu, std::string frame_lidar, std::string frame_odom,
-                             float scan_period_sec, tf::Transform tf_lidar_to_fcu)
+AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, std::string uav_name,
+                             std::shared_ptr<mrs_lib::Profiler> profiler, std::shared_ptr<AloamMapping> aloam_mapping, std::string frame_fcu,
+                             std::string frame_lidar, std::string frame_odom, float scan_period_sec, tf::Transform tf_lidar_to_fcu)
     : _profiler(profiler),
       _aloam_mapping(aloam_mapping),
       _frame_fcu(frame_fcu),
@@ -21,6 +21,14 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::string uav_n
   ros::NodeHandle nh_(parent_nh);
 
   ros::Time::waitForValid();
+
+  param_loader.loadParam("mapping_line_resolution", _features_corners_resolution, 0.4f);
+  param_loader.loadParam("mapping_plane_resolution", _features_surfs_resolution, 0.8f);
+
+  param_loader.loadParam("feature_selection/corners/gradient/limit/upper", _features_corners_gradient_limit_upper, 1.0f);
+  param_loader.loadParam("feature_selection/corners/gradient/limit/bottom", _features_corners_gradient_limit_bottom, 0.0f);
+  param_loader.loadParam("feature_selection/surfs/gradient/limit/upper", _features_surfs_gradient_limit_upper, 1.0f);
+  param_loader.loadParam("feature_selection/surfs/gradient/limit/bottom", _features_surfs_gradient_limit_bottom, 0.0f);
 
   // Objects initialization
   _tf_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>();
@@ -49,6 +57,8 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::string uav_n
   _pub_features_corners_less_sharp = nh_.advertise<sensor_msgs::PointCloud2>("features_corners_less_sharp_out", 1);
   _pub_features_surfs_flat         = nh_.advertise<sensor_msgs::PointCloud2>("features_surfs_flat_out", 1);
   _pub_features_surfs_less_flat    = nh_.advertise<sensor_msgs::PointCloud2>("features_surfs_less_flat_out", 1);
+  _pub_features_corners_selected   = nh_.advertise<sensor_msgs::PointCloud2>("features_corners_selected_out", 1);
+  _pub_features_surfs_selected     = nh_.advertise<sensor_msgs::PointCloud2>("features_surfs_selected_out", 1);
 
   _timer_odometry_loop = nh_.createTimer(ros::Rate(1000), &AloamOdometry::timerOdometry, this, false, true);
 }
@@ -286,7 +296,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
       time_data_association = t_data.toc();
 
       if ((corner_correspondence + plane_correspondence) < 10) {
-        ROS_WARN_STREAM("[AloamOdometry] low number of correspondence!");
+        ROS_WARN("[AloamOdometry] low number of correspondence! corners: %d, planes: %d", corner_correspondence, plane_correspondence);
       }
 
       TicToc                 t_solver;
@@ -347,16 +357,14 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   tf::quaternionMsgToTF(ori, tf_q);
   tf_lidar.setRotation(tf_q);
 
+  const auto selected_features = selectFeatures(corner_points_less_sharp, surf_points_less_flat);
+
   /*//{ Save odometry data to AloamMapping */
   {
-    std::scoped_lock                lock(_mutex_odometry_process);
-    pcl::PointCloud<PointType>::Ptr laserCloudTemp = corner_points_less_sharp;
-    corner_points_less_sharp                       = _features_corners_last;
-    _features_corners_last                         = laserCloudTemp;
+    std::scoped_lock lock(_mutex_odometry_process);
 
-    laserCloudTemp        = surf_points_less_flat;
-    surf_points_less_flat = _features_surfs_last;
-    _features_surfs_last  = laserCloudTemp;
+    _features_corners_last = corner_points_less_sharp;
+    _features_surfs_last   = surf_points_less_flat;
 
     _features_corners_last->header.stamp = laser_cloud_full_res->header.stamp;
     _features_surfs_last->header.stamp   = laser_cloud_full_res->header.stamp;
@@ -366,7 +374,8 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     _features_surfs_last->header.frame_id   = _frame_lidar;
     laser_cloud_full_res->header.frame_id   = _frame_lidar;
 
-    _aloam_mapping->setData(stamp, tf_lidar, _features_corners_last, _features_surfs_last, laser_cloud_full_res);
+    /* _aloam_mapping->setData(stamp, tf_lidar, _features_corners_last, _features_surfs_last, laser_cloud_full_res); */
+    _aloam_mapping->setData(stamp, tf_lidar, selected_features.first, selected_features.second, laser_cloud_full_res);
   }
   /*//}*/
 
@@ -375,6 +384,8 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   publishCloud(_pub_features_corners_less_sharp, corner_points_less_sharp);
   publishCloud(_pub_features_surfs_flat, surf_points_flat);
   publishCloud(_pub_features_surfs_less_flat, surf_points_less_flat);
+  publishCloud(_pub_features_corners_selected, selected_features.first);
+  publishCloud(_pub_features_surfs_selected, selected_features.second);
   /*//}*/
 
   /*//{ Publish odometry */
@@ -426,6 +437,93 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
                      "[AloamOdometry] feature registration: %0.1f ms; solver time: %0.1f ms; double optimization time: %0.1f ms; publishing time: %0.1f ms",
                      time_data_association, time_solver, time_opt, t_pub.toc());
   ROS_WARN_COND(time_whole > _scan_period_sec * 1000.0f, "[AloamOdometry] Odometry process took over %0.2f ms", _scan_period_sec * 1000.0f);
+}
+/*//}*/
+
+/*//{ selectFeatures() */
+std::pair<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr> AloamOdometry::selectFeatures(pcl::PointCloud<PointType>::Ptr corner_points,
+                                                                                                          pcl::PointCloud<PointType>::Ptr surf_points) {
+
+  mrs_lib::Routine profiler_routine = _profiler->createRoutine("aloamOdometrySelectFeatures");
+
+  TicToc t_routine;
+
+  pcl::PointCloud<PointType>::Ptr selected_corners = selectFeaturesFromCloudByGradient(
+      corner_points, _features_corners_resolution, _features_corners_gradient_limit_bottom, _features_corners_gradient_limit_upper);
+  pcl::PointCloud<PointType>::Ptr selected_surfs =
+      selectFeaturesFromCloudByGradient(surf_points, _features_surfs_resolution, _features_surfs_gradient_limit_bottom, _features_surfs_gradient_limit_upper);
+
+  ROS_WARN_THROTTLE(0.5, "[AloamOdometry] feature selection of corners and surfs: %0.1f ms", t_routine.toc());
+
+  return std::make_pair(selected_corners, selected_surfs);
+}
+/*//}*/
+
+/*//{ selectFeaturesFromCloudByGradient() */
+pcl::PointCloud<PointType>::Ptr AloamOdometry::selectFeaturesFromCloudByGradient(const pcl::PointCloud<PointType>::Ptr cloud, const float search_radius,
+                                                                                 const float grad_min, const float grad_max) {
+
+  pcl::PointCloud<PointType>::Ptr selected_features = boost::make_shared<pcl::PointCloud<PointType>>();
+
+  if (cloud->size() == 0) {
+    return selected_features;
+  }
+
+  std::vector<float> gradient_norms(cloud->size());
+  double             grad_norm_max = -1.0;
+
+  // Create kd tree for fast search
+  pcl::KdTreeFLANN<pcl::PointXYZI> kdtree_surfs_last;
+  kdtree_surfs_last.setInputCloud(cloud);
+
+  for (unsigned int i = 0; i < cloud->size(); i++) {
+
+    const pcl::PointXYZI point = cloud->at(i);
+    std::vector<int>     indices;
+    std::vector<float>   squared_distances;
+
+    // Find all features in given radius
+    kdtree_surfs_last.radiusSearch(*cloud, i, search_radius, indices, squared_distances);
+
+    Eigen::Vector3f gradient  = Eigen::Vector3f::Zero();
+    double          grad_norm = 0.0;
+
+    // Compute gradient
+    if (indices.size() > 0) {
+
+      Eigen::Vector3f point_xyz = Eigen::Vector3f(point.x, point.y, point.z);
+      for (const int &ind : indices) {
+        const pcl::PointXYZI neighbor = cloud->at(ind);
+        gradient += Eigen::Vector3f(neighbor.x, neighbor.y, neighbor.z) - point_xyz;
+      }
+
+      gradient /= indices.size();
+      grad_norm = gradient.norm();
+    }
+
+    gradient_norms.at(i) = grad_norm;
+
+    grad_norm_max = std::max(grad_norm_max, grad_norm);
+  }
+
+  // Filter by gradient value
+  for (unsigned int i = 0; i < cloud->size(); i++) {
+
+    const float grad_norm = gradient_norms.at(i) / grad_norm_max;
+
+    if (grad_norm >= grad_min && grad_norm <= grad_max) {
+      pcl::PointXYZI point_grad = cloud->at(i);
+      point_grad.intensity      = grad_norm;
+      selected_features->push_back(point_grad);
+    }
+  }
+
+  selected_features->header   = cloud->header;
+  selected_features->width    = 1;
+  selected_features->height   = selected_features->points.size();
+  selected_features->is_dense = cloud->is_dense;
+
+  return selected_features;
 }
 /*//}*/
 
