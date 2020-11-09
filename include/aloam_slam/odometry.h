@@ -62,6 +62,8 @@ private:
   std::string _frame_odom;
 
   float _scan_period_sec;
+
+  bool  _features_selection_enabled;
   float _features_corners_resolution;
   float _features_surfs_resolution;
   float _features_corners_gradient_limit_upper;
@@ -85,7 +87,7 @@ private:
 
   // member methods
   std::pair<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr> selectFeatures(pcl::PointCloud<PointType>::Ptr corner_points_less_sharp,
-                                                                                              pcl::PointCloud<PointType>::Ptr surf_points_less_flat);
+                                                                                             pcl::PointCloud<PointType>::Ptr surf_points_less_flat);
   pcl::PointCloud<PointType>::Ptr selectFeaturesFromCloudByGradient(const pcl::PointCloud<PointType>::Ptr cloud, const float search_radius,
                                                                     const float grad_min, const float grad_max);
   void                            timerOdometry([[maybe_unused]] const ros::TimerEvent &event);

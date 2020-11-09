@@ -25,6 +25,7 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoa
   param_loader.loadParam("mapping_line_resolution", _features_corners_resolution, 0.4f);
   param_loader.loadParam("mapping_plane_resolution", _features_surfs_resolution, 0.8f);
 
+  param_loader.loadParam("feature_selection/enable", _features_selection_enabled, false);
   param_loader.loadParam("feature_selection/corners/gradient/limit/upper", _features_corners_gradient_limit_upper, 1.0f);
   param_loader.loadParam("feature_selection/corners/gradient/limit/bottom", _features_corners_gradient_limit_bottom, 0.0f);
   param_loader.loadParam("feature_selection/surfs/gradient/limit/upper", _features_surfs_gradient_limit_upper, 1.0f);
@@ -443,6 +444,10 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
 /*//{ selectFeatures() */
 std::pair<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr> AloamOdometry::selectFeatures(pcl::PointCloud<PointType>::Ptr corner_points,
                                                                                                           pcl::PointCloud<PointType>::Ptr surf_points) {
+
+  if (!_features_selection_enabled) {
+    return std::make_pair(corner_points, surf_points);
+  }
 
   mrs_lib::Routine profiler_routine = _profiler->createRoutine("aloamOdometrySelectFeatures");
 
