@@ -89,7 +89,7 @@ pcl::PointCloud<PointType>::Ptr FeatureSelection::selectFeaturesFromCloudByGradi
     std::vector<float>   squared_distances;
 
     // Find all features in given radius, TODO: find neighbors by indexing
-    kdtree_features.radiusSearch(*cloud, i, search_radius, indices, squared_distances);
+    kdtree_features.radiusSearch(point, search_radius, indices, squared_distances);
 
     Eigen::Vector3f gradient  = Eigen::Vector3f::Zero();
     double          grad_norm = 0.0;

@@ -10,6 +10,7 @@ Panels:
         - /Ouster data1
         - /Aloam - odom1/Shape1
         - /Aloam - odom (drifting)1/Shape1
+        - /GT1/Shape1
       Splitter Ratio: 0.34090909361839294
     Tree Height: 1007
   - Class: rviz/Selection
@@ -61,7 +62,7 @@ Visualization Manager:
         Z: 0
       Plane: XY
       Plane Cell Count: 100
-      Reference Frame: uav68/local_origin
+      Reference Frame: uav1/local_origin
       Value: false
     - Class: rviz/TF
       Enabled: false
@@ -90,7 +91,7 @@ Visualization Manager:
       Shaft Length: 0.23000000417232513
       Shaft Radius: 0.009999999776482582
       Shape: Arrow (Flat)
-      Topic: /uav68/control_manager/mpc_tracker/predicted_trajectory_debugging
+      Topic: /uav1/control_manager/mpc_tracker/predicted_trajectory_debugging
       Unreliable: true
       Value: true
     - Alpha: 1
@@ -106,7 +107,7 @@ Visualization Manager:
       Shaft Length: 0.23000000417232513
       Shaft Radius: 0.009999999776482582
       Shape: Arrow (Flat)
-      Topic: /uav68/control_manager/mpc_tracker/debug_set_trajectory
+      Topic: /uav1/control_manager/mpc_tracker/debug_set_trajectory
       Unreliable: false
       Value: true
     - Angle Tolerance: 0.009999999776482582
@@ -140,7 +141,7 @@ Visualization Manager:
         Shaft Length: 1
         Shaft Radius: 0.05000000074505806
         Value: Arrow
-      Topic: /uav68/odometry/odom_main
+      Topic: /uav1/odometry/odom_main
       Unreliable: true
       Value: true
     - Angle Tolerance: 0.10000000149011612
@@ -174,7 +175,7 @@ Visualization Manager:
         Shaft Length: 1
         Shaft Radius: 0.05000000074505806
         Value: Arrow
-      Topic: /uav68/ground_truth
+      Topic: /uav1/ground_truth
       Unreliable: true
       Value: false
     - Angle Tolerance: 0.009999999776482582
@@ -208,7 +209,7 @@ Visualization Manager:
         Shaft Length: 1
         Shaft Radius: 0.05000000074505806
         Value: Arrow
-      Topic: /uav68/control_manager/cmd_odom
+      Topic: /uav1/control_manager/cmd_odom
       Unreliable: true
       Value: true
     - Alpha: 0.10000000149011612
@@ -224,7 +225,7 @@ Visualization Manager:
       Name: MRS_Bumper
       Show sectors with no data: false
       Show undetected obstacles: true
-      Topic: /uav68/bumper/obstacle_sectors
+      Topic: /uav1/bumper/obstacle_sectors
       Unreliable: false
       Value: false
       Vertical collision threshold: 1
@@ -259,12 +260,12 @@ Visualization Manager:
         Shaft Length: 1
         Shaft Radius: 0.05000000074505806
         Value: Axes
-      Topic: /uav68/control_manager/mpc_tracker/setpoint_odom
+      Topic: /uav1/control_manager/mpc_tracker/setpoint_odom
       Unreliable: false
       Value: false
     - Class: rviz/MarkerArray
       Enabled: false
-      Marker Topic: /uav68/map/occupied
+      Marker Topic: /uav1/map/occupied
       Name: Map - occupied
       Namespaces:
         {}
@@ -272,7 +273,7 @@ Visualization Manager:
       Value: false
     - Class: rviz/MarkerArray
       Enabled: false
-      Marker Topic: /uav68/map/free/throttled
+      Marker Topic: /uav1/map/free/throttled
       Name: Map - free
       Namespaces:
         {}
@@ -303,7 +304,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.05000000074505806
       Style: Flat Squares
-      Topic: /uav68/os1_cloud_node/points_processed
+      Topic: /uav1/os1_cloud_node/points_processed
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
@@ -339,7 +340,7 @@ Visualization Manager:
         Shaft Length: 1
         Shaft Radius: 0.05000000074505806
         Value: Axes
-      Topic: /uav68/aloam/odom
+      Topic: /uav1/aloam/odom
       Unreliable: false
       Value: true
     - Alpha: 1
@@ -362,7 +363,7 @@ Visualization Manager:
       Radius: 0.029999999329447746
       Shaft Diameter: 0.10000000149011612
       Shaft Length: 0.10000000149011612
-      Topic: /uav68/aloam/path/throttled
+      Topic: /uav1/aloam/path/throttled
       Unreliable: false
       Value: true
     - Angle Tolerance: 0.10000000149011612
@@ -396,12 +397,12 @@ Visualization Manager:
         Shaft Length: 1
         Shaft Radius: 0.05000000074505806
         Value: Arrow
-      Topic: /uav68/aloam_odometry/laser_odom_to_init
+      Topic: /uav1/aloam_odometry/laser_odom_to_init
       Unreliable: false
       Value: false
     - Class: rviz/MarkerArray
       Enabled: true
-      Marker Topic: /uav68/darpa_planner/start_and_goal
+      Marker Topic: /uav1/darpa_planner/start_and_goal
       Name: Planner - start/goal
       Namespaces:
         {}
@@ -427,7 +428,7 @@ Visualization Manager:
       Radius: 0.029999999329447746
       Shaft Diameter: 0.10000000149011612
       Shaft Length: 0.10000000149011612
-      Topic: /uav68/darpa_planner/path
+      Topic: /uav1/darpa_planner/path
       Unreliable: false
       Value: true
     - Alpha: 1
@@ -450,7 +451,7 @@ Visualization Manager:
       Radius: 0.029999999329447746
       Shaft Diameter: 0.10000000149011612
       Shaft Length: 0.10000000149011612
-      Topic: /uav68/darpa_planner/local_path
+      Topic: /uav1/darpa_planner/local_path
       Unreliable: false
       Value: true
     - Alpha: 0.8999999761581421
@@ -550,7 +551,7 @@ Visualization Manager:
       History Length: 1
       Name: Detection - artifact point
       Radius: 2
-      Topic: /uav68/artifact_point3D
+      Topic: /uav1/artifact_point3D
       Unreliable: false
       Value: false
     - Alpha: 1
@@ -578,7 +579,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.4000000059604645
       Style: Flat Squares
-      Topic: /uav68/aloam/features/corners/sharp
+      Topic: /uav1/aloam/features/corners/sharp
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
@@ -595,7 +596,7 @@ Visualization Manager:
       Color: 255; 255; 0
       Color Transformer: FlatColor
       Decay Time: 0
-      Enabled: true
+      Enabled: false
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Max Intensity: 15.099413871765137
@@ -608,11 +609,11 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.10000000149011612
       Style: Flat Squares
-      Topic: /uav68/aloam/features/corners/sharpless
+      Topic: /uav1/aloam/features/corners/sharpless
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
-      Value: true
+      Value: false
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -638,7 +639,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.10000000149011612
       Style: Flat Squares
-      Topic: /uav68/aloam/features/corners/selected
+      Topic: /uav1/aloam/features/corners/selected
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
@@ -668,7 +669,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.4000000059604645
       Style: Flat Squares
-      Topic: /uav68/aloam/features/surfs/flat
+      Topic: /uav1/aloam/features/surfs/flat
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
@@ -685,7 +686,7 @@ Visualization Manager:
       Color: 255; 0; 255
       Color Transformer: FlatColor
       Decay Time: 0
-      Enabled: true
+      Enabled: false
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Max Intensity: 15.099315643310547
@@ -698,11 +699,11 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.10000000149011612
       Style: Flat Squares
-      Topic: /uav68/aloam/features/surfs/flatless
+      Topic: /uav1/aloam/features/surfs/flatless
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
-      Value: true
+      Value: false
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -728,7 +729,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.10000000149011612
       Style: Flat Squares
-      Topic: /uav68/aloam/features/surfs/selected
+      Topic: /uav1/aloam/features/surfs/selected
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
@@ -758,16 +759,50 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.10000000149011612
       Style: Flat Squares
-      Topic: /uav68/aloam/map
+      Topic: /uav1/aloam/map
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
+      Value: true
+    - Angle Tolerance: 0.0010000000474974513
+      Class: rviz/Odometry
+      Covariance:
+        Orientation:
+          Alpha: 0.5
+          Color: 255; 255; 127
+          Color Style: Unique
+          Frame: Local
+          Offset: 1
+          Scale: 1
+          Value: true
+        Position:
+          Alpha: 0.30000001192092896
+          Color: 204; 51; 204
+          Scale: 1
+          Value: true
+        Value: true
+      Enabled: true
+      Keep: 1
+      Name: GT
+      Position Tolerance: 0.0010000000474974513
+      Shape:
+        Alpha: 1
+        Axes Length: 0.25
+        Axes Radius: 0.019999999552965164
+        Color: 255; 25; 0
+        Head Length: 0.30000001192092896
+        Head Radius: 0.10000000149011612
+        Shaft Length: 1
+        Shaft Radius: 0.05000000074505806
+        Value: Axes
+      Topic: /uav1/ground_truth
+      Unreliable: false
       Value: true
   Enabled: true
   Global Options:
     Background Color: 53; 53; 53
     Default Light: true
-    Fixed Frame: uav68/aloam_origin
+    Fixed Frame: world
     Frame Rate: 60
   Name: root
   Tools:
@@ -791,25 +826,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/ThirdPersonFollower
-      Distance: 16.343547821044922
+      Distance: 8.138838768005371
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -1.1031057834625244
-        Y: 3.476060390472412
-        Z: 1.2294163703918457
+        X: -0.27806520462036133
+        Y: -1.3000988960266113
+        Z: 1.2294197082519531
       Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.3097979426383972
-      Target Frame: uav68/aloam_mapping_origin
+      Pitch: 0.6697980761528015
+      Target Frame: uav1/aloam_mapping_origin
       Value: ThirdPersonFollower (rviz)
-      Yaw: 1.464045763015747
+      Yaw: 3.989046812057495
     Saved: ~
 Window Geometry:
   Displays:

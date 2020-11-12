@@ -27,7 +27,8 @@ FeatureExtractor::FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::Pa
   _ray_vert_delta = _vertical_fov_half / float(_number_of_rings - 1);  // vertical resolution
   _vertical_fov_half /= 2.0;                                           // get half fov
 
-  _initialization_frames_delay = int(1.0 / scan_period_sec);
+  /* _initialization_frames_delay = int(1.0 / scan_period_sec); */
+  _initialization_frames_delay = 1;
 
   _sub_laser_cloud = nh_.subscribe("laser_cloud_in", 1, &FeatureExtractor::callbackLaserCloud, this, ros::TransportHints().tcpNoDelay());
 
