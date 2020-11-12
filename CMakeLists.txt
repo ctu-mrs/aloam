@@ -56,7 +56,7 @@ add_definitions(
   ${PCL_DEFINITIONS}
 )
 
-add_library(AloamSlam src/aloam.cpp src/odometry.cpp src/mapping.cpp src/feature_extractor.cpp)
+add_library(AloamSlam src/aloam.cpp src/odometry.cpp src/mapping.cpp src/feature_extractor.cpp src/feature_selection.cpp)
 
 add_dependencies(AloamSlam
   ${${PROJECT_NAME}_EXPORTED_TARGETS}

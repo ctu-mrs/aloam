@@ -346,8 +346,13 @@ void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::
   TicToc t_prepare;
 
   // Create PointOS1 pointcloud {x, y, z, intensity, t, reflectivity, ring, noise, range}
+  pcl::PointCloud<ouster_ros::OS1::PointOS1>::Ptr cloud_pcl_with_nans = boost::make_shared<pcl::PointCloud<ouster_ros::OS1::PointOS1>>();
+  pcl::fromROSMsg(*cloud, *cloud_pcl_with_nans);
+
+  // Remove NaNs
+  std::vector<int>                                valid_indices;
   pcl::PointCloud<ouster_ros::OS1::PointOS1>::Ptr cloud_pcl = boost::make_shared<pcl::PointCloud<ouster_ros::OS1::PointOS1>>();
-  pcl::fromROSMsg(*cloud, *cloud_pcl);
+  removeNaNFromPointCloud(cloud_pcl_with_nans, cloud_pcl, valid_indices);
 
   /*//{ Precompute points indices */
   const int   cloud_size    = cloud_pcl->points.size();
@@ -406,6 +411,36 @@ void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::
   }
 
   processing_time = t_prepare.toc();
+}
+/*//}*/
+
+/*//{ removeNaNFromPointCloud() */
+void FeatureExtractor::removeNaNFromPointCloud(const pcl::PointCloud<ouster_ros::OS1::PointOS1>::Ptr cloud_in,
+                                               pcl::PointCloud<ouster_ros::OS1::PointOS1>::Ptr &cloud_out, std::vector<int> &indices) {
+
+  if (cloud_in->is_dense) {
+    cloud_out = cloud_in;
+    return;
+  }
+
+  unsigned int k = 0;
+  cloud_out->resize(cloud_in->size());
+  indices.resize(cloud_in->size());
+
+  for (unsigned int i = 0; i < cloud_in->size(); i++) {
+    if (std::isfinite(cloud_in->at(i).x) && std::isfinite(cloud_in->at(i).y) && std::isfinite(cloud_in->at(i).z)) {
+      cloud_out->at(k) = cloud_in->at(i);
+      indices.at(k++)  = i;
+    }
+  }
+
+  cloud_out->header   = cloud_in->header;
+  cloud_out->is_dense = true;
+
+  if (cloud_in->size() != k) {
+    cloud_out->resize(k);
+    indices.resize(k);
+  }
 }
 /*//}*/
 

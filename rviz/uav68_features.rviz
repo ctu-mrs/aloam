@@ -7,6 +7,7 @@ Panels:
         - /Global Options1
         - /Status1
         - /TF1/Frames1
+        - /Ouster data1
         - /Aloam - odom1/Shape1
         - /Aloam - odom (drifting)1/Shape1
       Splitter Ratio: 0.34090909361839294
@@ -29,7 +30,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: Features - corners selected
+    SyncSource: Ouster data
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -262,13 +263,13 @@ Visualization Manager:
       Unreliable: false
       Value: false
     - Class: rviz/MarkerArray
-      Enabled: false
-      Marker Topic: /uav68/map/occupied/throttled
+      Enabled: true
+      Marker Topic: /uav68/map/occupied
       Name: Map - occupied
       Namespaces:
         {}
       Queue Size: 100
-      Value: false
+      Value: true
     - Class: rviz/MarkerArray
       Enabled: false
       Marker Topic: /uav68/map/free/throttled
@@ -284,17 +285,17 @@ Visualization Manager:
         Min Value: -10
         Value: true
       Axis: Z
-      Channel Name: intensity
+      Channel Name: ring
       Class: rviz/PointCloud2
       Color: 255; 255; 255
       Color Transformer: Intensity
       Decay Time: 0
-      Enabled: false
+      Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
-      Max Intensity: 1303
+      Max Intensity: 60
       Min Color: 0; 0; 0
-      Min Intensity: 9
+      Min Intensity: 0
       Name: Ouster data
       Position Transformer: XYZ
       Queue Size: 10
@@ -302,11 +303,11 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.05000000074505806
       Style: Flat Squares
-      Topic: /uav68/os1_cloud_node/points_processed/throttled
+      Topic: /uav68/os1_cloud_node/points_processed
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
-      Value: false
+      Value: true
     - Angle Tolerance: 0.009999999776482582
       Class: rviz/Odometry
       Covariance:
@@ -624,7 +625,7 @@ Visualization Manager:
       Color: 255; 255; 0
       Color Transformer: FlatColor
       Decay Time: 0
-      Enabled: true
+      Enabled: false
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Max Intensity: 15.099413871765137
@@ -641,7 +642,7 @@ Visualization Manager:
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
-      Value: true
+      Value: false
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -714,7 +715,7 @@ Visualization Manager:
       Color: 255; 0; 255
       Color Transformer: FlatColor
       Decay Time: 0
-      Enabled: true
+      Enabled: false
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Max Intensity: 1
@@ -731,7 +732,7 @@ Visualization Manager:
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
-      Value: true
+      Value: false
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -766,7 +767,7 @@ Visualization Manager:
   Global Options:
     Background Color: 53; 53; 53
     Default Light: true
-    Fixed Frame: uav68/aloam_origin
+    Fixed Frame: uav68/fcu
     Frame Rate: 60
   Name: root
   Tools:
@@ -805,10 +806,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.5097979307174683
+      Pitch: 0.48479798436164856
       Target Frame: uav68/aloam_mapping_origin
       Value: ThirdPersonFollower (rviz)
-      Yaw: 3.5904035568237305
+      Yaw: 3.1772260665893555
     Saved: ~
 Window Geometry:
   Displays:

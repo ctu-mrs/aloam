@@ -4,6 +4,7 @@
 #include "aloam_slam/odometry.h"
 #include "aloam_slam/mapping.h"
 
+#include <pcl/filters/extract_indices.h>
 #include <os1_driver/ouster_ros/point_os1.h>
 
 namespace aloam_slam
@@ -43,6 +44,9 @@ private:
                              std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices, float &processing_time);
   void parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr &cloud_processed,
                                 std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices, float &processing_time);
+
+  void removeNaNFromPointCloud(const pcl::PointCloud<ouster_ros::OS1::PointOS1>::Ptr cloud_in, pcl::PointCloud<ouster_ros::OS1::PointOS1>::Ptr &cloud_out,
+                               std::vector<int> &indices);
 
   bool hasField(const std::string field, const sensor_msgs::PointCloud2::ConstPtr &msg);
 
