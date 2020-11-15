@@ -17,3 +17,7 @@ float32 corners_gradient_stddev
 float32 surfs_gradient_stddev
 float32[] corners_gradient_sorted
 float32[] surfs_gradient_sorted
+float32 sizeof_features_corners_kb_in
+float32 sizeof_features_surfs_kb_in
+float32 sizeof_features_corners_kb_out
+float32 sizeof_features_surfs_kb_out

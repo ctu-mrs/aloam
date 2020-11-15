@@ -1,4 +1,5 @@
 float32 total_time_ms
+float32 total_memsize_kb
 aloam_slam/FeatureExtractionDiagnostics feature_extraction
 aloam_slam/FeatureSelectionDiagnostics feature_selection
 aloam_slam/OdometryDiagnostics odometry

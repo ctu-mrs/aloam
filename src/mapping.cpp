@@ -638,13 +638,28 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
   // Publish diagnostics message
   if (_pub_diag.getNumSubscribers() > 0) {
+
     aloam_slam::MappingDiagnostics mapping_diag_msg;
+
+    const auto sizeof_point = sizeof(PointType);
+
+    unsigned int corner_points_count = 0;
+    unsigned int surf_points_count   = 0;
+    for (unsigned int i = 0; i < _cloud_corners.size(); i++) {
+      corner_points_count += _cloud_corners.at(i)->size();
+    }
+    for (unsigned int i = 0; i < _cloud_surfs.size(); i++) {
+      surf_points_count += _cloud_surfs.at(i)->size();
+    }
+    mapping_diag_msg.sizeof_map_corners_kb = (corner_points_count * sizeof_point) / 1024.0f;
+    mapping_diag_msg.sizeof_map_surfs_kb   = (surf_points_count * sizeof_point) / 1024.0f;
+
     mapping_diag_msg.time_ms                    = t_whole.toc();
     mapping_diag_msg.time_data_preparation_ms   = time_shift;
     mapping_diag_msg.time_kdtree_init_ms        = time_build_tree;
     mapping_diag_msg.time_map_association_ms    = time_association;
-    mapping_diag_msg.time_map_solver_ms             = time_solver;
-    mapping_diag_msg.time_map_optimization_ms       = time_optimization;
+    mapping_diag_msg.time_map_solver_ms         = time_solver;
+    mapping_diag_msg.time_map_optimization_ms   = time_optimization;
     mapping_diag_msg.time_map_adding_points_ms  = time_add;
     mapping_diag_msg.time_map_filtering_ms      = time_filter;
     mapping_diag_msg.map_features_corners_count = map_features_corners->size();

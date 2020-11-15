@@ -8,3 +8,5 @@ float32 time_map_adding_points_ms
 float32 time_map_filtering_ms
 uint32 map_features_corners_count
 uint32 map_features_surfs_count
+float32 sizeof_map_corners_kb
+float32 sizeof_map_surfs_kb

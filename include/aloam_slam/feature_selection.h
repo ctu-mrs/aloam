@@ -32,5 +32,7 @@ private:
                                                                                                                   const float grad_min, const float grad_max);
 
   void publishCloud(ros::Publisher publisher, const pcl::PointCloud<PointType>::Ptr cloud);
+
+  const size_t POINT_SIZE = sizeof(PointType);
 };
 }  // namespace aloam_slam

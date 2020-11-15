@@ -28,7 +28,9 @@ std::pair<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr> Feat
     const pcl::PointCloud<PointType>::Ptr &corner_points, const pcl::PointCloud<PointType>::Ptr &surf_points,
     aloam_slam::FeatureSelectionDiagnostics &diag_msg) {
 
-  diag_msg.enabled = _features_selection_enabled;
+  diag_msg.enabled                       = _features_selection_enabled;
+  diag_msg.sizeof_features_corners_kb_in = (corner_points->size() * POINT_SIZE) / 1024.0f;
+  diag_msg.sizeof_features_surfs_kb_in   = (surf_points->size() * POINT_SIZE) / 1024.0f;
 
   if (!_features_selection_enabled) {
     return std::make_pair(corner_points, surf_points);
@@ -44,22 +46,24 @@ std::pair<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr> Feat
       selectFeaturesFromCloudByGradient(surf_points, _features_surfs_resolution, _features_surfs_gradient_limit_bottom, _features_surfs_gradient_limit_upper);
   diag_msg.surfs_time_ms = t_surfs.toc();
 
-  diag_msg.number_of_features_in   = corner_points->size() + surf_points->size();
-  diag_msg.number_of_corners_in    = corner_points->size();
-  diag_msg.number_of_surfs_in      = surf_points->size();
-  diag_msg.number_of_features_out  = selected_corners->size() + selected_surfs->size();
-  diag_msg.number_of_corners_out   = selected_corners->size();
-  diag_msg.number_of_surfs_out     = selected_surfs->size();
-  diag_msg.corners_resolution      = _features_corners_resolution;
-  diag_msg.surfs_resolution        = _features_surfs_resolution;
-  diag_msg.corners_cutoff_thrd     = _features_corners_gradient_limit_bottom;
-  diag_msg.surfs_cutoff_thrd       = _features_surfs_gradient_limit_bottom;
-  diag_msg.corners_gradient_mean   = corner_gradients_mean;
-  diag_msg.surfs_gradient_mean     = surf_gradients_mean;
-  diag_msg.corners_gradient_stddev = corner_gradients_std;
-  diag_msg.surfs_gradient_stddev   = surf_gradients_std;
-  diag_msg.corners_gradient_sorted = corner_gradients;
-  diag_msg.surfs_gradient_sorted   = surf_gradients;
+  diag_msg.number_of_features_in          = corner_points->size() + surf_points->size();
+  diag_msg.number_of_corners_in           = corner_points->size();
+  diag_msg.number_of_surfs_in             = surf_points->size();
+  diag_msg.number_of_features_out         = selected_corners->size() + selected_surfs->size();
+  diag_msg.number_of_corners_out          = selected_corners->size();
+  diag_msg.number_of_surfs_out            = selected_surfs->size();
+  diag_msg.corners_resolution             = _features_corners_resolution;
+  diag_msg.surfs_resolution               = _features_surfs_resolution;
+  diag_msg.corners_cutoff_thrd            = _features_corners_gradient_limit_bottom;
+  diag_msg.surfs_cutoff_thrd              = _features_surfs_gradient_limit_bottom;
+  diag_msg.corners_gradient_mean          = corner_gradients_mean;
+  diag_msg.surfs_gradient_mean            = surf_gradients_mean;
+  diag_msg.corners_gradient_stddev        = corner_gradients_std;
+  diag_msg.surfs_gradient_stddev          = surf_gradients_std;
+  diag_msg.corners_gradient_sorted        = corner_gradients;
+  diag_msg.surfs_gradient_sorted          = surf_gradients;
+  diag_msg.sizeof_features_corners_kb_out = (selected_corners->size() * POINT_SIZE) / 1024.0f;
+  diag_msg.sizeof_features_surfs_kb_out   = (selected_surfs->size() * POINT_SIZE) / 1024.0f;
 
   // Publish selected features
   publishCloud(_pub_features_corners_selected, selected_corners);
