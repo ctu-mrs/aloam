@@ -15,7 +15,7 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
       _t_w_curr(_parameters + 4) {
 
   ros::NodeHandle nh_(parent_nh);
-  
+
   ros::Time::waitForValid();
 
   param_loader.loadParam("mapping_line_resolution", _resolution_line, 0.2f);
@@ -47,6 +47,7 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
   _pub_laser_cloud_registered = nh_.advertise<sensor_msgs::PointCloud2>("scan_registered_out", 1);
   _pub_odom_global            = nh_.advertise<nav_msgs::Odometry>("odom_global_out", 1);
   _pub_path                   = nh_.advertise<nav_msgs::Path>("path_out", 1);
+  _pub_diag                   = nh_.advertise<aloam_slam::AloamDiagnostics>("diag_out", 1);
 
   if (_mapping_frequency > 0.0f) {
     _timer_mapping_loop = nh_.createTimer(ros::Rate(_mapping_frequency), &AloamMapping::timerMapping, this, false, true);
@@ -62,7 +63,8 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
 
 /*//{ setData() */
 void AloamMapping::setData(ros::Time time_of_data, tf::Transform aloam_odometry, pcl::PointCloud<PointType>::Ptr features_corners_last,
-                           pcl::PointCloud<PointType>::Ptr features_surfs_last, pcl::PointCloud<PointType>::Ptr cloud_full_res) {
+                           pcl::PointCloud<PointType>::Ptr features_surfs_last, pcl::PointCloud<PointType>::Ptr cloud_full_res,
+                           aloam_slam::AloamDiagnostics::Ptr aloam_diag_msg) {
 
   mrs_lib::Routine profiler_routine = _profiler->createRoutine("aloamMappingSetData");
 
@@ -73,6 +75,7 @@ void AloamMapping::setData(ros::Time time_of_data, tf::Transform aloam_odometry,
   _features_corners_last = features_corners_last;
   _features_surfs_last   = features_surfs_last;
   _cloud_full_res        = cloud_full_res;
+  _aloam_diag_msg        = aloam_diag_msg;
 }
 /*//}*/
 
@@ -93,11 +96,12 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     return;
   }
 
-  ros::Time                       time_aloam_odometry;
-  tf::Transform                   aloam_odometry;
-  pcl::PointCloud<PointType>::Ptr features_corners_last;
-  pcl::PointCloud<PointType>::Ptr features_surfs_last;
-  pcl::PointCloud<PointType>::Ptr cloud_full_res;
+  ros::Time                         time_aloam_odometry;
+  tf::Transform                     aloam_odometry;
+  pcl::PointCloud<PointType>::Ptr   features_corners_last;
+  pcl::PointCloud<PointType>::Ptr   features_surfs_last;
+  pcl::PointCloud<PointType>::Ptr   cloud_full_res;
+  aloam_slam::AloamDiagnostics::Ptr aloam_diag_msg;
   {
     std::scoped_lock lock(_mutex_odometry_data);
     _has_new_data         = false;
@@ -106,6 +110,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     features_corners_last = _features_corners_last;
     features_surfs_last   = _features_surfs_last;
     cloud_full_res        = _cloud_full_res;
+    aloam_diag_msg        = _aloam_diag_msg;
   }
   /*//}*/
 
@@ -628,6 +633,32 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     }
     catch (...) {
       ROS_ERROR("[AloamMapping]: Exception caught during publishing topic %s.", _pub_laser_cloud_registered.getTopic().c_str());
+    }
+  }
+
+  // Publish diagnostics message
+  if (_pub_diag.getNumSubscribers() > 0) {
+    aloam_slam::MappingDiagnostics mapping_diag_msg;
+    mapping_diag_msg.time_ms                    = t_whole.toc();
+    mapping_diag_msg.time_data_preparation_ms   = time_shift;
+    mapping_diag_msg.time_kdtree_init_ms        = time_build_tree;
+    mapping_diag_msg.time_map_association_ms    = time_association;
+    mapping_diag_msg.time_map_solver_ms             = time_solver;
+    mapping_diag_msg.time_map_optimization_ms       = time_optimization;
+    mapping_diag_msg.time_map_adding_points_ms  = time_add;
+    mapping_diag_msg.time_map_filtering_ms      = time_filter;
+    mapping_diag_msg.map_features_corners_count = map_features_corners->size();
+    mapping_diag_msg.map_features_surfs_count   = map_features_surfs->size();
+
+    aloam_diag_msg->mapping = mapping_diag_msg;
+
+    aloam_diag_msg->total_time_ms = aloam_diag_msg->feature_extraction.time_ms + aloam_diag_msg->feature_selection.corners_time_ms +
+                                    aloam_diag_msg->feature_selection.surfs_time_ms + aloam_diag_msg->odometry.time_ms + aloam_diag_msg->mapping.time_ms;
+    try {
+      _pub_diag.publish(aloam_diag_msg);
+    }
+    catch (...) {
+      ROS_ERROR("[AloamMapping]: Exception caught during publishing topic %s.", _pub_diag.getTopic().c_str());
     }
   }
 

@@ -1,3 +1,6 @@
+bool enabled
+float32 corners_time_ms
+float32 surfs_time_ms
 uint32 number_of_features_in
 uint32 number_of_corners_in
 uint32 number_of_surfs_in

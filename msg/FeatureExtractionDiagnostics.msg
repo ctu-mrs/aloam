@@ -1,0 +1,6 @@
+float32 time_ms
+uint32 cloud_points_count
+uint32 corner_points_sharp_count
+uint32 corner_points_less_sharp_count
+uint32 surf_points_sharp_count
+uint32 surf_points_less_sharp_count

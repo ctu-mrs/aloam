@@ -38,7 +38,11 @@ set(Eigen_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIRS})
 set(Eigen_LIBRARIES ${Eigen_LIBRARIES})
 
 add_message_files(DIRECTORY msg FILES
+  AloamDiagnostics.msg
   FeatureSelectionDiagnostics.msg
+  FeatureExtractionDiagnostics.msg
+  OdometryDiagnostics.msg
+  MappingDiagnostics.msg
 )
 
 generate_messages(DEPENDENCIES

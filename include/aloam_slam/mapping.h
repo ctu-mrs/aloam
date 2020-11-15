@@ -1,5 +1,4 @@
-#ifndef ALOAM_MAPPING_H
-#define ALOAM_MAPPING_H
+#pragma once
 
 /* includes //{ */
 
@@ -54,6 +53,12 @@
 #include "aloam_slam/tic_toc.h"
 #include "aloam_slam/lidarFactor.hpp"
 
+#include "aloam_slam/AloamDiagnostics.h"
+#include "aloam_slam/FeatureSelectionDiagnostics.h"
+#include "aloam_slam/FeatureExtractionDiagnostics.h"
+#include "aloam_slam/OdometryDiagnostics.h"
+#include "aloam_slam/MappingDiagnostics.h"
+
 //}
 
 namespace aloam_slam
@@ -67,7 +72,8 @@ public:
   bool is_initialized = false;
 
   void setData(ros::Time time_of_data, tf::Transform aloam_odometry, pcl::PointCloud<PointType>::Ptr laserCloudCornerLast,
-               pcl::PointCloud<PointType>::Ptr laserCloudSurfLast, pcl::PointCloud<PointType>::Ptr laserCloudFullRes);
+               pcl::PointCloud<PointType>::Ptr laserCloudSurfLast, pcl::PointCloud<PointType>::Ptr laserCloudFullRes,
+               aloam_slam::AloamDiagnostics::Ptr aloam_diag_msg);
 
 private:
   // member objects
@@ -82,19 +88,21 @@ private:
   std::vector<pcl::PointCloud<PointType>::Ptr> _cloud_surfs;
 
   // Feature extractor newest data
-  std::mutex                      _mutex_odometry_data;
-  bool                            _has_new_data = false;
-  ros::Time                       _time_aloam_odometry;
-  tf::Transform                   _aloam_odometry;
-  pcl::PointCloud<PointType>::Ptr _features_corners_last;
-  pcl::PointCloud<PointType>::Ptr _features_surfs_last;
-  pcl::PointCloud<PointType>::Ptr _cloud_full_res;
+  std::mutex                        _mutex_odometry_data;
+  bool                              _has_new_data = false;
+  ros::Time                         _time_aloam_odometry;
+  tf::Transform                     _aloam_odometry;
+  pcl::PointCloud<PointType>::Ptr   _features_corners_last;
+  pcl::PointCloud<PointType>::Ptr   _features_surfs_last;
+  pcl::PointCloud<PointType>::Ptr   _cloud_full_res;
+  aloam_slam::AloamDiagnostics::Ptr _aloam_diag_msg;
 
   // publishers and subscribers
   ros::Publisher _pub_laser_cloud_map;
   ros::Publisher _pub_laser_cloud_registered;
   ros::Publisher _pub_odom_global;
   ros::Publisher _pub_path;
+  ros::Publisher _pub_diag;
 
   // services
   ros::ServiceServer _srv_reset_mapping;
@@ -147,4 +155,3 @@ private:
   void pointAssociateToMap(PointType const *const pi, PointType *const po);
 };
 }  // namespace aloam_slam
-#endif

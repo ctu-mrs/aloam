@@ -18,75 +18,54 @@ FeatureSelection::FeatureSelection(const ros::NodeHandle &parent_nh, mrs_lib::Pa
   param_loader.loadParam("feature_selection/surfs/gradient/limit/upper", _features_surfs_gradient_limit_upper, 1.0f);
   param_loader.loadParam("feature_selection/surfs/gradient/limit/bottom", _features_surfs_gradient_limit_bottom, 0.0f);
 
-  _pub_diag                      = nh_.advertise<aloam_slam::FeatureSelectionDiagnostics>("features_diag_out", 1);
   _pub_features_corners_selected = nh_.advertise<sensor_msgs::PointCloud2>("features_corners_selected_out", 1);
   _pub_features_surfs_selected   = nh_.advertise<sensor_msgs::PointCloud2>("features_surfs_selected_out", 1);
 }
 /*//}*/
 
 /*//{ selectFeatures() */
-pcl::PointCloud<PointType>::Ptr FeatureSelection::selectFeatures(const pcl::PointCloud<PointType>::Ptr &cloud) {
-  if (!_features_selection_enabled) {
-    return cloud;
-  }
-
-  TicToc t_routine;
-
-  // TODO: pass parameters
-  const auto [selected_features, gradients, gradients_mean, gradients_std] =
-      selectFeaturesFromCloudByGradient(cloud, _features_corners_resolution, _features_corners_gradient_limit_bottom, _features_corners_gradient_limit_upper);
-  ROS_WARN_THROTTLE(0.5, "[FeatureSelection] feature selection from single cloud took: %0.1f ms", t_routine.toc());
-
-  return selected_features;
-}
-/*//}*/
-
-/*//{ selectFeatures() */
 std::pair<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr> FeatureSelection::selectFeatures(
-    const pcl::PointCloud<PointType>::Ptr &corner_points, const pcl::PointCloud<PointType>::Ptr &surf_points) {
+    const pcl::PointCloud<PointType>::Ptr &corner_points, const pcl::PointCloud<PointType>::Ptr &surf_points,
+    aloam_slam::FeatureSelectionDiagnostics &diag_msg) {
+
+  diag_msg.enabled = _features_selection_enabled;
+
   if (!_features_selection_enabled) {
     return std::make_pair(corner_points, surf_points);
   }
 
-  TicToc t_routine;
-
+  TicToc t_corners;
   const auto [selected_corners, corner_gradients, corner_gradients_mean, corner_gradients_std] = selectFeaturesFromCloudByGradient(
       corner_points, _features_corners_resolution, _features_corners_gradient_limit_bottom, _features_corners_gradient_limit_upper);
+  diag_msg.corners_time_ms = t_corners.toc();
+
+  TicToc t_surfs;
   const auto [selected_surfs, surf_gradients, surf_gradients_mean, surf_gradients_std] =
       selectFeaturesFromCloudByGradient(surf_points, _features_surfs_resolution, _features_surfs_gradient_limit_bottom, _features_surfs_gradient_limit_upper);
+  diag_msg.surfs_time_ms = t_surfs.toc();
 
-  ROS_WARN_THROTTLE(0.5, "[FeatureSelection] feature selection of corners and surfs: %0.1f ms", t_routine.toc());
-
-  // Publish diagnostics
-  if (_pub_diag.getNumSubscribers() > 0) {
-    aloam_slam::FeatureSelectionDiagnostics::Ptr diag_msg = boost::make_shared<aloam_slam::FeatureSelectionDiagnostics>();
-    diag_msg->number_of_features_in                       = corner_points->size() + surf_points->size();
-    diag_msg->number_of_corners_in                        = corner_points->size();
-    diag_msg->number_of_surfs_in                          = surf_points->size();
-    diag_msg->number_of_features_out                      = selected_corners->size() + selected_surfs->size();
-    diag_msg->number_of_corners_out                       = selected_corners->size();
-    diag_msg->number_of_surfs_out                         = selected_surfs->size();
-    diag_msg->corners_resolution                          = _features_corners_resolution;
-    diag_msg->surfs_resolution                            = _features_surfs_resolution;
-    diag_msg->corners_cutoff_thrd                         = _features_corners_gradient_limit_bottom;
-    diag_msg->surfs_cutoff_thrd                           = _features_surfs_gradient_limit_bottom;
-    diag_msg->corners_gradient_mean                       = corner_gradients_mean;
-    diag_msg->surfs_gradient_mean                         = surf_gradients_mean;
-    diag_msg->corners_gradient_stddev                     = corner_gradients_std;
-    diag_msg->surfs_gradient_stddev                       = surf_gradients_std;
-    diag_msg->corners_gradient_sorted                     = corner_gradients;
-    diag_msg->surfs_gradient_sorted                       = surf_gradients;
-    try {
-      _pub_diag.publish(diag_msg);
-    }
-    catch (...) {
-      ROS_ERROR("exception caught during publishing on topic: %s", _pub_diag.getTopic().c_str());
-    }
-  }
+  diag_msg.number_of_features_in   = corner_points->size() + surf_points->size();
+  diag_msg.number_of_corners_in    = corner_points->size();
+  diag_msg.number_of_surfs_in      = surf_points->size();
+  diag_msg.number_of_features_out  = selected_corners->size() + selected_surfs->size();
+  diag_msg.number_of_corners_out   = selected_corners->size();
+  diag_msg.number_of_surfs_out     = selected_surfs->size();
+  diag_msg.corners_resolution      = _features_corners_resolution;
+  diag_msg.surfs_resolution        = _features_surfs_resolution;
+  diag_msg.corners_cutoff_thrd     = _features_corners_gradient_limit_bottom;
+  diag_msg.surfs_cutoff_thrd       = _features_surfs_gradient_limit_bottom;
+  diag_msg.corners_gradient_mean   = corner_gradients_mean;
+  diag_msg.surfs_gradient_mean     = surf_gradients_mean;
+  diag_msg.corners_gradient_stddev = corner_gradients_std;
+  diag_msg.surfs_gradient_stddev   = surf_gradients_std;
+  diag_msg.corners_gradient_sorted = corner_gradients;
+  diag_msg.surfs_gradient_sorted   = surf_gradients;
 
   // Publish selected features
   publishCloud(_pub_features_corners_selected, selected_corners);
   publishCloud(_pub_features_surfs_selected, selected_surfs);
+
+  ROS_WARN_THROTTLE(0.5, "[FeatureSelection] feature selection of corners and surfs: %0.1f ms", diag_msg.corners_time_ms + diag_msg.surfs_time_ms);
 
   return std::make_pair(selected_corners, selected_surfs);
 }

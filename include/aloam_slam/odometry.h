@@ -20,7 +20,7 @@ public:
 
   void setData(pcl::PointCloud<PointType>::Ptr corner_points_sharp, pcl::PointCloud<PointType>::Ptr corner_points_less_sharp,
                pcl::PointCloud<PointType>::Ptr surf_points_flat, pcl::PointCloud<PointType>::Ptr surf_points_less_flat,
-               pcl::PointCloud<PointType>::Ptr laser_cloud_full_res);
+               pcl::PointCloud<PointType>::Ptr laser_cloud_full_res, aloam_slam::AloamDiagnostics::Ptr aloam_diag_msg);
 
 private:
   // member objects
@@ -41,13 +41,14 @@ private:
   Eigen::Vector3d    _t_w_curr;
 
   // Feature extractor newest data
-  std::mutex                      _mutex_extracted_features;
-  bool                            _has_new_data = false;
-  pcl::PointCloud<PointType>::Ptr _corner_points_sharp;
-  pcl::PointCloud<PointType>::Ptr _corner_points_less_sharp;
-  pcl::PointCloud<PointType>::Ptr _surf_points_flat;
-  pcl::PointCloud<PointType>::Ptr _surf_points_less_flat;
-  pcl::PointCloud<PointType>::Ptr _cloud_full_ress;
+  std::mutex                        _mutex_extracted_features;
+  bool                              _has_new_data = false;
+  pcl::PointCloud<PointType>::Ptr   _corner_points_sharp;
+  pcl::PointCloud<PointType>::Ptr   _corner_points_less_sharp;
+  pcl::PointCloud<PointType>::Ptr   _surf_points_flat;
+  pcl::PointCloud<PointType>::Ptr   _surf_points_less_flat;
+  pcl::PointCloud<PointType>::Ptr   _cloud_full_res;
+  aloam_slam::AloamDiagnostics::Ptr _aloam_diag_msg;
 
   // publishers and subscribers
   ros::Publisher _pub_odometry_local;

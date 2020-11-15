@@ -1,0 +1,10 @@
+float32 time_ms
+float32 time_data_preparation_ms
+float32 time_kdtree_init_ms
+float32 time_map_association_ms
+float32 time_map_solver_ms
+float32 time_map_optimization_ms
+float32 time_map_adding_points_ms
+float32 time_map_filtering_ms
+uint32 map_features_corners_count
+uint32 map_features_surfs_count

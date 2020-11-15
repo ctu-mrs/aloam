@@ -233,9 +233,19 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2::ConstP
   surf_points_flat->header.stamp         = stamp;
   surf_points_less_flat->header.stamp    = stamp;
 
-  _odometry->setData(corner_points_sharp, corner_points_less_sharp, surf_points_flat, surf_points_less_flat, laser_cloud);
-
   const float time_whole = t_whole.toc() + processing_time;
+
+  aloam_slam::AloamDiagnostics::Ptr        aloam_diag_msg = boost::make_shared<aloam_slam::AloamDiagnostics>();
+  aloam_slam::FeatureExtractionDiagnostics fe_diag_msg;
+  fe_diag_msg.time_ms                        = time_whole;
+  fe_diag_msg.cloud_points_count             = laser_cloud->size();
+  fe_diag_msg.corner_points_sharp_count      = corner_points_sharp->size();
+  fe_diag_msg.corner_points_less_sharp_count = corner_points_sharp->size();
+  fe_diag_msg.surf_points_sharp_count        = corner_points_sharp->size();
+  fe_diag_msg.surf_points_less_sharp_count   = corner_points_sharp->size();
+  aloam_diag_msg->feature_extraction         = fe_diag_msg;
+
+  _odometry->setData(corner_points_sharp, corner_points_less_sharp, surf_points_flat, surf_points_less_flat, laser_cloud, aloam_diag_msg);
 
   ROS_INFO_THROTTLE(1.0, "[AloamFeatureExtractor] Run time: %0.1f ms (%0.1f Hz)", time_whole, std::min(1.0f / _scan_period_sec, 1000.0f / time_whole));
   ROS_DEBUG_THROTTLE(1.0, "[AloamFeatureExtractor] points: %d; preparing data: %0.1f ms; q-sorting data: %0.1f ms; computing features: %0.1f ms", cloud_size,

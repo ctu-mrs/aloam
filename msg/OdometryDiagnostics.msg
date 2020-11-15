@@ -1,0 +1,5 @@
+float32 time_ms
+float32 time_feature_registration_ms
+float32 time_solver_ms
+float32 time_optimization_ms
+

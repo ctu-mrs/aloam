@@ -65,6 +65,7 @@
       <remap from="~path_out" to="aloam/path"/>
       <remap from="~odom_global_out" to="aloam/odom"/>
       <remap from="~map_out" to="aloam/map"/>
+      <remap from="~diag_out" to="aloam/diag"/>
       <remap from="~scan_registered_out" to="aloam/scan_registered"/>
       <remap from="~features_corners_sharp_out" to="aloam/features/corners/sharp"/>
       <remap from="~features_corners_less_sharp_out" to="aloam/features/corners/sharpless"/>
@@ -72,7 +73,6 @@
       <remap from="~features_surfs_less_flat_out" to="aloam/features/surfs/flatless"/>
       <remap from="~features_corners_selected_out" to="aloam/features/corners/selected"/>
       <remap from="~features_surfs_selected_out" to="aloam/features/surfs/selected"/>
-      <remap from="~features_diag_out" to="aloam/features/diag"/>
         
       <!-- Service servers -->
       <remap from="~srv_reset_mapping_in" to="aloam/reset/mapping"/>

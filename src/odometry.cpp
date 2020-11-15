@@ -73,11 +73,12 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     return;
   }
 
-  pcl::PointCloud<PointType>::Ptr corner_points_sharp;
-  pcl::PointCloud<PointType>::Ptr corner_points_less_sharp;
-  pcl::PointCloud<PointType>::Ptr surf_points_flat;
-  pcl::PointCloud<PointType>::Ptr surf_points_less_flat;
-  pcl::PointCloud<PointType>::Ptr laser_cloud_full_res;
+  pcl::PointCloud<PointType>::Ptr   corner_points_sharp;
+  pcl::PointCloud<PointType>::Ptr   corner_points_less_sharp;
+  pcl::PointCloud<PointType>::Ptr   surf_points_flat;
+  pcl::PointCloud<PointType>::Ptr   surf_points_less_flat;
+  pcl::PointCloud<PointType>::Ptr   laser_cloud_full_res;
+  aloam_slam::AloamDiagnostics::Ptr aloam_diag_msg;
   {
     std::scoped_lock lock(_mutex_extracted_features);
     _has_new_data            = false;
@@ -85,7 +86,8 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     corner_points_less_sharp = _corner_points_less_sharp;
     surf_points_flat         = _surf_points_flat;
     surf_points_less_flat    = _surf_points_less_flat;
-    laser_cloud_full_res     = _cloud_full_ress;
+    laser_cloud_full_res     = _cloud_full_res;
+    aloam_diag_msg           = _aloam_diag_msg;
   }
   /*//}*/
 
@@ -349,7 +351,14 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   tf::quaternionMsgToTF(ori, tf_q);
   tf_lidar.setRotation(tf_q);
 
-  const auto selected_features = _feature_selection->selectFeatures(corner_points_less_sharp, surf_points_less_flat);
+  aloam_slam::FeatureSelectionDiagnostics fs_diag_msg;
+  const auto                              selected_features = _feature_selection->selectFeatures(corner_points_less_sharp, surf_points_less_flat, fs_diag_msg);
+
+  aloam_slam::OdometryDiagnostics odom_diag_msg;
+  odom_diag_msg.time_ms                      = t_whole.toc() - fs_diag_msg.corners_time_ms - fs_diag_msg.surfs_time_ms;
+  odom_diag_msg.time_feature_registration_ms = time_data_association;
+  odom_diag_msg.time_solver_ms               = time_solver;
+  odom_diag_msg.time_optimization_ms         = time_opt;
 
   /*//{ Save odometry data to AloamMapping */
   {
@@ -366,8 +375,11 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     _features_surfs_last->header.frame_id   = _frame_lidar;
     laser_cloud_full_res->header.frame_id   = _frame_lidar;
 
+    aloam_diag_msg->feature_selection = fs_diag_msg;
+    aloam_diag_msg->odometry          = odom_diag_msg;
+
     /* _aloam_mapping->setData(stamp, tf_lidar, _features_corners_last, _features_surfs_last, laser_cloud_full_res); */
-    _aloam_mapping->setData(stamp, tf_lidar, selected_features.first, selected_features.second, laser_cloud_full_res);
+    _aloam_mapping->setData(stamp, tf_lidar, selected_features.first, selected_features.second, laser_cloud_full_res, aloam_diag_msg);
   }
   /*//}*/
 
@@ -433,7 +445,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
 /*//{ setData() */
 void AloamOdometry::setData(pcl::PointCloud<PointType>::Ptr corner_points_sharp, pcl::PointCloud<PointType>::Ptr corner_points_less_sharp,
                             pcl::PointCloud<PointType>::Ptr surf_points_flat, pcl::PointCloud<PointType>::Ptr surf_points_less_flat,
-                            pcl::PointCloud<PointType>::Ptr laser_cloud_full_res) {
+                            pcl::PointCloud<PointType>::Ptr laser_cloud_full_res, aloam_slam::AloamDiagnostics::Ptr aloam_diag_msg) {
 
   mrs_lib::Routine profiler_routine = _profiler->createRoutine("aloamOdometrySetData");
 
@@ -443,7 +455,8 @@ void AloamOdometry::setData(pcl::PointCloud<PointType>::Ptr corner_points_sharp,
   _corner_points_less_sharp = corner_points_less_sharp;
   _surf_points_flat         = surf_points_flat;
   _surf_points_less_flat    = surf_points_less_flat;
-  _cloud_full_ress          = laser_cloud_full_res;
+  _cloud_full_res           = laser_cloud_full_res;
+  _aloam_diag_msg           = aloam_diag_msg;
 }
 /*//}*/
 
