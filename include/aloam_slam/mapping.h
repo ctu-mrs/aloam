@@ -73,7 +73,7 @@ public:
 
   void setData(ros::Time time_of_data, tf::Transform aloam_odometry, pcl::PointCloud<PointType>::Ptr laserCloudCornerLast,
                pcl::PointCloud<PointType>::Ptr laserCloudSurfLast, pcl::PointCloud<PointType>::Ptr laserCloudFullRes,
-               aloam_slam::AloamDiagnostics::Ptr aloam_diag_msg);
+               aloam_slam::AloamDiagnostics::Ptr aloam_diag_msg, const float resolution_line, const float resolution_plane);
 
 private:
   // member objects
@@ -96,6 +96,8 @@ private:
   pcl::PointCloud<PointType>::Ptr   _features_surfs_last;
   pcl::PointCloud<PointType>::Ptr   _cloud_full_res;
   aloam_slam::AloamDiagnostics::Ptr _aloam_diag_msg;
+  float                             _resolution_corners;
+  float                             _resolution_surfs;
 
   // publishers and subscribers
   ros::Publisher _pub_laser_cloud_map;
@@ -142,9 +144,6 @@ private:
   const int _cloud_height        = 21;
   const int _cloud_depth         = 11;
   const int _cloud_volume        = _cloud_width * _cloud_height * _cloud_depth;  // 4851
-
-  float _resolution_line;
-  float _resolution_plane;
 
   // member methods
   void timerMapping([[maybe_unused]] const ros::TimerEvent &event);

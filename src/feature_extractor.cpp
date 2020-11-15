@@ -240,9 +240,9 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2::ConstP
   fe_diag_msg.time_ms                        = time_whole;
   fe_diag_msg.cloud_points_count             = laser_cloud->size();
   fe_diag_msg.corner_points_sharp_count      = corner_points_sharp->size();
-  fe_diag_msg.corner_points_less_sharp_count = corner_points_sharp->size();
-  fe_diag_msg.surf_points_sharp_count        = corner_points_sharp->size();
-  fe_diag_msg.surf_points_less_sharp_count   = corner_points_sharp->size();
+  fe_diag_msg.corner_points_less_sharp_count = corner_points_less_sharp->size();
+  fe_diag_msg.surf_points_flat_count         = surf_points_flat->size();
+  fe_diag_msg.surf_points_less_flat_count    = surf_points_less_flat->size();
   aloam_diag_msg->feature_extraction         = fe_diag_msg;
 
   _odometry->setData(corner_points_sharp, corner_points_less_sharp, surf_points_flat, surf_points_less_flat, laser_cloud, aloam_diag_msg);

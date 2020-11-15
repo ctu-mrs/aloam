@@ -9,14 +9,21 @@ FeatureSelection::FeatureSelection(const ros::NodeHandle &parent_nh, mrs_lib::Pa
   ros::NodeHandle nh_(parent_nh);
   ros::Time::waitForValid();
 
-  param_loader.loadParam("mapping_line_resolution", _features_corners_resolution, 0.4f);
-  param_loader.loadParam("mapping_plane_resolution", _features_surfs_resolution, 0.8f);
+  /* param_loader.loadParam("mapping_resolution/grad_percent", _resolution_grad_prc_scale, 0.5f); */
+  param_loader.loadParam("mapping_resolution/corner/min", _resolution_corners_min, 0.05f);
+  param_loader.loadParam("mapping_resolution/corner/max", _resolution_corners_max, 0.6f);
+  param_loader.loadParam("mapping_resolution/surfs/min", _resolution_surfs_min, 0.1f);
+  param_loader.loadParam("mapping_resolution/surfs/max", _resolution_surfs_max, 1.0f);
 
   param_loader.loadParam("feature_selection/enable", _features_selection_enabled, false);
-  param_loader.loadParam("feature_selection/corners/gradient/limit/upper", _features_corners_gradient_limit_upper, 1.0f);
-  param_loader.loadParam("feature_selection/corners/gradient/limit/bottom", _features_corners_gradient_limit_bottom, 0.0f);
-  param_loader.loadParam("feature_selection/surfs/gradient/limit/upper", _features_surfs_gradient_limit_upper, 1.0f);
-  param_loader.loadParam("feature_selection/surfs/gradient/limit/bottom", _features_surfs_gradient_limit_bottom, 0.0f);
+  param_loader.loadParam("feature_selection/min_count_percent", _features_min_count_percent, 0.3f);
+  /* param_loader.loadParam("feature_selection/corners/gradient/limit/upper", _features_corners_gradient_limit_upper, 1.0f); */
+  /* param_loader.loadParam("feature_selection/corners/gradient/limit/bottom", _features_corners_gradient_limit_bottom, 0.0f); */
+  /* param_loader.loadParam("feature_selection/surfs/gradient/limit/upper", _features_surfs_gradient_limit_upper, 1.0f); */
+  /* param_loader.loadParam("feature_selection/surfs/gradient/limit/bottom", _features_surfs_gradient_limit_bottom, 0.0f); */
+
+  _resolution_corners = (_resolution_corners_max - _resolution_corners_min) / 2.0f;
+  _resolution_surfs   = (_resolution_surfs_max - _resolution_surfs_min) / 2.0f;
 
   _pub_features_corners_selected = nh_.advertise<sensor_msgs::PointCloud2>("features_corners_selected_out", 1);
   _pub_features_surfs_selected   = nh_.advertise<sensor_msgs::PointCloud2>("features_surfs_selected_out", 1);
@@ -24,7 +31,7 @@ FeatureSelection::FeatureSelection(const ros::NodeHandle &parent_nh, mrs_lib::Pa
 /*//}*/
 
 /*//{ selectFeatures() */
-std::pair<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr> FeatureSelection::selectFeatures(
+std::tuple<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr, float, float> FeatureSelection::selectFeatures(
     const pcl::PointCloud<PointType>::Ptr &corner_points, const pcl::PointCloud<PointType>::Ptr &surf_points,
     aloam_slam::FeatureSelectionDiagnostics &diag_msg) {
 
@@ -33,18 +40,20 @@ std::pair<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr> Feat
   diag_msg.sizeof_features_surfs_kb_in   = (surf_points->size() * POINT_SIZE) / 1024.0f;
 
   if (!_features_selection_enabled) {
-    return std::make_pair(corner_points, surf_points);
+    return std::make_tuple(corner_points, surf_points, _resolution_corners, _resolution_surfs);
   }
 
   TicToc t_corners;
-  const auto [selected_corners, corner_gradients, corner_gradients_mean, corner_gradients_std] = selectFeaturesFromCloudByGradient(
-      corner_points, _features_corners_resolution, _features_corners_gradient_limit_bottom, _features_corners_gradient_limit_upper);
+  const auto [selected_corners, corner_gradients, corner_gradients_mean, corner_gradients_std] =
+      selectFeaturesFromCloudByGradient(corner_points, _resolution_corners);
   diag_msg.corners_time_ms = t_corners.toc();
 
   TicToc t_surfs;
-  const auto [selected_surfs, surf_gradients, surf_gradients_mean, surf_gradients_std] =
-      selectFeaturesFromCloudByGradient(surf_points, _features_surfs_resolution, _features_surfs_gradient_limit_bottom, _features_surfs_gradient_limit_upper);
-  diag_msg.surfs_time_ms = t_surfs.toc();
+  const auto [selected_surfs, surf_gradients, surf_gradients_mean, surf_gradients_std] = selectFeaturesFromCloudByGradient(surf_points, _resolution_surfs);
+  diag_msg.surfs_time_ms                                                               = t_surfs.toc();
+
+  _resolution_corners = estimateResolution(corner_gradients_mean, corner_gradients, _resolution_corners_min, _resolution_corners_max);
+  _resolution_surfs   = estimateResolution(surf_gradients_mean, surf_gradients, _resolution_surfs_min, _resolution_surfs_max);
 
   diag_msg.number_of_features_in          = corner_points->size() + surf_points->size();
   diag_msg.number_of_corners_in           = corner_points->size();
@@ -52,10 +61,10 @@ std::pair<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr> Feat
   diag_msg.number_of_features_out         = selected_corners->size() + selected_surfs->size();
   diag_msg.number_of_corners_out          = selected_corners->size();
   diag_msg.number_of_surfs_out            = selected_surfs->size();
-  diag_msg.corners_resolution             = _features_corners_resolution;
-  diag_msg.surfs_resolution               = _features_surfs_resolution;
-  diag_msg.corners_cutoff_thrd            = _features_corners_gradient_limit_bottom;
-  diag_msg.surfs_cutoff_thrd              = _features_surfs_gradient_limit_bottom;
+  diag_msg.corners_resolution             = _resolution_corners;
+  diag_msg.surfs_resolution               = _resolution_surfs;
+  diag_msg.corners_cutoff_thrd            = corner_gradients_mean;
+  diag_msg.surfs_cutoff_thrd              = surf_gradients_mean;
   diag_msg.corners_gradient_mean          = corner_gradients_mean;
   diag_msg.surfs_gradient_mean            = surf_gradients_mean;
   diag_msg.corners_gradient_stddev        = corner_gradients_std;
@@ -71,13 +80,13 @@ std::pair<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr> Feat
 
   ROS_WARN_THROTTLE(0.5, "[FeatureSelection] feature selection of corners and surfs: %0.1f ms", diag_msg.corners_time_ms + diag_msg.surfs_time_ms);
 
-  return std::make_pair(selected_corners, selected_surfs);
+  return std::make_tuple(selected_corners, selected_surfs, _resolution_corners, _resolution_surfs);
 }
 /*//}*/
 
 /*//{ selectFeaturesFromCloudByGradient() */
 std::tuple<pcl::PointCloud<PointType>::Ptr, std::vector<float>, float, float> FeatureSelection::selectFeaturesFromCloudByGradient(
-    const pcl::PointCloud<PointType>::Ptr cloud, const float search_radius, const float grad_min, const float grad_max) {
+    const pcl::PointCloud<PointType>::Ptr cloud, const float search_radius) {
 
   pcl::PointCloud<PointType>::Ptr selected_features = boost::make_shared<pcl::PointCloud<PointType>>();
 
@@ -85,16 +94,20 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, std::vector<float>, float, float> Fe
     return std::make_tuple(selected_features, std::vector<float>(), -1.0f, -1.0f);
   }
 
-  std::vector<float> gradient_norms(cloud->size());
+  const unsigned int cloud_size = cloud->size();
+  std::vector<float> gradient_norms(cloud_size);
+  std::vector<float> gradient_norms_sorted(cloud_size);
   float              grad_norm_max  = 0.0;
   float              grad_norm_mean = 0.0;
   float              grad_norm_std  = 0.0;
+
+  selected_features->resize(cloud_size);
 
   // Create kd tree for fast search, TODO: find neighbors by indexing
   pcl::KdTreeFLANN<pcl::PointXYZI> kdtree_features;
   kdtree_features.setInputCloud(cloud);
 
-  for (unsigned int i = 0; i < cloud->size(); i++) {
+  for (unsigned int i = 0; i < cloud_size; i++) {
 
     const pcl::PointXYZI point = cloud->at(i);
     std::vector<int>     indices;
@@ -125,37 +138,46 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, std::vector<float>, float, float> Fe
   }
 
   // Sort gradients in non-ascending order by indices
-  std::vector<int> indices(gradient_norms.size());
+  std::vector<int> indices(cloud_size);
   std::iota(indices.begin(), indices.end(), 0);
   std::stable_sort(indices.begin(), indices.end(), [&gradient_norms](int a, int b) { return gradient_norms[a] > gradient_norms[b]; });
-  std::vector<float> gradient_norms_sorted(gradient_norms.size());
 
-  // Filter by gradient value
-  for (unsigned int i = 0; i < cloud->size(); i++) {
+  // Estimate mean of gradient norms
+  for (unsigned int i = 0; i < cloud_size; i++) {
 
     const int idx = indices.at(i);
 
     // Normalize gradients to range 0-1
     gradient_norms.at(idx) /= grad_norm_max;
-    gradient_norms_sorted.at(i) = gradient_norms.at(idx);
 
     // Sum gradients for mean estimation
     grad_norm_mean += gradient_norms.at(idx);
+  }
+  grad_norm_mean /= float(cloud_size);
 
-    // Filter by static threshold values
-    if (gradient_norms.at(idx) >= grad_min && gradient_norms.at(idx) <= grad_max) {
-      pcl::PointXYZI point_grad = cloud->at(idx);
-      point_grad.intensity      = gradient_norms.at(idx);
-      selected_features->push_back(point_grad);
+  // Compute standard deviation, fill vector of sorted gradients and select features with gradient above mean
+  size_t             k                 = 0;
+  const unsigned int min_feature_count = std::floor(_features_min_count_percent * cloud_size);
+  for (unsigned int i = 0; i < cloud_size; i++) {
+
+    const int idx               = indices.at(i);
+    gradient_norms_sorted.at(i) = gradient_norms.at(idx);
+
+    // Compute standard deviation
+    grad_norm_std += std::pow(gradient_norms_sorted.at(i) - grad_norm_mean, 2);
+
+    // Select points with grad norm above mean only
+    if (gradient_norms_sorted.at(i) >= grad_norm_mean || i < min_feature_count) {
+      pcl::PointXYZI point_grad  = cloud->at(idx);
+      point_grad.intensity       = gradient_norms_sorted.at(i);
+      selected_features->at(k++) = point_grad;
     }
   }
-  grad_norm_mean /= cloud->size();
+  grad_norm_std = std::sqrt(grad_norm_std / float(cloud_size));
 
-  // Compute standard deviation
-  for (const float &g : gradient_norms) {
-    grad_norm_std += std::pow(g - grad_norm_mean, 2);
+  if (k != cloud_size) {
+    selected_features->resize(k);
   }
-  grad_norm_std = std::sqrt(grad_norm_std / cloud->size());
 
   selected_features->header   = cloud->header;
   selected_features->width    = 1;
@@ -163,6 +185,17 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, std::vector<float>, float, float> Fe
   selected_features->is_dense = cloud->is_dense;
 
   return std::make_tuple(selected_features, gradient_norms_sorted, grad_norm_mean, grad_norm_std);
+}
+/*//}*/
+
+/*//{ estimateResolution() */
+float FeatureSelection::estimateResolution(const float &percent, const std::vector<float> &fnc_sorted, const float &min_res, const float &max_res) {
+  if (fnc_sorted.size() == 0) {
+    return min_res;
+  }
+
+  const unsigned int idx = std::round(percent * float(fnc_sorted.size()));
+  return min_res + fnc_sorted.at(idx) * (max_res - min_res);
 }
 /*//}*/
 

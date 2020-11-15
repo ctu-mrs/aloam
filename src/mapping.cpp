@@ -18,8 +18,8 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
 
   ros::Time::waitForValid();
 
-  param_loader.loadParam("mapping_line_resolution", _resolution_line, 0.2f);
-  param_loader.loadParam("mapping_plane_resolution", _resolution_plane, 0.4f);
+  /* param_loader.loadParam("mapping_line_resolution", _resolution_surfs, 0.2f); */
+  /* param_loader.loadParam("mapping_plane_resolution", _resolution_corners, 0.4f); */
   param_loader.loadParam("mapping_rate", _mapping_frequency, 5.0f);
   param_loader.loadParam("map_publish_rate", _map_publish_period, 0.5f);
 
@@ -64,7 +64,7 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
 /*//{ setData() */
 void AloamMapping::setData(ros::Time time_of_data, tf::Transform aloam_odometry, pcl::PointCloud<PointType>::Ptr features_corners_last,
                            pcl::PointCloud<PointType>::Ptr features_surfs_last, pcl::PointCloud<PointType>::Ptr cloud_full_res,
-                           aloam_slam::AloamDiagnostics::Ptr aloam_diag_msg) {
+                           aloam_slam::AloamDiagnostics::Ptr aloam_diag_msg, const float resolution_corners, const float resolution_surfs) {
 
   mrs_lib::Routine profiler_routine = _profiler->createRoutine("aloamMappingSetData");
 
@@ -76,6 +76,8 @@ void AloamMapping::setData(ros::Time time_of_data, tf::Transform aloam_odometry,
   _features_surfs_last   = features_surfs_last;
   _cloud_full_res        = cloud_full_res;
   _aloam_diag_msg        = aloam_diag_msg;
+  _resolution_corners    = resolution_corners;
+  _resolution_surfs      = resolution_surfs;
 }
 /*//}*/
 
@@ -102,6 +104,8 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   pcl::PointCloud<PointType>::Ptr   features_surfs_last;
   pcl::PointCloud<PointType>::Ptr   cloud_full_res;
   aloam_slam::AloamDiagnostics::Ptr aloam_diag_msg;
+  float                             resolution_surfs;
+  float                             resolution_corners;
   {
     std::scoped_lock lock(_mutex_odometry_data);
     _has_new_data         = false;
@@ -111,6 +115,10 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     features_surfs_last   = _features_surfs_last;
     cloud_full_res        = _cloud_full_res;
     aloam_diag_msg        = _aloam_diag_msg;
+    /* resolution_corners    = _resolution_corners; */
+    /* resolution_surfs      = _resolution_surfs; */
+    resolution_corners    = 0.4f;
+    resolution_surfs      = 0.8f;
   }
   /*//}*/
 
@@ -309,8 +317,8 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
   pcl::VoxelGrid<PointType> filter_downsize_corners;
   pcl::VoxelGrid<PointType> filter_downsize_surfs;
-  filter_downsize_corners.setLeafSize(_resolution_line, _resolution_line, _resolution_line);
-  filter_downsize_surfs.setLeafSize(_resolution_plane, _resolution_plane, _resolution_plane);
+  filter_downsize_corners.setLeafSize(resolution_corners, resolution_corners, resolution_corners);
+  filter_downsize_surfs.setLeafSize(resolution_surfs, resolution_surfs, resolution_surfs);
 
   /*//{*/
   pcl::PointCloud<PointType>::Ptr features_corners_stack = boost::make_shared<pcl::PointCloud<PointType>>();

@@ -352,7 +352,8 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   tf_lidar.setRotation(tf_q);
 
   aloam_slam::FeatureSelectionDiagnostics fs_diag_msg;
-  const auto                              selected_features = _feature_selection->selectFeatures(corner_points_less_sharp, surf_points_less_flat, fs_diag_msg);
+  const auto [selected_corners, selected_surfs, resolution_corners, resolution_surfs] =
+      _feature_selection->selectFeatures(corner_points_less_sharp, surf_points_less_flat, fs_diag_msg);
 
   aloam_slam::OdometryDiagnostics odom_diag_msg;
   odom_diag_msg.time_ms                      = t_whole.toc() - fs_diag_msg.corners_time_ms - fs_diag_msg.surfs_time_ms;
@@ -379,7 +380,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     aloam_diag_msg->odometry          = odom_diag_msg;
 
     /* _aloam_mapping->setData(stamp, tf_lidar, _features_corners_last, _features_surfs_last, laser_cloud_full_res); */
-    _aloam_mapping->setData(stamp, tf_lidar, selected_features.first, selected_features.second, laser_cloud_full_res, aloam_diag_msg);
+    _aloam_mapping->setData(stamp, tf_lidar, selected_corners, selected_surfs, laser_cloud_full_res, aloam_diag_msg, resolution_corners, resolution_surfs);
   }
   /*//}*/
 
