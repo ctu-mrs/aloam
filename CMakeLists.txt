@@ -10,6 +10,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(catkin REQUIRED COMPONENTS
+  message_generation
   geometry_msgs
   nav_msgs
   sensor_msgs
@@ -36,8 +37,19 @@ find_package(Eigen3 REQUIRED)
 set(Eigen_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIRS})
 set(Eigen_LIBRARIES ${Eigen_LIBRARIES})
 
+add_message_files(DIRECTORY msg FILES
+  FeatureSelectionDiagnostics.msg
+)
+
+generate_messages(DEPENDENCIES
+  std_msgs
+  nav_msgs
+  sensor_msgs
+  geometry_msgs
+)
+
 catkin_package(
-  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs mrs_lib eigen_conversions tf_conversions pcl_ros
+  CATKIN_DEPENDS message_runtime geometry_msgs nav_msgs roscpp rospy std_msgs mrs_lib eigen_conversions tf_conversions pcl_ros
 )
 
 include_directories(

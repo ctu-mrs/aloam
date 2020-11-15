@@ -1,0 +1,16 @@
+uint32 number_of_features_in
+uint32 number_of_corners_in
+uint32 number_of_surfs_in
+uint32 number_of_features_out
+uint32 number_of_corners_out
+uint32 number_of_surfs_out
+float32 corners_resolution
+float32 surfs_resolution
+float32 corners_cutoff_thrd
+float32 surfs_cutoff_thrd
+float32 corners_gradient_mean
+float32 surfs_gradient_mean
+float32 corners_gradient_stddev
+float32 surfs_gradient_stddev
+float32[] corners_gradient_sorted
+float32[] surfs_gradient_sorted

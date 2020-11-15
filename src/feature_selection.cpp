@@ -18,6 +18,7 @@ FeatureSelection::FeatureSelection(const ros::NodeHandle &parent_nh, mrs_lib::Pa
   param_loader.loadParam("feature_selection/surfs/gradient/limit/upper", _features_surfs_gradient_limit_upper, 1.0f);
   param_loader.loadParam("feature_selection/surfs/gradient/limit/bottom", _features_surfs_gradient_limit_bottom, 0.0f);
 
+  _pub_diag                      = nh_.advertise<aloam_slam::FeatureSelectionDiagnostics>("features_diag_out", 1);
   _pub_features_corners_selected = nh_.advertise<sensor_msgs::PointCloud2>("features_corners_selected_out", 1);
   _pub_features_surfs_selected   = nh_.advertise<sensor_msgs::PointCloud2>("features_surfs_selected_out", 1);
 }
@@ -32,9 +33,8 @@ pcl::PointCloud<PointType>::Ptr FeatureSelection::selectFeatures(const pcl::Poin
   TicToc t_routine;
 
   // TODO: pass parameters
-  pcl::PointCloud<PointType>::Ptr selected_features =
+  const auto [selected_features, gradients, gradients_mean, gradients_std] =
       selectFeaturesFromCloudByGradient(cloud, _features_corners_resolution, _features_corners_gradient_limit_bottom, _features_corners_gradient_limit_upper);
-
   ROS_WARN_THROTTLE(0.5, "[FeatureSelection] feature selection from single cloud took: %0.1f ms", t_routine.toc());
 
   return selected_features;
@@ -50,14 +50,41 @@ std::pair<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr> Feat
 
   TicToc t_routine;
 
-  pcl::PointCloud<PointType>::Ptr selected_corners = selectFeaturesFromCloudByGradient(
+  const auto [selected_corners, corner_gradients, corner_gradients_mean, corner_gradients_std] = selectFeaturesFromCloudByGradient(
       corner_points, _features_corners_resolution, _features_corners_gradient_limit_bottom, _features_corners_gradient_limit_upper);
-  pcl::PointCloud<PointType>::Ptr selected_surfs =
+  const auto [selected_surfs, surf_gradients, surf_gradients_mean, surf_gradients_std] =
       selectFeaturesFromCloudByGradient(surf_points, _features_surfs_resolution, _features_surfs_gradient_limit_bottom, _features_surfs_gradient_limit_upper);
 
   ROS_WARN_THROTTLE(0.5, "[FeatureSelection] feature selection of corners and surfs: %0.1f ms", t_routine.toc());
 
-  // TODO: publish some diagnostics
+  // Publish diagnostics
+  if (_pub_diag.getNumSubscribers() > 0) {
+    aloam_slam::FeatureSelectionDiagnostics::Ptr diag_msg = boost::make_shared<aloam_slam::FeatureSelectionDiagnostics>();
+    diag_msg->number_of_features_in                       = corner_points->size() + surf_points->size();
+    diag_msg->number_of_corners_in                        = corner_points->size();
+    diag_msg->number_of_surfs_in                          = surf_points->size();
+    diag_msg->number_of_features_out                      = selected_corners->size() + selected_surfs->size();
+    diag_msg->number_of_corners_out                       = selected_corners->size();
+    diag_msg->number_of_surfs_out                         = selected_surfs->size();
+    diag_msg->corners_resolution                          = _features_corners_resolution;
+    diag_msg->surfs_resolution                            = _features_surfs_resolution;
+    diag_msg->corners_cutoff_thrd                         = _features_corners_gradient_limit_bottom;
+    diag_msg->surfs_cutoff_thrd                           = _features_surfs_gradient_limit_bottom;
+    diag_msg->corners_gradient_mean                       = corner_gradients_mean;
+    diag_msg->surfs_gradient_mean                         = surf_gradients_mean;
+    diag_msg->corners_gradient_stddev                     = corner_gradients_std;
+    diag_msg->surfs_gradient_stddev                       = surf_gradients_std;
+    diag_msg->corners_gradient_sorted                     = corner_gradients;
+    diag_msg->surfs_gradient_sorted                       = surf_gradients;
+    try {
+      _pub_diag.publish(diag_msg);
+    }
+    catch (...) {
+      ROS_ERROR("exception caught during publishing on topic: %s", _pub_diag.getTopic().c_str());
+    }
+  }
+
+  // Publish selected features
   publishCloud(_pub_features_corners_selected, selected_corners);
   publishCloud(_pub_features_surfs_selected, selected_surfs);
 
@@ -66,17 +93,19 @@ std::pair<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr> Feat
 /*//}*/
 
 /*//{ selectFeaturesFromCloudByGradient() */
-pcl::PointCloud<PointType>::Ptr FeatureSelection::selectFeaturesFromCloudByGradient(const pcl::PointCloud<PointType>::Ptr cloud, const float search_radius,
-                                                                                    const float grad_min, const float grad_max) {
+std::tuple<pcl::PointCloud<PointType>::Ptr, std::vector<float>, float, float> FeatureSelection::selectFeaturesFromCloudByGradient(
+    const pcl::PointCloud<PointType>::Ptr cloud, const float search_radius, const float grad_min, const float grad_max) {
 
   pcl::PointCloud<PointType>::Ptr selected_features = boost::make_shared<pcl::PointCloud<PointType>>();
 
   if (cloud->size() == 0) {
-    return selected_features;
+    return std::make_tuple(selected_features, std::vector<float>(), -1.0f, -1.0f);
   }
 
   std::vector<float> gradient_norms(cloud->size());
-  double             grad_norm_max = -1.0;
+  float              grad_norm_max  = 0.0;
+  float              grad_norm_mean = 0.0;
+  float              grad_norm_std  = 0.0;
 
   // Create kd tree for fast search, TODO: find neighbors by indexing
   pcl::KdTreeFLANN<pcl::PointXYZI> kdtree_features;
@@ -92,7 +121,7 @@ pcl::PointCloud<PointType>::Ptr FeatureSelection::selectFeaturesFromCloudByGradi
     kdtree_features.radiusSearch(point, search_radius, indices, squared_distances);
 
     Eigen::Vector3f gradient  = Eigen::Vector3f::Zero();
-    double          grad_norm = 0.0;
+    float           grad_norm = 0.0;
 
     // Compute gradient
     if (indices.size() > 0) {
@@ -112,24 +141,45 @@ pcl::PointCloud<PointType>::Ptr FeatureSelection::selectFeaturesFromCloudByGradi
     grad_norm_max = std::max(grad_norm_max, grad_norm);
   }
 
+  // Sort gradients in non-ascending order by indices
+  std::vector<int> indices(gradient_norms.size());
+  std::iota(indices.begin(), indices.end(), 0);
+  std::stable_sort(indices.begin(), indices.end(), [&gradient_norms](int a, int b) { return gradient_norms[a] > gradient_norms[b]; });
+  std::vector<float> gradient_norms_sorted(gradient_norms.size());
+
   // Filter by gradient value
   for (unsigned int i = 0; i < cloud->size(); i++) {
 
-    const float grad_norm = gradient_norms.at(i) / grad_norm_max;
+    const int idx = indices.at(i);
 
-    if (grad_norm >= grad_min && grad_norm <= grad_max) {
-      pcl::PointXYZI point_grad = cloud->at(i);
-      point_grad.intensity      = grad_norm;
+    // Normalize gradients to range 0-1
+    gradient_norms.at(idx) /= grad_norm_max;
+    gradient_norms_sorted.at(i) = gradient_norms.at(idx);
+
+    // Sum gradients for mean estimation
+    grad_norm_mean += gradient_norms.at(idx);
+
+    // Filter by static threshold values
+    if (gradient_norms.at(idx) >= grad_min && gradient_norms.at(idx) <= grad_max) {
+      pcl::PointXYZI point_grad = cloud->at(idx);
+      point_grad.intensity      = gradient_norms.at(idx);
       selected_features->push_back(point_grad);
     }
   }
+  grad_norm_mean /= cloud->size();
+
+  // Compute standard deviation
+  for (const float &g : gradient_norms) {
+    grad_norm_std += std::pow(g - grad_norm_mean, 2);
+  }
+  grad_norm_std = std::sqrt(grad_norm_std / cloud->size());
 
   selected_features->header   = cloud->header;
   selected_features->width    = 1;
   selected_features->height   = selected_features->points.size();
   selected_features->is_dense = cloud->is_dense;
 
-  return selected_features;
+  return std::make_tuple(selected_features, gradient_norms_sorted, grad_norm_mean, grad_norm_std);
 }
 /*//}*/
 

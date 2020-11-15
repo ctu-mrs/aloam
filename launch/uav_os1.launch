@@ -72,6 +72,7 @@
       <remap from="~features_surfs_less_flat_out" to="aloam/features/surfs/flatless"/>
       <remap from="~features_corners_selected_out" to="aloam/features/corners/selected"/>
       <remap from="~features_surfs_selected_out" to="aloam/features/surfs/selected"/>
+      <remap from="~features_diag_out" to="aloam/features/diag"/>
         
       <!-- Service servers -->
       <remap from="~srv_reset_mapping_in" to="aloam/reset/mapping"/>

@@ -2,6 +2,8 @@
 
 #include "aloam_slam/mapping.h"
 
+#include "aloam_slam/FeatureSelectionDiagnostics.h"
+
 namespace aloam_slam
 {
 class FeatureSelection {
@@ -16,6 +18,7 @@ public:
   bool is_initialized = false;
 
 private:
+  ros::Publisher _pub_diag;
   ros::Publisher _pub_features_corners_selected;
   ros::Publisher _pub_features_surfs_selected;
 
@@ -27,7 +30,7 @@ private:
   float _features_surfs_gradient_limit_upper;
   float _features_surfs_gradient_limit_bottom;
 
-  pcl::PointCloud<PointType>::Ptr selectFeaturesFromCloudByGradient(const pcl::PointCloud<PointType>::Ptr cloud, const float search_radius,
+  std::tuple<pcl::PointCloud<PointType>::Ptr, std::vector<float>, float, float> selectFeaturesFromCloudByGradient(const pcl::PointCloud<PointType>::Ptr cloud, const float search_radius,
                                                                     const float grad_min, const float grad_max);
 
   void publishCloud(ros::Publisher publisher, const pcl::PointCloud<PointType>::Ptr cloud);
