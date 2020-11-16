@@ -19,7 +19,7 @@ private:
   ros::Publisher _pub_features_corners_selected;
   ros::Publisher _pub_features_surfs_selected;
 
-  /* float _resolution_grad_prc_scale; */
+  float _gradients_keep_percentile;
   float _resolution_corners;
   float _resolution_surfs;
   float _resolution_corners_min;
@@ -34,8 +34,8 @@ private:
   /* float _features_surfs_gradient_limit_upper; */
   /* float _features_surfs_gradient_limit_bottom; */
 
-  std::tuple<pcl::PointCloud<PointType>::Ptr, std::vector<float>, float, float> selectFeaturesFromCloudByGradient(const pcl::PointCloud<PointType>::Ptr cloud,
-                                                                                                                  const float search_radius);
+  std::tuple<pcl::PointCloud<PointType>::Ptr, std::vector<float>, float, float, float> selectFeaturesFromCloudByGradient(
+      const pcl::PointCloud<PointType>::Ptr cloud, const float search_radius);
 
   std::tuple<std::vector<int>, std::vector<std::pair<int, float>>, float, float> estimateGradients(const pcl::PointCloud<PointType>::Ptr cloud,
                                                                                                    const float                           search_radius);

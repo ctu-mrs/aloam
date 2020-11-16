@@ -104,8 +104,8 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   pcl::PointCloud<PointType>::Ptr   features_surfs_last;
   pcl::PointCloud<PointType>::Ptr   cloud_full_res;
   aloam_slam::AloamDiagnostics::Ptr aloam_diag_msg;
-  float                             resolution_surfs;
   float                             resolution_corners;
+  float                             resolution_surfs;
   {
     std::scoped_lock lock(_mutex_odometry_data);
     _has_new_data         = false;
