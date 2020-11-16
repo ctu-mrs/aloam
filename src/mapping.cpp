@@ -115,10 +115,8 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     features_surfs_last   = _features_surfs_last;
     cloud_full_res        = _cloud_full_res;
     aloam_diag_msg        = _aloam_diag_msg;
-    /* resolution_corners    = _resolution_corners; */
-    /* resolution_surfs      = _resolution_surfs; */
-    resolution_corners    = 0.4f;
-    resolution_surfs      = 0.8f;
+    resolution_corners    = _resolution_corners;
+    resolution_surfs      = _resolution_surfs;
   }
   /*//}*/
 

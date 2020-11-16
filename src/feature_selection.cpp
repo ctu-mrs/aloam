@@ -53,7 +53,9 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr, flo
   diag_msg.surfs_time_ms                                                               = t_surfs.toc();
 
   _resolution_corners = estimateResolution(corner_gradients_mean, corner_gradients, _resolution_corners_min, _resolution_corners_max);
-  _resolution_surfs   = estimateResolution(surf_gradients_mean, surf_gradients, _resolution_surfs_min, _resolution_surfs_max);
+  _resolution_surfs   = estimateResolution(1.0f - surf_gradients_mean, surf_gradients, _resolution_surfs_min, _resolution_surfs_max);
+  /* _resolution_corners = 0.4f; */
+  /* _resolution_surfs   = 0.8f; */
 
   diag_msg.number_of_features_in          = corner_points->size() + surf_points->size();
   diag_msg.number_of_corners_in           = corner_points->size();
@@ -116,20 +118,23 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, std::vector<float>, float, float> Fe
     // Find all features in given radius, TODO: find neighbors by indexing
     kdtree_features.radiusSearch(point, search_radius, indices, squared_distances);
 
-    Eigen::Vector3f gradient  = Eigen::Vector3f::Zero();
-    float           grad_norm = 0.0;
+    float grad_norm = 0.0;
 
     // Compute gradient
-    if (indices.size() > 0) {
+    if (indices.size() > 1) {
 
+      Eigen::Vector3f gradient  = Eigen::Vector3f::Zero();
       Eigen::Vector3f point_xyz = Eigen::Vector3f(point.x, point.y, point.z);
       for (const int &ind : indices) {
         const pcl::PointXYZI neighbor = cloud->at(ind);
         gradient += Eigen::Vector3f(neighbor.x, neighbor.y, neighbor.z) - point_xyz;
       }
 
-      gradient /= indices.size();
-      grad_norm = gradient.norm();
+      grad_norm = (gradient / indices.size()).norm();
+
+    } else {
+
+      grad_norm = search_radius;
     }
 
     gradient_norms.at(i) = grad_norm;
@@ -190,12 +195,14 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, std::vector<float>, float, float> Fe
 
 /*//{ estimateResolution() */
 float FeatureSelection::estimateResolution(const float &percent, const std::vector<float> &fnc_sorted, const float &min_res, const float &max_res) {
-  if (fnc_sorted.size() == 0) {
-    return min_res;
-  }
+  /* if (fnc_sorted.size() == 0) { */
+  /*   return min_res; */
+  /* } */
 
-  const unsigned int idx = std::round(percent * float(fnc_sorted.size()));
-  return min_res + fnc_sorted.at(idx) * (max_res - min_res);
+  /* const unsigned int idx = std::round(percent * float(fnc_sorted.size())); */
+  /* return min_res + fnc_sorted.at(idx) * (max_res - min_res); */
+  return min_res + (percent) * (max_res - min_res);
+  /* return min_res + (1.0f - percent) * (max_res - min_res); */
 }
 /*//}*/
 
