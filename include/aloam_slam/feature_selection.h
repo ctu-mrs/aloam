@@ -36,6 +36,10 @@ private:
 
   std::tuple<pcl::PointCloud<PointType>::Ptr, std::vector<float>, float, float> selectFeaturesFromCloudByGradient(const pcl::PointCloud<PointType>::Ptr cloud,
                                                                                                                   const float search_radius);
+
+  std::tuple<std::vector<int>, std::vector<std::pair<int, float>>, float, float> estimateGradients(const pcl::PointCloud<PointType>::Ptr cloud,
+                                                                                                   const float                           search_radius);
+
   float estimateResolution(const float &percent, const std::vector<float> &fnc_sorted, const float &min_res, const float &max_res);
 
   void publishCloud(ros::Publisher publisher, const pcl::PointCloud<PointType>::Ptr cloud);
