@@ -5,8 +5,8 @@
     <arg name="UAV_NAME" default="$(env UAV_NAME)" />
     <arg name="rviz_config" default="$(find aloam_slam)/rviz/$(arg UAV_NAME)_features.rviz" />
     <arg name="bag_path" default="$(env HOME)/bag_files" />
-    <arg name="bag" default="sim_byci_skala_aloam_filt.bag" />
-    <!-- <arg name="bag" default="stara_voda_altitude_drift_high_res_filt.bag" /> -->
+    <!-- <arg name="bag" default="sim_byci_skala_aloam_filt.bag" /> -->
+    <arg name="bag" default="stara_voda_altitude_drift_high_res_filt.bag" />
 
     <!--- LOAM -->
     <include file="$(find mission_controller)/launch/slam_pipeline_os1.launch" />
@@ -15,9 +15,9 @@
     <node pkg="rviz" type="rviz" name="aloam_rviz" args="-d $(arg rviz_config)" />
 
     <!-- Rosbag -->
-    <node pkg="rosbag" type="play" name="player" output="screen" args="--clock $(arg bag_path)/$(arg bag)" launch-prefix="bash -c 'sleep 10; $0 $@'"/>
+    <node pkg="rosbag" type="play" name="player" output="screen" args="--clock $(arg bag_path)/$(arg bag)" launch-prefix="bash -c 'sleep 1; $0 $@'"/>
 
     <!-- Ground truth TF --> 
-    <node pkg="tf2_ros" type="static_transform_publisher" name="world_to_fcu" args="0 0 -0.21 0 0 1 0 $(arg UAV_NAME)/aloam_origin world" />
+    <!-- <node pkg="tf2_ros" type="static_transform_publisher" name="world_to_fcu" args="0 0 -0.21 0 0 1 0 $(arg UAV_NAME)/aloam_origin world" /> -->
 
 </launch>
