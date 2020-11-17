@@ -30,7 +30,7 @@ class OnlineHist():
         # self.axs.hold(True) 
     
     def callback_diag(self, msg):       
-        print('callback data')
+        # print('callback data')
         #self.axes.set_autoscaley_on(True)
         self.has_new_data = True
         

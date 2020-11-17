@@ -9,7 +9,8 @@ uint32 number_of_corners_out
 uint32 number_of_surfs_out
 float32 corners_resolution
 float32 surfs_resolution
-float32 features_cutoff_keep_percentile
+float32 corners_keep_percentile
+float32 surfs_keep_percentile
 float32 corners_cutoff_thrd
 float32 surfs_cutoff_thrd
 float32 corners_gradient_mean
