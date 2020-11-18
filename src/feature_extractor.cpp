@@ -97,11 +97,14 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2::ConstP
   }
 
   TicToc t_pts;
+  float  time_voxel_filtration = 0.0f;
 
   pcl::PointCloud<PointType>::Ptr corner_points_sharp      = boost::make_shared<pcl::PointCloud<PointType>>();
   pcl::PointCloud<PointType>::Ptr corner_points_less_sharp = boost::make_shared<pcl::PointCloud<PointType>>();
   pcl::PointCloud<PointType>::Ptr surf_points_flat         = boost::make_shared<pcl::PointCloud<PointType>>();
   pcl::PointCloud<PointType>::Ptr surf_points_less_flat    = boost::make_shared<pcl::PointCloud<PointType>>();
+  std::vector<int>                corner_points_cloud_indices;
+  std::vector<int>                surf_points_cloud_indices;
 
   /*//{ Compute features (planes and edges) in two resolutions */
   float time_q_sort = 0;
@@ -110,6 +113,7 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2::ConstP
       continue;
     }
     pcl::PointCloud<PointType>::Ptr surfPointsLessFlatScan = boost::make_shared<pcl::PointCloud<PointType>>();
+
     for (int j = 0; j < 6; j++) {
       const int sp = rows_start_idxs.at(i) + (rows_end_idxs.at(i) - rows_start_idxs.at(i)) * j / 6;
       const int ep = rows_start_idxs.at(i) + (rows_end_idxs.at(i) - rows_start_idxs.at(i)) * (j + 1) / 6 - 1;
@@ -130,9 +134,11 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2::ConstP
             cloudLabel.at(ind) = 2;
             corner_points_sharp->push_back(laser_cloud->points.at(ind));
             corner_points_less_sharp->push_back(laser_cloud->points.at(ind));
+            corner_points_cloud_indices.push_back(ind);
           } else if (largestPickedNum <= 20) {
             cloudLabel.at(ind) = 1;
             corner_points_less_sharp->push_back(laser_cloud->points.at(ind));
+            corner_points_cloud_indices.push_back(ind);
           } else {
             break;
           }
@@ -208,12 +214,20 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2::ConstP
     }
 
     pcl::PointCloud<PointType> surfPointsLessFlatScanDS;
-    pcl::VoxelGrid<PointType>  downSizeFilter;
-    downSizeFilter.setInputCloud(surfPointsLessFlatScan);
-    downSizeFilter.setLeafSize(0.2, 0.2, 0.2);
-    downSizeFilter.filter(surfPointsLessFlatScanDS);
+    std::vector<int>           surf_points_less_flat_ds_indices;
+
+    TicToc t_voxel_filtration;
+
+    /* pcl::VoxelGrid<PointType>  downSizeFilter; */
+    /* downSizeFilter.setInputCloud(surfPointsLessFlatScan); */
+    /* downSizeFilter.setLeafSize(0.2f, 0.2f, 0.2f); */
+    /* downSizeFilter.filter(surfPointsLessFlatScanDS); */
+
+    applyVoxelGridFilter(surfPointsLessFlatScan, 0.2f, 0.2f, 0.2f, surfPointsLessFlatScanDS, surf_points_less_flat_ds_indices);
+    time_voxel_filtration += t_voxel_filtration.toc();
 
     *surf_points_less_flat += surfPointsLessFlatScanDS;
+    surf_points_cloud_indices.insert(surf_points_cloud_indices.end(), surf_points_less_flat_ds_indices.begin(), surf_points_less_flat_ds_indices.end());
   }
   /*//}*/
 
@@ -248,8 +262,10 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2::ConstP
   _odometry->setData(corner_points_sharp, corner_points_less_sharp, surf_points_flat, surf_points_less_flat, laser_cloud, aloam_diag_msg);
 
   ROS_INFO_THROTTLE(1.0, "[AloamFeatureExtractor] Run time: %0.1f ms (%0.1f Hz)", time_whole, std::min(1.0f / _scan_period_sec, 1000.0f / time_whole));
-  ROS_DEBUG_THROTTLE(1.0, "[AloamFeatureExtractor] points: %d; preparing data: %0.1f ms; q-sorting data: %0.1f ms; computing features: %0.1f ms", cloud_size,
-                     processing_time, time_q_sort, time_pts);
+  ROS_DEBUG_THROTTLE(1.0,
+                     "[AloamFeatureExtractor] points: %d; preparing data: %0.1f ms; q-sorting data: %0.1f ms; computing features: %0.1f ms (downsampling surf "
+                     "features: %0.1f ms)",
+                     cloud_size, processing_time, time_q_sort, time_pts, time_voxel_filtration);
   ROS_WARN_COND(time_whole > _scan_period_sec * 1000.0f, "[AloamFeatureExtractor] Feature extraction took over %0.2f ms", _scan_period_sec * 1000.0f);
 }
 /*//}*/
@@ -466,4 +482,96 @@ bool FeatureExtractor::hasField(const std::string field, const sensor_msgs::Poin
 }
 /*//}*/
 
+/*//{ applyVoxelGridFilter() */
+// Method taken from: https://github.com/PointCloudLibrary/pcl/issues/2211
+void FeatureExtractor::applyVoxelGridFilter(const pcl::PointCloud<PointType>::Ptr &cloud_in, const float &res_x, const float &res_y, const float &res_z,
+                                            pcl::PointCloud<PointType> &cloud_out, std::vector<int> &indices_out) {
+  // Has the input dataset been set already?
+  if (!cloud_in) {
+    ROS_WARN("[FeatureExtractor] No input dataset given!");
+    cloud_out.width = cloud_out.height = 0;
+    cloud_out.points.clear();
+    return;
+  }
+  if (!cloud_in->is_dense) {
+    ROS_WARN("[FeatureExtractor] Voxel grid supports only dense point cloud too speed up computation.");
+    cloud_out.width = cloud_out.height = 0;
+    cloud_out.points.clear();
+    return;
+  }
+
+
+  // Copy the header (and thus the frame_id) + allocate enough space for points
+  cloud_out.height   = 1;     // downsampling breaks the organized structure
+  cloud_out.is_dense = true;  // we filter out invalid points
+
+  const Eigen::Array4f inverse_leaf_size = Eigen::Array4f::Ones() / Eigen::Vector4f(res_x, res_y, res_z, 1).array();
+
+  // Get the minimum and maximum dimensions
+  Eigen::Vector4f min_p, max_p;
+  pcl::getMinMax3D(*cloud_in, min_p, max_p);
+
+  // Check that the leaf size is not too small, given the size of the data
+  const uint64_t dx = static_cast<uint64_t>((max_p[0] - min_p[0]) * inverse_leaf_size[0]) + 1;
+  const uint64_t dy = static_cast<uint64_t>((max_p[1] - min_p[1]) * inverse_leaf_size[1]) + 1;
+  const uint64_t dz = static_cast<uint64_t>((max_p[2] - min_p[2]) * inverse_leaf_size[2]) + 1;
+
+  if ((dx * dy * dz) > static_cast<uint64_t>(std::numeric_limits<int>::max())) {
+    PCL_WARN("[FeatureExtractor] Leaf size is too small for the input dataset. Integer indices would overflow.");
+    cloud_out = *cloud_in;
+    return;
+  }
+
+  // Compute the minimum and maximum bounding box values
+  Eigen::Vector4i min_b, max_b;
+  min_b[0] = static_cast<int>(floor(min_p[0] * inverse_leaf_size[0]));
+  max_b[0] = static_cast<int>(floor(max_p[0] * inverse_leaf_size[0]));
+  min_b[1] = static_cast<int>(floor(min_p[1] * inverse_leaf_size[1]));
+  max_b[1] = static_cast<int>(floor(max_p[1] * inverse_leaf_size[1]));
+  min_b[2] = static_cast<int>(floor(min_p[2] * inverse_leaf_size[2]));
+  max_b[2] = static_cast<int>(floor(max_p[2] * inverse_leaf_size[2]));
+
+  // Compute the number of divisions needed along all axis
+  const Eigen::Vector4i div_b = max_b - min_b + Eigen::Vector4i::Ones();
+  /* div_b[3]              = 0; */
+
+  // Set up the division multiplier
+  const Eigen::Vector4i divb_mul = Eigen::Vector4i(1, div_b[0], div_b[0] * div_b[1], 0);
+
+  // Storage for mapping leaf and pointcloud indexes
+  std::unordered_map<int, pcl::CentroidPoint<PointType>> voxel_map;
+  std::unordered_map<int, unsigned int>                  indices_map;
+
+  // First pass: go over all points and insert them into the index_vector vector
+  // with calculated idx. Points with the same idx value will contribute to the
+  // same point of resulting CloudPoint
+  for (unsigned int i = 0; i < cloud_in->points.size(); i++) {
+
+    const int ijk0 = static_cast<int>(floor(cloud_in->points[i].x * inverse_leaf_size[0]) - static_cast<float>(min_b[0]));
+    const int ijk1 = static_cast<int>(floor(cloud_in->points[i].y * inverse_leaf_size[1]) - static_cast<float>(min_b[1]));
+    const int ijk2 = static_cast<int>(floor(cloud_in->points[i].z * inverse_leaf_size[2]) - static_cast<float>(min_b[2]));
+
+    // Compute the centroid leaf index
+    const int idx = ijk0 * divb_mul[0] + ijk1 * divb_mul[1] + ijk2 * divb_mul[2];
+
+    voxel_map[idx].add(cloud_in->points[i]);
+
+    // Store last added point index for each voxel cell
+    indices_map[idx] = i;
+  }
+
+  size_t v = 0;
+  cloud_out.resize(voxel_map.size());
+  indices_out.resize(voxel_map.size());
+
+  for (auto iter = std::begin(voxel_map); iter != std::end(voxel_map); iter++) {
+    PointType point;
+    iter->second.get(point);
+    cloud_out.at(v)     = point;
+    indices_out.at(v++) = indices_map.at(iter->first);
+  }
+  cloud_out.width = static_cast<uint32_t>(cloud_out.points.size());
+}
+
+/*//}*/
 }  // namespace aloam_slam

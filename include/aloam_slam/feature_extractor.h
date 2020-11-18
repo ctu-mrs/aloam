@@ -5,7 +5,10 @@
 #include "aloam_slam/mapping.h"
 
 #include <pcl/filters/extract_indices.h>
+#include <pcl/common/centroid.h>
+#include <pcl/common/common.h>
 #include <os1_driver/ouster_ros/point_os1.h>
+#include <unordered_map>
 
 namespace aloam_slam
 {
@@ -49,6 +52,9 @@ private:
                                std::vector<int> &indices);
 
   bool hasField(const std::string field, const sensor_msgs::PointCloud2::ConstPtr &msg);
+
+  void applyVoxelGridFilter(const pcl::PointCloud<PointType>::Ptr &cloud_in, const float &res_x, const float &res_y, const float &res_z,
+                            pcl::PointCloud<PointType> &cloud_out, std::vector<int> &indices_out);
 
   // callbacks
   void callbackLaserCloud(const sensor_msgs::PointCloud2::ConstPtr &laserCloudMsg);

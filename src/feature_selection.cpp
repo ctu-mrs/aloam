@@ -106,9 +106,7 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, std::vector<float>, float, float, fl
 
   const auto [standalone_points_indices, gradients, grad_norm_mean, grad_norm_std] = estimateGradients(cloud, search_radius);
 
-  /* const float grad_cutoff_thrd = grad_norm_mean; */
   const float grad_cutoff_thrd = gradients.at(std::floor(percentile * gradients.size())).second;
-  /* const float resolution_estimation_thrd = gradients.at(std::floor(0.1f * gradients.size())).second; */
 
   /* const unsigned int min_feature_count = std::floor(_features_min_count_percent * (cloud->size() - standalone_points.size())); */
 
