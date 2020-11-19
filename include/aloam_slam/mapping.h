@@ -129,7 +129,8 @@ private:
   Eigen::Quaterniond _q_wodom_curr;
   Eigen::Vector3d    _t_wodom_curr;
 
-  long int _frame_count = 0;
+  long int _frame_count           = 0;
+  float    _total_running_time_ms = 0.0f;
 
   int       _cloud_center_width  = 10;
   int       _cloud_center_height = 10;

@@ -59,14 +59,15 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2::ConstP
   }
 
   // Process input data per row
-  std::vector<unsigned int>       rows_start_idxs(_number_of_rings, 0);
-  std::vector<unsigned int>       rows_end_idxs(_number_of_rings, 0);
-  float                           processing_time;
-  pcl::PointCloud<PointType>::Ptr laser_cloud = boost::make_shared<pcl::PointCloud<PointType>>();
+  std::vector<unsigned int>                                   rows_start_idxs(_number_of_rings, 0);
+  std::vector<unsigned int>                                   rows_end_idxs(_number_of_rings, 0);
+  std::vector<std::unordered_map<unsigned int, unsigned int>> indices_in_unprocessed_cloud(_number_of_rings);
+  float                                                       processing_time;
+  pcl::PointCloud<PointType>::Ptr                             laser_cloud = boost::make_shared<pcl::PointCloud<PointType>>();
   if (_data_have_ring_field) {
-    parseRowsFromOS1CloudMsg(laserCloudMsg, laser_cloud, rows_start_idxs, rows_end_idxs, processing_time);
+    parseRowsFromOS1CloudMsg(laserCloudMsg, laser_cloud, rows_start_idxs, rows_end_idxs, processing_time, indices_in_unprocessed_cloud);
   } else {
-    parseRowsFromCloudMsg(laserCloudMsg, laser_cloud, rows_start_idxs, rows_end_idxs, processing_time);
+    parseRowsFromCloudMsg(laserCloudMsg, laser_cloud, rows_start_idxs, rows_end_idxs, processing_time, indices_in_unprocessed_cloud);
   }
 
   TicToc             t_whole;
@@ -249,25 +250,6 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2::ConstP
     count_corners_less_sharp += indices_corners_less_sharp.at(i).size();
     count_surfs_flat += indices_surfs_flat.at(i).size();
     count_surfs_less_flat += indices_surfs_less_flat.at(i).size();
-
-  }
-
-  // DEBUG
-  if (indices_surfs_less_flat.back().back() >= laser_cloud->size()) {
-    ROS_ERROR("[FeatureExtractor] surfs less flat indices is over cloud size");
-    ros::shutdown();
-  }
-  if (indices_surfs_flat.back().back() >= laser_cloud->size()) {
-    ROS_ERROR("[FeatureExtractor] surfs flat indices is over cloud size");
-    ros::shutdown();
-  }
-  if (indices_corners_less_sharp.back().back() >= laser_cloud->size()) {
-    ROS_ERROR("[FeatureExtractor] corners less sharp indices is over cloud size");
-    ros::shutdown();
-  }
-  if (indices_corners_sharp.back().back() >= laser_cloud->size()) {
-    ROS_ERROR("[FeatureExtractor] corners sharp indices is over cloud size");
-    ros::shutdown();
   }
 
   const float time_sorting = t_sort.toc();
@@ -289,13 +271,14 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2::ConstP
   fe_diag_msg.surf_points_flat_count         = count_surfs_flat;
   fe_diag_msg.surf_points_less_flat_count    = count_surfs_less_flat;
 
-  std::shared_ptr<ExtractedFeatures> extracted_features = std::make_shared<ExtractedFeatures>();
-  extracted_features->cloud_full_res                    = laser_cloud;
-  extracted_features->rows_start_idxs                   = rows_start_idxs;
-  extracted_features->indices_corners_sharp             = indices_corners_sharp;
-  extracted_features->indices_surfs_flat                = indices_surfs_flat;
-  extracted_features->indices_corners_less_sharp        = indices_corners_less_sharp;
-  extracted_features->indices_surfs_less_flat           = indices_surfs_less_flat;
+  std::shared_ptr<ExtractedFeatures> extracted_features  = std::make_shared<ExtractedFeatures>();
+  extracted_features->cloud_full_res                     = laser_cloud;
+  extracted_features->rows_start_idxs                    = rows_start_idxs;
+  extracted_features->indices_corners_sharp              = indices_corners_sharp;
+  extracted_features->indices_surfs_flat                 = indices_surfs_flat;
+  extracted_features->indices_corners_less_sharp         = indices_corners_less_sharp;
+  extracted_features->indices_surfs_less_flat            = indices_surfs_less_flat;
+  extracted_features->unprocessed_cloud_indices_row_maps = indices_in_unprocessed_cloud;
 
   const float time_whole             = t_whole.toc() + processing_time;
   fe_diag_msg.time_ms                = time_whole;
@@ -315,9 +298,14 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2::ConstP
 
 /*//{ parseRowsFromCloudMsg() */
 void FeatureExtractor::parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr &cloud_processed,
-                                             std::vector<unsigned int> &rows_start_indices, std::vector<unsigned int> &rows_end_indices,
-                                             float &processing_time) {
+                                             std::vector<unsigned int> &rows_start_indices, std::vector<unsigned int> &rows_end_indices, float &processing_time,
+                                             std::vector<std::unordered_map<unsigned int, unsigned int>> &indices_in_unprocessed_cloud) {
   TicToc t_prepare;
+
+  if (cloud->width <= 1 || cloud->height <= 1) {
+    ROS_ERROR("[FeatureExtractor] Input data must be organized, not processing input cloud.");
+    return;
+  }
 
   pcl::PointCloud<PointType> cloud_pcl;
   pcl::fromROSMsg(*cloud, cloud_pcl);
@@ -398,6 +386,7 @@ void FeatureExtractor::parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::Con
     const float rel_time = (point_azimuth - azimuth_start) / (azimuth_end - azimuth_start);
     point.intensity      = point_ring + _scan_period_sec * rel_time;
     laser_cloud_rows.at(point_ring).push_back(point);
+    indices_in_unprocessed_cloud.at(point_ring).at(i) = i;
   }
   /*//}*/
 
@@ -414,7 +403,8 @@ void FeatureExtractor::parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::Con
 /*//{ parseRowsFromOS1CloudMsg() */
 void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr &cloud_processed,
                                                 std::vector<unsigned int> &rows_start_indices, std::vector<unsigned int> &rows_end_indices,
-                                                float &processing_time) {
+                                                float &                                                      processing_time,
+                                                std::vector<std::unordered_map<unsigned int, unsigned int>> &indices_in_unprocessed_cloud) {
   TicToc t_prepare;
 
   // Create PointOS1 pointcloud {x, y, z, intensity, t, reflectivity, ring, noise, range}
@@ -422,9 +412,9 @@ void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::
   pcl::fromROSMsg(*cloud, *cloud_pcl_with_nans);
 
   // Remove NaNs
-  std::vector<int>                                valid_indices;
+  std::vector<int>                                valid_indices_vec;
   pcl::PointCloud<ouster_ros::OS1::PointOS1>::Ptr cloud_pcl = boost::make_shared<pcl::PointCloud<ouster_ros::OS1::PointOS1>>();
-  removeNaNFromPointCloud(cloud_pcl_with_nans, cloud_pcl, valid_indices);
+  removeNaNFromPointCloud(cloud_pcl_with_nans, cloud_pcl, valid_indices_vec);
 
   /*//{ Precompute points indices */
   const int   cloud_size    = cloud_pcl->points.size();
@@ -439,6 +429,7 @@ void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::
 
   bool                                    halfPassed = false;
   std::vector<pcl::PointCloud<PointType>> laser_cloud_rows(_number_of_rings);
+
   for (int i = 0; i < cloud_size; i++) {
     PointType point;
     point.x = cloud_pcl->points.at(i).x;
@@ -473,6 +464,7 @@ void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::
     const float rel_time = (point_azimuth - azimuth_start) / (azimuth_end - azimuth_start);
     point.intensity      = point_ring + _scan_period_sec * rel_time;
     laser_cloud_rows.at(point_ring).push_back(point);
+    indices_in_unprocessed_cloud.at(point_ring).at(i) = valid_indices_vec.at(i);
   }
   /*//}*/
 

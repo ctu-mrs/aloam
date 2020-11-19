@@ -59,14 +59,15 @@ inline double deg2rad(double degrees) {
 /*//{ struct ExtractedFeatures */
 struct ExtractedFeatures
 {
-  bool                                   is_new = true;
-  pcl::PointCloud<PointType>::Ptr        cloud_full_res;
-  std::vector<unsigned int>              rows_start_idxs;
-  std::vector<std::vector<unsigned int>> indices_corners_sharp;
-  std::vector<std::vector<unsigned int>> indices_surfs_flat;
-  std::vector<std::vector<unsigned int>> indices_corners_less_sharp;
-  std::vector<std::vector<unsigned int>> indices_surfs_less_flat;
-  aloam_slam::AloamDiagnostics::Ptr      aloam_diag_msg;
+  bool                                                        is_new = true;
+  pcl::PointCloud<PointType>::Ptr                             cloud_full_res;
+  std::vector<unsigned int>                                   rows_start_idxs;
+  std::vector<std::vector<unsigned int>>                      indices_corners_sharp;
+  std::vector<std::vector<unsigned int>>                      indices_surfs_flat;
+  std::vector<std::vector<unsigned int>>                      indices_corners_less_sharp;
+  std::vector<std::vector<unsigned int>>                      indices_surfs_less_flat;
+  std::vector<std::unordered_map<unsigned int, unsigned int>> unprocessed_cloud_indices_row_maps;
+  aloam_slam::AloamDiagnostics::Ptr                           aloam_diag_msg;
 
   pcl::PointCloud<PointType>::Ptr getSharpCorners() {
     if (!features_corners_sharp) {

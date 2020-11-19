@@ -1,5 +1,7 @@
+uint32 frame_count
 float32 total_time_ms
 float32 total_memsize_kb
+float32 avg_frame_proc_time_ms
 aloam_slam/FeatureExtractionDiagnostics feature_extraction
 aloam_slam/FeatureSelectionDiagnostics feature_selection
 aloam_slam/OdometryDiagnostics odometry

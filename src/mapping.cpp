@@ -675,6 +675,11 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
     aloam_diag_msg->total_time_ms = aloam_diag_msg->feature_extraction.time_ms + aloam_diag_msg->feature_selection.corners_time_ms +
                                     aloam_diag_msg->feature_selection.surfs_time_ms + aloam_diag_msg->odometry.time_ms + aloam_diag_msg->mapping.time_ms;
+    _total_running_time_ms += aloam_diag_msg->total_time_ms;
+
+    aloam_diag_msg->total_memsize_kb       = mapping_diag_msg.sizeof_map_corners_kb + mapping_diag_msg.sizeof_map_surfs_kb;
+    aloam_diag_msg->frame_count            = _frame_count;
+    aloam_diag_msg->avg_frame_proc_time_ms = _total_running_time_ms / float(_frame_count);
     try {
       _pub_diag.publish(aloam_diag_msg);
     }
