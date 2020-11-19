@@ -50,15 +50,15 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr, flo
   }
 
   TicToc t_corners;
-  const auto [selected_corners, corner_gradients, corner_gradients_mean, corner_gradients_std, corner_grad_cutoff] =
-      selectFeaturesFromCloudByGradient(extracted_features->getLessSharpCorners(), extracted_features->cloud_full_res,
-                                        extracted_features->indices_corners_less_sharp, _resolution_corners, _corners_keep_percentile);
+  const auto [selected_corners, corner_gradients, corner_gradients_mean, corner_gradients_std, corner_grad_cutoff] = selectFeaturesFromCloudByGradient(
+      extracted_features->aloam_diag_msg->feature_extraction.corner_points_less_sharp_count, extracted_features->cloud_full_res,
+      extracted_features->indices_corners_less_sharp, _resolution_corners, _corners_keep_percentile);
   diag_msg.corners_time_ms = t_corners.toc();
 
   TicToc t_surfs;
   const auto [selected_surfs, surf_gradients, surf_gradients_mean, surf_gradients_std, surf_grad_cutoff] =
-      selectFeaturesFromCloudByGradient(extracted_features->getLessFlatSurfs(), extracted_features->cloud_full_res, extracted_features->indices_surfs_less_flat,
-                                        _resolution_surfs, _surfs_keep_percentile);
+      selectFeaturesFromCloudByGradient(extracted_features->aloam_diag_msg->feature_extraction.surf_points_less_flat_count, extracted_features->cloud_full_res,
+                                        extracted_features->indices_surfs_less_flat, _resolution_surfs, _surfs_keep_percentile);
   diag_msg.surfs_time_ms = t_surfs.toc();
 
   _resolution_corners = estimateResolution(corner_grad_cutoff, corner_gradients, _resolution_corners_min, _resolution_corners_max);
@@ -98,29 +98,29 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr, flo
 
 /*//{ selectFeaturesFromCloudByGradient() */
 std::tuple<pcl::PointCloud<PointType>::Ptr, std::vector<float>, float, float, float> FeatureSelection::selectFeaturesFromCloudByGradient(
-    const pcl::PointCloud<PointType>::Ptr &features, const pcl::PointCloud<PointType>::Ptr &cloud_full_res,
-    const std::vector<std::vector<unsigned int>> &indices_in_full_res, const float &search_radius, const float &percentile) {
+    const unsigned int &features_count, const pcl::PointCloud<PointType>::Ptr &cloud_full_res,
+    const std::vector<std::vector<unsigned int>> &features_indices_in_full_res, const float &search_radius, const float &percentile) {
 
   pcl::PointCloud<PointType>::Ptr selected_features = boost::make_shared<pcl::PointCloud<PointType>>();
   std::vector<float>              gradient_norms_all;
 
-  if (features->size() == 0) {
+  if (features_count == 0) {
     return std::make_tuple(selected_features, gradient_norms_all, -1.0f, -1.0f, -1.0f);
   }
 
-  selected_features->resize(features->size());
-  gradient_norms_all.resize(features->size());
+  selected_features->resize(features_count);
+  gradient_norms_all.resize(features_count);
 
   const auto [standalone_points_indices, gradients, grad_norm_mean, grad_norm_std] =
-      estimateGradients(features, cloud_full_res, indices_in_full_res, search_radius);
+      estimateGradients(features_count, cloud_full_res, features_indices_in_full_res, search_radius);
 
   const float grad_cutoff_thrd = gradients.at(std::floor(percentile * gradients.size())).second;
 
-  /* const unsigned int min_feature_count = std::floor(_features_min_count_percent * (features->size() - standalone_points.size())); */
+  /* const unsigned int min_feature_count = std::floor(_features_min_count_percent * (features_count - standalone_points.size())); */
 
   // Fill with features, which have no neighbors (standalone)
   for (unsigned int i = 0; i < standalone_points_indices.size(); i++) {
-    selected_features->at(i) = features->at(standalone_points_indices.at(i));
+    selected_features->at(i) = cloud_full_res->at(standalone_points_indices.at(i));
     gradient_norms_all.at(i) = 1.0;
   }
 
@@ -136,7 +136,7 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, std::vector<float>, float, float, fl
     // TODO: keep atleast min_feature_count
     if (grad >= grad_cutoff_thrd) {
       const int            cloud_idx  = gradients.at(i).first;
-      const pcl::PointXYZI point_grad = features->at(cloud_idx);
+      const pcl::PointXYZI point_grad = cloud_full_res->at(cloud_idx);
 
       /* point_grad.intensity       = grad; */
 
@@ -144,22 +144,22 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, std::vector<float>, float, float, fl
     }
   }
 
-  if (k != features->size()) {
+  if (k != features_count) {
     selected_features->resize(k);
   }
 
-  selected_features->header   = features->header;
+  selected_features->header   = cloud_full_res->header;
   selected_features->width    = 1;
   selected_features->height   = selected_features->points.size();
-  selected_features->is_dense = features->is_dense;
+  selected_features->is_dense = true;
 
   return std::make_tuple(selected_features, gradient_norms_all, grad_norm_mean, grad_norm_std, grad_cutoff_thrd);
 }
 /*//}*/
 
 /*//{ estimateGradients() */
-std::tuple<std::vector<int>, std::vector<std::pair<int, float>>, float, float> FeatureSelection::estimateGradients(
-    const pcl::PointCloud<PointType>::Ptr &features, const pcl::PointCloud<PointType>::Ptr &cloud_full_res,
+std::tuple<std::vector<unsigned int>, std::vector<std::pair<unsigned int, float>>, float, float> FeatureSelection::estimateGradients(
+    const unsigned int &features_count, const pcl::PointCloud<PointType>::Ptr &cloud_full_res,
     const std::vector<std::vector<unsigned int>> &indices_in_full_res, const float &search_radius) {
 
   // DEBUG
@@ -170,15 +170,14 @@ std::tuple<std::vector<int>, std::vector<std::pair<int, float>>, float, float> F
   /*   } */
   /* } */
 
-  const unsigned int cloud_size                = features->size();
-  size_t             grouped_features_count    = 0;
-  size_t             standalone_features_count = 0;
-  float              grad_norm_max             = 0.0f;
-  float              grad_norm_mean            = 0.0f;
-  float              grad_norm_std             = 0.0f;
+  unsigned int grouped_features_count    = 0;
+  unsigned int standalone_features_count = 0;
+  float        grad_norm_max             = 0.0f;
+  float        grad_norm_mean            = 0.0f;
+  float        grad_norm_std             = 0.0f;
 
-  std::vector<int>                   standalone_points_indices(cloud_size);
-  std::vector<std::pair<int, float>> gradient_norms(cloud_size);
+  std::vector<unsigned int>                   standalone_points_indices(features_count);
+  std::vector<std::pair<unsigned int, float>> gradient_norms(features_count);
 
   TicToc t_tmp;
 
@@ -200,11 +199,11 @@ std::tuple<std::vector<int>, std::vector<std::pair<int, float>>, float, float> F
 
         // Sum gradients for mean estimation
         const float grad_norm                       = (gradient / float(neighbors.size())).norm();
-        gradient_norms.at(grouped_features_count++) = std::make_pair(i, grad_norm);
+        gradient_norms.at(grouped_features_count++) = std::make_pair(idx, grad_norm);
 
         grad_norm_max = std::fmax(grad_norm_max, grad_norm);
       } else {
-        standalone_points_indices.at(standalone_features_count++) = i;
+        standalone_points_indices.at(standalone_features_count++) = idx;
       }
     }
   }
@@ -217,7 +216,7 @@ std::tuple<std::vector<int>, std::vector<std::pair<int, float>>, float, float> F
   const float time_build_tree = 0.0f;
 
   // Iterate through input cloud
-  /* for (unsigned int i = 0; i < cloud_size; i++) { */
+  /* for (unsigned int i = 0; i < features_count; i++) { */
 
   /*   const pcl::PointXYZI point = cloud->at(i); */
   /*   std::vector<int>     indices; */
@@ -246,12 +245,12 @@ std::tuple<std::vector<int>, std::vector<std::pair<int, float>>, float, float> F
   /* } */
   /*//}*/
 
-  const float time_first_iteration = t_tmp.toc() - time_build_tree;
+  /* const float time_first_iteration = t_tmp.toc() - time_build_tree; */
 
-  if (grouped_features_count != cloud_size) {
+  if (grouped_features_count != features_count) {
     gradient_norms.resize(grouped_features_count);
   }
-  if (standalone_features_count != cloud_size) {
+  if (standalone_features_count != features_count) {
     standalone_points_indices.resize(standalone_features_count);
   }
 
@@ -267,15 +266,14 @@ std::tuple<std::vector<int>, std::vector<std::pair<int, float>>, float, float> F
   for (unsigned int i = 0; i < grouped_features_count; i++) {
     grad_norm_std += std::pow(gradient_norms.at(i).second - grad_norm_mean, 2);
   }
-  grad_norm_std = std::sqrt(grad_norm_std / float(cloud_size));
+  grad_norm_std = std::sqrt(grad_norm_std / float(features_count));
 
   // Sort gradients in non-ascending order
   std::sort(gradient_norms.begin(), gradient_norms.end(), [&](const std::pair<int, float> &i, const std::pair<int, float> &j) { return i.second > j.second; });
 
-  const float time_mean_std_estimation = t_tmp.toc() - time_first_iteration;
-
-  ROS_WARN("[FeatureExtractor]: Select features timing -> finding neighbors: %0.1f ms, finding gradients: %0.1f ms, mean/std estimation: %0.1f ms",
-           time_build_tree, time_first_iteration, time_mean_std_estimation);
+  /* const float time_mean_std_estimation = t_tmp.toc() - time_first_iteration; */
+  /* ROS_WARN("[FeatureExtractor]: Select features timing -> finding neighbors: %0.1f ms, finding gradients: %0.1f ms, mean/std estimation: %0.1f ms", */
+  /*          time_build_tree, time_first_iteration, time_mean_std_estimation); */
 
   return std::make_tuple(standalone_points_indices, gradient_norms, grad_norm_mean, grad_norm_std);
 }
@@ -310,12 +308,9 @@ std::vector<PointType> FeatureSelection::getNearestNeighbors(const pcl::PointClo
   }
 
   /* ROS_DEBUG( */
-  /*     "[FeatureExtractor] getNearestNeighbors(): point index: %d, start index: %d, cloud size: %ld, row_features_idxs start: %d, row_features_idxs size: %ld,
-   * first index: %d,
-   * " */
-  /*     "last index: %d", */
-  /*     point_idx, start_idx, cloud->size(), row_features_idxs.first, row_features_idxs.second.size(), row_features_idxs.second.front(),
-   * row_features_idxs.second.back()); */
+  /*     "[FeatureExtractor] getNearestNeighbors(): point index: %d, start index: %d, cloud size: %ld, row_features_idxs (size: %ld, " */
+  /*     "first index: %d, last index: %d)", */
+  /*     point_idx, start_idx, cloud_full_res->size(), row_features_idxs.size(), row_features_idxs.front(), row_features_idxs.back()); */
 
   const PointType point = cloud_full_res->at(point_idx);
   const double    d1    = std::sqrt(point.x * point.x + point.y * point.y + point.z * point.z);

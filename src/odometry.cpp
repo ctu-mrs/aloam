@@ -348,8 +348,6 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   tf::quaternionMsgToTF(ori, tf_q);
   tf_lidar.setRotation(tf_q);
 
-  /* const auto [selected_corners, selected_surfs, resolution_corners, resolution_surfs] = _feature_selection->selectFeatures( */
-  /*     corner_points_less_sharp, surf_points_less_flat, laser_cloud_full_res, corners_indices_in_full_res, surfs_indices_in_full_res, fs_diag_msg); */
   const auto [selected_corners, selected_surfs, resolution_corners, resolution_surfs] = _feature_selection->selectFeatures(extracted_features);
 
   aloam_slam::OdometryDiagnostics odom_diag_msg;

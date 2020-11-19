@@ -249,7 +249,27 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2::ConstP
     count_corners_less_sharp += indices_corners_less_sharp.at(i).size();
     count_surfs_flat += indices_surfs_flat.at(i).size();
     count_surfs_less_flat += indices_surfs_less_flat.at(i).size();
+
   }
+
+  // DEBUG
+  if (indices_surfs_less_flat.back().back() >= laser_cloud->size()) {
+    ROS_ERROR("[FeatureExtractor] surfs less flat indices is over cloud size");
+    ros::shutdown();
+  }
+  if (indices_surfs_flat.back().back() >= laser_cloud->size()) {
+    ROS_ERROR("[FeatureExtractor] surfs flat indices is over cloud size");
+    ros::shutdown();
+  }
+  if (indices_corners_less_sharp.back().back() >= laser_cloud->size()) {
+    ROS_ERROR("[FeatureExtractor] corners less sharp indices is over cloud size");
+    ros::shutdown();
+  }
+  if (indices_corners_sharp.back().back() >= laser_cloud->size()) {
+    ROS_ERROR("[FeatureExtractor] corners sharp indices is over cloud size");
+    ros::shutdown();
+  }
+
   const float time_sorting = t_sort.toc();
   const float time_pts     = t_pts.toc();
 

@@ -38,11 +38,11 @@ private:
   /* float _features_surfs_gradient_limit_bottom; */
 
   std::tuple<pcl::PointCloud<PointType>::Ptr, std::vector<float>, float, float, float> selectFeaturesFromCloudByGradient(
-      const pcl::PointCloud<PointType>::Ptr &features, const pcl::PointCloud<PointType>::Ptr &cloud_full_res,
-      const std::vector<std::vector<unsigned int>> &indices_in_full_res, const float &search_radius, const float &percentile);
+      const unsigned int &features_count, const pcl::PointCloud<PointType>::Ptr &cloud_full_res,
+      const std::vector<std::vector<unsigned int>> &features_indices_in_full_res, const float &search_radius, const float &percentile);
 
-  std::tuple<std::vector<int>, std::vector<std::pair<int, float>>, float, float> estimateGradients(
-      const pcl::PointCloud<PointType>::Ptr &features, const pcl::PointCloud<PointType>::Ptr &cloud_full_res,
+  std::tuple<std::vector<unsigned int>, std::vector<std::pair<unsigned int, float>>, float, float> estimateGradients(
+      const unsigned int &features_count, const pcl::PointCloud<PointType>::Ptr &cloud_full_res,
       const std::vector<std::vector<unsigned int>> &indices_in_full_res, const float &search_radius);
 
 

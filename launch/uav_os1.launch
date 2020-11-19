@@ -54,7 +54,7 @@
       <param name="mapping_resolution/surfs/min" type="double" value="0.8" />
       <param name="mapping_resolution/surfs/max" type="double" value="0.8" />
       
-      <param name="feature_selection/enable" type="bool" value="false" />
+      <param name="feature_selection/enable" type="bool" value="true" />
       <param name="feature_selection/min_count_percent" type="double" value="0.2" />
       <param name="feature_selection/corners/keep_percentile" type="double" value="0.7" />
       <param name="feature_selection/surfs/keep_percentile" type="double" value="0.7" />
