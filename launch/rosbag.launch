@@ -7,6 +7,7 @@
     <arg name="bag_path" default="$(env HOME)/bag_files" />
     <!-- <arg name="bag" default="sim_byci_skala_aloam_filt.bag" /> -->
     <arg name="bag" default="stara_voda_altitude_drift_high_res_filt.bag" />
+    <!-- <arg name="bag" default="dataset_sim_beta_course_filt.bag" /> -->
 
     <!--- LOAM -->
     <include file="$(find mission_controller)/launch/slam_pipeline_os1.launch" />

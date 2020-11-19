@@ -1,8 +1,9 @@
 /* includes //{ */
 
 #include "aloam_slam/feature_extractor.h"
-#include "aloam_slam/odometry.h"
-#include "aloam_slam/mapping.h"
+/* #include "aloam_slam/feature_selection.h" */
+/* #include "aloam_slam/odometry.h" */
+/* #include "aloam_slam/mapping.h" */
 
 //}
 

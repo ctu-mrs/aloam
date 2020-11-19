@@ -1,4 +1,7 @@
 float32 time_ms
+float32 time_processing_data
+float32 time_sorting_data
+float32 time_computing_features
 uint32 cloud_points_count
 uint32 corner_points_sharp_count
 uint32 corner_points_less_sharp_count

@@ -53,12 +53,6 @@
 #include "aloam_slam/tic_toc.h"
 #include "aloam_slam/lidarFactor.hpp"
 
-#include "aloam_slam/AloamDiagnostics.h"
-#include "aloam_slam/FeatureSelectionDiagnostics.h"
-#include "aloam_slam/FeatureExtractionDiagnostics.h"
-#include "aloam_slam/OdometryDiagnostics.h"
-#include "aloam_slam/MappingDiagnostics.h"
-
 //}
 
 namespace aloam_slam

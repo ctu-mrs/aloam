@@ -1,5 +1,4 @@
 #include "aloam_slam/odometry.h"
-#include "aloam_slam/mapping.h"
 
 namespace aloam_slam
 {
@@ -63,38 +62,36 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   }
 
   /*//{ Load latest features */
-  bool has_new_data;
+  bool has_new_data = false;
   {
     std::scoped_lock lock(_mutex_extracted_features);
-    has_new_data = _has_new_data;
+    if (_extracted_features) {
+      has_new_data = _extracted_features->is_new;
+    }
   }
 
   if (!has_new_data) {
     return;
   }
 
-  pcl::PointCloud<PointType>::Ptr   corner_points_sharp;
-  pcl::PointCloud<PointType>::Ptr   corner_points_less_sharp;
-  pcl::PointCloud<PointType>::Ptr   surf_points_flat;
-  pcl::PointCloud<PointType>::Ptr   surf_points_less_flat;
-  pcl::PointCloud<PointType>::Ptr   laser_cloud_full_res;
-  aloam_slam::AloamDiagnostics::Ptr aloam_diag_msg;
+  std::shared_ptr<ExtractedFeatures> extracted_features;
   {
     std::scoped_lock lock(_mutex_extracted_features);
-    _has_new_data            = false;
-    corner_points_sharp      = _corner_points_sharp;
-    corner_points_less_sharp = _corner_points_less_sharp;
-    surf_points_flat         = _surf_points_flat;
-    surf_points_less_flat    = _surf_points_less_flat;
-    laser_cloud_full_res     = _cloud_full_res;
-    aloam_diag_msg           = _aloam_diag_msg;
+    _extracted_features->is_new = false;
+    extracted_features          = _extracted_features;
   }
+
+  pcl::PointCloud<PointType>::Ptr corner_points_sharp      = extracted_features->getSharpCorners();
+  pcl::PointCloud<PointType>::Ptr surf_points_flat         = extracted_features->getFlatSurfs();
+  pcl::PointCloud<PointType>::Ptr corner_points_less_sharp = extracted_features->getLessSharpCorners();
+  pcl::PointCloud<PointType>::Ptr surf_points_less_flat    = extracted_features->getLessFlatSurfs();
+
   /*//}*/
 
   mrs_lib::Routine profiler_routine = _profiler->createRoutine("timerOdometry", 1.0f / _scan_period_sec, 0.05, event);
 
   ros::Time stamp;
-  pcl_conversions::fromPCL(laser_cloud_full_res->header.stamp, stamp);
+  pcl_conversions::fromPCL(extracted_features->cloud_full_res->header.stamp, stamp);
 
   TicToc t_whole;
 
@@ -351,12 +348,13 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   tf::quaternionMsgToTF(ori, tf_q);
   tf_lidar.setRotation(tf_q);
 
-  aloam_slam::FeatureSelectionDiagnostics fs_diag_msg;
-  const auto [selected_corners, selected_surfs, resolution_corners, resolution_surfs] =
-      _feature_selection->selectFeatures(corner_points_less_sharp, surf_points_less_flat, fs_diag_msg);
+  /* const auto [selected_corners, selected_surfs, resolution_corners, resolution_surfs] = _feature_selection->selectFeatures( */
+  /*     corner_points_less_sharp, surf_points_less_flat, laser_cloud_full_res, corners_indices_in_full_res, surfs_indices_in_full_res, fs_diag_msg); */
+  const auto [selected_corners, selected_surfs, resolution_corners, resolution_surfs] = _feature_selection->selectFeatures(extracted_features);
 
   aloam_slam::OdometryDiagnostics odom_diag_msg;
-  odom_diag_msg.time_ms                      = t_whole.toc() - fs_diag_msg.corners_time_ms - fs_diag_msg.surfs_time_ms;
+  odom_diag_msg.time_ms = t_whole.toc() - extracted_features->aloam_diag_msg->feature_selection.corners_time_ms -
+                          extracted_features->aloam_diag_msg->feature_selection.surfs_time_ms;
   odom_diag_msg.time_feature_registration_ms = time_data_association;
   odom_diag_msg.time_solver_ms               = time_solver;
   odom_diag_msg.time_optimization_ms         = time_opt;
@@ -368,19 +366,11 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     _features_corners_last = corner_points_less_sharp;
     _features_surfs_last   = surf_points_less_flat;
 
-    _features_corners_last->header.stamp = laser_cloud_full_res->header.stamp;
-    _features_surfs_last->header.stamp   = laser_cloud_full_res->header.stamp;
-    laser_cloud_full_res->header.stamp   = laser_cloud_full_res->header.stamp;
-
-    _features_corners_last->header.frame_id = _frame_lidar;
-    _features_surfs_last->header.frame_id   = _frame_lidar;
-    laser_cloud_full_res->header.frame_id   = _frame_lidar;
-
-    aloam_diag_msg->feature_selection = fs_diag_msg;
-    aloam_diag_msg->odometry          = odom_diag_msg;
+    extracted_features->aloam_diag_msg->odometry = odom_diag_msg;
 
     /* _aloam_mapping->setData(stamp, tf_lidar, _features_corners_last, _features_surfs_last, laser_cloud_full_res); */
-    _aloam_mapping->setData(stamp, tf_lidar, selected_corners, selected_surfs, laser_cloud_full_res, aloam_diag_msg, resolution_corners, resolution_surfs);
+    _aloam_mapping->setData(stamp, tf_lidar, selected_corners, selected_surfs, extracted_features->cloud_full_res, extracted_features->aloam_diag_msg,
+                            resolution_corners, resolution_surfs);
   }
   /*//}*/
 
@@ -444,20 +434,12 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
 /*//}*/
 
 /*//{ setData() */
-void AloamOdometry::setData(pcl::PointCloud<PointType>::Ptr corner_points_sharp, pcl::PointCloud<PointType>::Ptr corner_points_less_sharp,
-                            pcl::PointCloud<PointType>::Ptr surf_points_flat, pcl::PointCloud<PointType>::Ptr surf_points_less_flat,
-                            pcl::PointCloud<PointType>::Ptr laser_cloud_full_res, aloam_slam::AloamDiagnostics::Ptr aloam_diag_msg) {
+void AloamOdometry::setData(std::shared_ptr<ExtractedFeatures> extracted_features) {
 
   mrs_lib::Routine profiler_routine = _profiler->createRoutine("aloamOdometrySetData");
 
   std::scoped_lock lock(_mutex_extracted_features);
-  _has_new_data             = true;
-  _corner_points_sharp      = corner_points_sharp;
-  _corner_points_less_sharp = corner_points_less_sharp;
-  _surf_points_flat         = surf_points_flat;
-  _surf_points_less_flat    = surf_points_less_flat;
-  _cloud_full_res           = laser_cloud_full_res;
-  _aloam_diag_msg           = aloam_diag_msg;
+  _extracted_features = extracted_features;
 }
 /*//}*/
 

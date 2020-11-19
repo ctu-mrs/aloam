@@ -1,7 +1,7 @@
-#ifndef ALOAM_ODOMETRY_H
-#define ALOAM_ODOMETRY_H
+#pragma once
 
-#include "aloam_slam/mapping.h"
+/* #include "aloam_slam/feature_extractor.h" */
+/* #include "aloam_slam/mapping.h" */
 #include "aloam_slam/feature_selection.h"
 
 #include <tuple>
@@ -9,6 +9,7 @@
 
 namespace aloam_slam
 {
+
 class AloamOdometry {
 
 public:
@@ -18,9 +19,7 @@ public:
 
   bool is_initialized = false;
 
-  void setData(pcl::PointCloud<PointType>::Ptr corner_points_sharp, pcl::PointCloud<PointType>::Ptr corner_points_less_sharp,
-               pcl::PointCloud<PointType>::Ptr surf_points_flat, pcl::PointCloud<PointType>::Ptr surf_points_less_flat,
-               pcl::PointCloud<PointType>::Ptr laser_cloud_full_res, aloam_slam::AloamDiagnostics::Ptr aloam_diag_msg);
+  void setData(std::shared_ptr<ExtractedFeatures> extracted_features);
 
 private:
   // member objects
@@ -41,14 +40,8 @@ private:
   Eigen::Vector3d    _t_w_curr;
 
   // Feature extractor newest data
-  std::mutex                        _mutex_extracted_features;
-  bool                              _has_new_data = false;
-  pcl::PointCloud<PointType>::Ptr   _corner_points_sharp;
-  pcl::PointCloud<PointType>::Ptr   _corner_points_less_sharp;
-  pcl::PointCloud<PointType>::Ptr   _surf_points_flat;
-  pcl::PointCloud<PointType>::Ptr   _surf_points_less_flat;
-  pcl::PointCloud<PointType>::Ptr   _cloud_full_res;
-  aloam_slam::AloamDiagnostics::Ptr _aloam_diag_msg;
+  std::mutex                         _mutex_extracted_features;
+  std::shared_ptr<ExtractedFeatures> _extracted_features;
 
   // publishers and subscribers
   ros::Publisher _pub_odometry_local;
@@ -85,5 +78,5 @@ private:
   void TransformToStart(PointType const *const pi, PointType *const po);
   void TransformToEnd(PointType const *const pi, PointType *const po);
 };
+
 }  // namespace aloam_slam
-#endif

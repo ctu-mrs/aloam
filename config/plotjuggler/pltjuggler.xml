@@ -1,0 +1,192 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<root version="2.3.8">
+ <tabbed_widget parent="main_window" name="Main Window">
+  <plotmatrix tab_name="feature extraction" rows="2" columns="1">
+   <plot col="0" row="0" style="Lines">
+    <range bottom="0.339302" right="26.265064" top="19.604266" left="6.304804"/>
+    <limitY/>
+    <curve B="40" G="39" custom_transform="noTransform" R="214" name="/uav68/aloam/diag/feature_extraction/time_computing_features"/>
+    <curve B="180" G="119" custom_transform="noTransform" R="31" name="/uav68/aloam/diag/feature_extraction/time_ms"/>
+    <curve B="56" G="201" custom_transform="noTransform" R="26" name="/uav68/aloam/diag/feature_extraction/time_processing_data"/>
+    <curve B="14" G="127" custom_transform="noTransform" R="255" name="/uav68/aloam/diag/feature_extraction/time_sorting_data"/>
+    <transform value="noTransform"/>
+   </plot>
+   <plot col="0" row="1" style="Lines">
+    <range bottom="1109.975000" right="26.265064" top="16693.025000" left="6.304804"/>
+    <limitY/>
+    <curve B="193" G="76" custom_transform="noTransform" R="241" name="/uav68/aloam/diag/feature_extraction/cloud_points_count"/>
+    <curve B="189" G="103" custom_transform="noTransform" R="148" name="/uav68/aloam/diag/feature_extraction/corner_points_less_sharp_count"/>
+    <curve B="207" G="190" custom_transform="noTransform" R="23" name="/uav68/aloam/diag/feature_extraction/surf_points_less_flat_count"/>
+    <transform value="noTransform"/>
+   </plot>
+  </plotmatrix>
+  <plotmatrix tab_name="feature selection" rows="3" columns="1">
+   <plot col="0" row="0" style="Lines">
+    <range bottom="1059.550000" right="26.265064" top="9058.450000" left="6.304804"/>
+    <limitY/>
+    <curve B="34" G="189" custom_transform="noTransform" R="188" name="/uav68/aloam/diag/feature_selection/number_of_corners_in"/>
+    <curve B="180" G="119" custom_transform="noTransform" R="31" name="/uav68/aloam/diag/feature_selection/number_of_corners_out"/>
+    <curve B="40" G="39" custom_transform="noTransform" R="214" name="/uav68/aloam/diag/feature_selection/number_of_features_in"/>
+    <curve B="56" G="201" custom_transform="noTransform" R="26" name="/uav68/aloam/diag/feature_selection/number_of_features_out"/>
+    <curve B="14" G="127" custom_transform="noTransform" R="255" name="/uav68/aloam/diag/feature_selection/number_of_surfs_in"/>
+    <curve B="193" G="76" custom_transform="noTransform" R="241" name="/uav68/aloam/diag/feature_selection/number_of_surfs_out"/>
+    <transform value="noTransform"/>
+   </plot>
+   <plot col="0" row="1" style="Lines">
+    <range bottom="0.232260" right="26.265064" top="0.470796" left="6.304804"/>
+    <limitY/>
+    <curve B="189" G="103" custom_transform="noTransform" R="148" name="/uav68/aloam/diag/feature_selection/corners_gradient_mean"/>
+    <curve B="34" G="189" custom_transform="noTransform" R="188" name="/uav68/aloam/diag/feature_selection/surfs_gradient_mean"/>
+    <transform value="noTransform"/>
+   </plot>
+   <plot col="0" row="2" style="Lines">
+    <range bottom="1.812213" right="26.265064" top="64.266385" left="6.304804"/>
+    <limitY/>
+    <curve B="40" G="39" custom_transform="noTransform" R="214" name="/uav68/aloam/diag/feature_selection/corners_time_ms"/>
+    <curve B="180" G="119" custom_transform="noTransform" R="31" name="/uav68/aloam/diag/feature_selection/surfs_time_ms"/>
+    <transform value="noTransform"/>
+   </plot>
+  </plotmatrix>
+  <plotmatrix tab_name="mapping" rows="2" columns="1">
+   <plot col="0" row="0" style="Lines">
+    <range bottom="-2.347228" right="30.774103" top="103.237916" left="10.822462"/>
+    <limitY/>
+    <curve B="40" G="39" custom_transform="noTransform" R="214" name="/uav68/aloam/diag/mapping/time_data_preparation_ms"/>
+    <curve B="180" G="119" custom_transform="noTransform" R="31" name="/uav68/aloam/diag/mapping/time_kdtree_init_ms"/>
+    <curve B="34" G="189" custom_transform="noTransform" R="188" name="/uav68/aloam/diag/mapping/time_map_adding_points_ms"/>
+    <curve B="189" G="103" custom_transform="noTransform" R="148" name="/uav68/aloam/diag/mapping/time_map_filtering_ms"/>
+    <curve B="193" G="76" custom_transform="noTransform" R="241" name="/uav68/aloam/diag/mapping/time_map_optimization_ms"/>
+    <curve B="56" G="201" custom_transform="noTransform" R="26" name="/uav68/aloam/diag/mapping/time_ms"/>
+    <transform value="noTransform"/>
+   </plot>
+   <plot col="0" row="1" style="Lines">
+    <range bottom="1.812213" right="30.774103" top="64.266385" left="10.822462"/>
+    <limitY/>
+    <curve B="40" G="39" custom_transform="noTransform" R="214" name="/uav68/aloam/diag/feature_selection/corners_time_ms"/>
+    <curve B="180" G="119" custom_transform="noTransform" R="31" name="/uav68/aloam/diag/feature_selection/surfs_time_ms"/>
+    <transform value="noTransform"/>
+   </plot>
+  </plotmatrix>
+  <plotmatrix tab_name="plot" rows="2" columns="1">
+   <plot col="0" row="0" style="Lines">
+    <range bottom="105.472100" right="26.265064" top="196.991081" left="6.304804"/>
+    <limitY/>
+    <curve B="56" G="201" custom_transform="noTransform" R="26" name="/uav68/aloam/diag/total_time_ms"/>
+    <transform value="noTransform"/>
+   </plot>
+   <plot col="0" row="1" style="Lines">
+    <range bottom="-0.100000" right="26.265064" top="0.100000" left="6.304804"/>
+    <limitY/>
+    <curve B="14" G="127" custom_transform="noTransform" R="255" name="/uav68/aloam/diag/total_memsize_kb"/>
+    <transform value="noTransform"/>
+   </plot>
+  </plotmatrix>
+  <currentPlotMatrix index="2"/>
+ </tabbed_widget>
+ <use_relative_time_offset enabled="1"/>
+ <!-- - - - - - - - - - - - - - - -->
+ <!-- - - - - - - - - - - - - - - -->
+ <Plugins>
+  <plugin ID="DataLoad CSV">
+   <default time_axis=""/>
+  </plugin>
+  <plugin ID="DataLoad ROS bags">
+   <use_header_stamp value="false"/>
+   <use_renaming_rules value="true"/>
+   <discard_large_arrays value="true"/>
+   <max_array_size value="100"/>
+  </plugin>
+  <plugin ID="DataLoad ULog"/>
+  <plugin ID="ROS Topic Subscriber">
+   <use_header_stamp value="false"/>
+   <use_renaming_rules value="true"/>
+   <discard_large_arrays value="true"/>
+   <max_array_size value="100"/>
+  </plugin>
+  <plugin ID="ROS /rosout Visualization" status="idle"/>
+  <plugin ID="ROS Topic Re-Publisher" status="idle"/>
+ </Plugins>
+ <!-- - - - - - - - - - - - - - - -->
+ <previouslyLoaded_Datafiles/>
+ <previouslyLoaded_Streamer name="ROS Topic Subscriber"/>
+ <!-- - - - - - - - - - - - - - - -->
+ <customMathEquations/>
+ <snippets>
+  <snippet language="JS" name="1st_derivative">
+   <global>var prevX = 0
+var prevY = 0</global>
+   <equation>dx = time - prevX
+dy = value - prevY
+prevX = time
+prevY = value
+
+return dy/dx</equation>
+  </snippet>
+  <snippet language="JS" name="1st_order_lowpass">
+   <global>var prevY = 0
+var alpha = 0.1</global>
+   <equation>prevY = alpha * value + (1.-alpha) * prevY
+
+return prevY</equation>
+  </snippet>
+  <snippet language="JS" name="2D_velocity">
+   <global>var prev_x = 0
+var prev_y = 0
+var prev_t = 0</global>
+   <equation>X = $$your_odometry/position/x$$
+Y = $$your_odometry/position/y$$
+
+var dist = sqrt( (X-prev_x)*(X-prev_x) + (Y-prev_y)*(Y-prev_y) )
+var dT = time - prev_t
+
+prev_x = X
+prev_y = Y
+prev_t = time
+
+return dist / dT</equation>
+  </snippet>
+  <snippet language="JS" name="average_two_curves">
+   <global></global>
+   <equation>a = $$PLOT_A$$
+b = $$PLOT_B$$
+
+return (a+b)/2</equation>
+  </snippet>
+  <snippet language="JS" name="integral">
+   <global>var integral = 0</global>
+   <equation>integral += value
+return integral</equation>
+  </snippet>
+  <snippet language="JS" name="rad_to_deg">
+   <global></global>
+   <equation>return value*180/3.1417</equation>
+  </snippet>
+  <snippet language="JS" name="remove_offset">
+   <global>var is_first = true
+var first_value = 0</global>
+   <equation>if (is_first)
+{
+  is_first = false
+  first_value = value
+}
+
+return value - first_value</equation>
+  </snippet>
+  <snippet language="JS" name="yaw_from_quaternion">
+   <global>// source: https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles
+
+function quaternionToYaw(x, y, z, w)
+{
+  // yaw (z-axis rotation)
+  t1 = 2.0 * (w * z + x * y);
+  t2 = 1.0 - 2.0 * (y * y + z * z);
+  yaw = Math.atan2(t1, t2);
+
+  return yaw
+}</global>
+   <equation>return quaternionToYaw(x, y, z, w);</equation>
+  </snippet>
+ </snippets>
+ <!-- - - - - - - - - - - - - - - -->
+</root>
+

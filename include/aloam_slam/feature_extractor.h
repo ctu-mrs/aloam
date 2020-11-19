@@ -1,8 +1,7 @@
-#ifndef ALOAM_FEATURE_EXTRACTOR_H
-#define ALOAM_FEATURE_EXTRACTOR_H
+#pragma once
 
 #include "aloam_slam/odometry.h"
-#include "aloam_slam/mapping.h"
+/* #include "aloam_slam/mapping.h" */
 
 #include <pcl/filters/extract_indices.h>
 #include <pcl/common/centroid.h>
@@ -12,6 +11,7 @@
 
 namespace aloam_slam
 {
+
 class FeatureExtractor {
 
 public:
@@ -44,20 +44,19 @@ private:
   bool _data_have_ring_field;
 
   void parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr &cloud_processed,
-                             std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices, float &processing_time);
+                             std::vector<unsigned int> &rows_start_indices, std::vector<unsigned int> &rows_end_indices, float &processing_time);
   void parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr &cloud_processed,
-                                std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices, float &processing_time);
+                                std::vector<unsigned int> &rows_start_indices, std::vector<unsigned int> &rows_end_indices, float &processing_time);
 
   void removeNaNFromPointCloud(const pcl::PointCloud<ouster_ros::OS1::PointOS1>::Ptr cloud_in, pcl::PointCloud<ouster_ros::OS1::PointOS1>::Ptr &cloud_out,
                                std::vector<int> &indices);
 
   bool hasField(const std::string field, const sensor_msgs::PointCloud2::ConstPtr &msg);
 
-  void applyVoxelGridFilter(const pcl::PointCloud<PointType>::Ptr &cloud_in, const float &res_x, const float &res_y, const float &res_z,
-                            pcl::PointCloud<PointType> &cloud_out, std::vector<int> &indices_out);
+  void applyVoxelGridFilter(const pcl::PointCloud<PointType>::Ptr &cloud_in, const std::vector<unsigned int> &cloud_indices_in, const float &res_x,
+                            const float &res_y, const float &res_z, pcl::PointCloud<PointType> &cloud_out, std::vector<unsigned int> &cloud_indices_out);
 
   // callbacks
   void callbackLaserCloud(const sensor_msgs::PointCloud2::ConstPtr &laserCloudMsg);
 };
 }  // namespace aloam_slam
-#endif
