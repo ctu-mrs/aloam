@@ -16,6 +16,8 @@ public:
 
   bool is_initialized = false;
 
+  std::shared_ptr<LUT> lut;
+
 private:
   ros::Publisher _pub_features_corners_selected;
   ros::Publisher _pub_features_surfs_selected;
@@ -33,7 +35,7 @@ private:
   float _surfs_keep_percentile;
 
   const double       HFOV_RESOLUTION = 0.00613592315;
-  const double       VFOV_RESOLUTION = 0.036215582;
+  const double       VFOV_RESOLUTION = 0.03862995413;
   const unsigned int ROW_SIZE        = 1024;
   /* float _features_corners_gradient_limit_upper; */
   /* float _features_corners_gradient_limit_bottom; */

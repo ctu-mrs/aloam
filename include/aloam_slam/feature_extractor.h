@@ -6,7 +6,6 @@
 #include <pcl/filters/extract_indices.h>
 #include <pcl/common/centroid.h>
 #include <pcl/common/common.h>
-#include <os1_driver/ouster_ros/point_os1.h>
 #include <unordered_map>
 
 namespace aloam_slam
@@ -26,6 +25,7 @@ private:
   ros::Subscriber                    _sub_laser_cloud;
 
   std::shared_ptr<AloamOdometry> _odometry;
+  std::shared_ptr<LUT>           _lut;
 
   // member variables
   std::string _frame_lidar;
@@ -43,15 +43,14 @@ private:
 
   bool _data_have_ring_field;
 
+
   void parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr &cloud_processed,
-                             std::vector<unsigned int> &rows_start_indices, std::vector<unsigned int> &rows_end_indices, float &processing_time,
-                             std::vector<std::unordered_map<unsigned int, unsigned int>> &indices_in_unprocessed_cloud);
+                             std::vector<unsigned int> &rows_start_indices, std::vector<unsigned int> &rows_end_indices, float &processing_time);
   void parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr &cloud_processed,
-                                std::vector<unsigned int> &rows_start_indices, std::vector<unsigned int> &rows_end_indices, float &processing_time,
-                                std::vector<std::unordered_map<unsigned int, unsigned int>> &indices_in_unprocessed_cloud);
+                                std::vector<unsigned int> &rows_start_indices, std::vector<unsigned int> &rows_end_indices, float &processing_time);
 
   void removeNaNFromPointCloud(const pcl::PointCloud<ouster_ros::OS1::PointOS1>::Ptr cloud_in, pcl::PointCloud<ouster_ros::OS1::PointOS1>::Ptr &cloud_out,
-                               std::vector<int> &indices);
+                               std::vector<unsigned int> &indices);
 
   bool hasField(const std::string field, const sensor_msgs::PointCloud2::ConstPtr &msg);
 

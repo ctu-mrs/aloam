@@ -21,7 +21,7 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoa
 
   ros::Time::waitForValid();
 
-  _feature_selection = std::make_shared<FeatureSelection>(parent_nh, param_loader);
+  feature_selection = std::make_shared<FeatureSelection>(parent_nh, param_loader);
 
   // Objects initialization
   _tf_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>();
@@ -348,7 +348,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   tf::quaternionMsgToTF(ori, tf_q);
   tf_lidar.setRotation(tf_q);
 
-  const auto [selected_corners, selected_surfs, resolution_corners, resolution_surfs] = _feature_selection->selectFeatures(extracted_features);
+  const auto [selected_corners, selected_surfs, resolution_corners, resolution_surfs] = feature_selection->selectFeatures(extracted_features);
 
   aloam_slam::OdometryDiagnostics odom_diag_msg;
   odom_diag_msg.time_ms = t_whole.toc() - extracted_features->aloam_diag_msg->feature_selection.corners_time_ms -

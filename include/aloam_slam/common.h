@@ -40,6 +40,8 @@
 
 #include <pcl/point_types.h>
 
+#include <os1_driver/ouster_ros/point_os1.h>
+
 #include "aloam_slam/AloamDiagnostics.h"
 #include "aloam_slam/FeatureSelectionDiagnostics.h"
 #include "aloam_slam/FeatureExtractionDiagnostics.h"
@@ -59,15 +61,14 @@ inline double deg2rad(double degrees) {
 /*//{ struct ExtractedFeatures */
 struct ExtractedFeatures
 {
-  bool                                                        is_new = true;
-  pcl::PointCloud<PointType>::Ptr                             cloud_full_res;
-  std::vector<unsigned int>                                   rows_start_idxs;
-  std::vector<std::vector<unsigned int>>                      indices_corners_sharp;
-  std::vector<std::vector<unsigned int>>                      indices_surfs_flat;
-  std::vector<std::vector<unsigned int>>                      indices_corners_less_sharp;
-  std::vector<std::vector<unsigned int>>                      indices_surfs_less_flat;
-  std::vector<std::unordered_map<unsigned int, unsigned int>> unprocessed_cloud_indices_row_maps;
-  aloam_slam::AloamDiagnostics::Ptr                           aloam_diag_msg;
+  bool                                   is_new = true;
+  pcl::PointCloud<PointType>::Ptr        cloud_full_res;
+  std::vector<unsigned int>              rows_start_idxs;
+  std::vector<std::vector<unsigned int>> indices_corners_sharp;
+  std::vector<std::vector<unsigned int>> indices_surfs_flat;
+  std::vector<std::vector<unsigned int>> indices_corners_less_sharp;
+  std::vector<std::vector<unsigned int>> indices_surfs_less_flat;
+  aloam_slam::AloamDiagnostics::Ptr      aloam_diag_msg;
 
   pcl::PointCloud<PointType>::Ptr getSharpCorners() {
     if (!features_corners_sharp) {
@@ -120,5 +121,142 @@ private:
 
     return cloud;
   }
+};
+/*//}*/
+
+/*//{ struct LUT */
+struct LUT
+{
+
+  unsigned int width;
+  unsigned int height;
+  float        vfov;
+
+  void build() {
+
+    if (_is_filled) {
+      return;
+    }
+
+    resolution_vertical   = vfov / float(height - 1);
+    resolution_horizontal = 2.0f * M_PI / float(width);
+
+    first_row_elevation = -vfov / 2.0f;
+
+    table_el_az.resize(height, std::vector<std::pair<float, float>>(width));
+    table_from_cloud.resize(width * height);
+
+    unsigned int cloud_idx = 0;
+
+    // Precompute possible elevations
+    std::vector<float> elevations(height);
+    for (unsigned int i = 0; i < height; i++) {
+      elevations.at(i) = first_row_elevation + float(i) * resolution_vertical;
+    }
+
+    for (int j = width - 1; j >= 0; j--) {
+      const float az = float(j) * resolution_horizontal;
+
+      for (unsigned int i = 0; i < height; i++) {
+        const float el = elevations.at(i);
+
+        table_el_az.at(i).at(j) = std::make_pair(el, az);
+
+        const std::pair<unsigned int, unsigned int> idx_pair = std::make_pair(i, j);
+        table_from_cloud.at(cloud_idx)                       = idx_pair;
+        table_to_cloud[idx_pair]                             = cloud_idx;
+
+        cloud_idx++;
+      }
+    }
+
+    _is_filled = true;
+
+    // DEBUG
+    /* unsigned int prev_r = -1; */
+    /* unsigned int prev_c = -1; */
+    /* for (int i = 0; i < cloud->size(); i++) { */
+
+    /*   if (cloud->points.at(i).ring % 4 != 0) { */
+    /*     continue; */
+    /*   } */
+
+    /*   const auto point = cloud->at(i); */
+    /*   if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z)) { */
+    /*     const float el = std::atan2(point.z, point.x); */
+    /*     const float az = std::atan2(point.y, point.x); */
+
+    /*     /1* const unsigned int r = getRow(el); *1/ */
+    /*     const unsigned int r = cloud->points.at(i).ring / 4; */
+    /*     const unsigned int c = getColumn(az); */
+
+    /*     /1* ROS_DEBUG("el|az : %0.1f|%0.1f -- r|c : %d|%d", el, az, r, c); *1/ */
+    /*     if (prev_r == r) { */
+    /*       ROS_DEBUG("c++:      r|c : %d|%d -> %d|%d", prev_r, prev_c, r, c); */
+    /*     } else if (prev_c == c) { */
+    /*       ROS_DEBUG("r++:      r|c : %d|%d -> %d|%d", prev_r, prev_c, r, c); */
+    /*     } else { */
+    /*       ROS_DEBUG("r++, c++: r|c : %d|%d -> %d|%d", prev_r, prev_c, r, c); */
+    /*     } */
+
+    /*     prev_r = r; */
+    /*     prev_c = c; */
+    /*   } */
+    /* } */
+  }
+
+  std::pair<unsigned int, unsigned int> getIdxs(const unsigned int cloud_idx) {
+    return table_from_cloud.at(cloud_idx);
+  }
+
+  float getElevation(const unsigned int &r, const unsigned int &c) {
+    return table_el_az.at(r).at(c).first;
+  }
+
+  float getAzimuth(const unsigned int &r, const unsigned int &c) {
+    return table_el_az.at(r).at(c).second;
+  }
+
+  float getElevation(const unsigned int &cloud_idx) {
+    const auto idxs = getIdxs(cloud_idx);
+    return getElevation(idxs.first, idxs.second);
+  }
+
+  float getAzimuth(const unsigned int &cloud_idx) {
+    const auto idxs = getIdxs(cloud_idx);
+    return getAzimuth(idxs.first, idxs.second);
+  }
+
+  unsigned int getCloudIdx(const unsigned int &r, const unsigned int &c) {
+    return table_to_cloud[std::make_pair(r, c)];
+  }
+
+  unsigned int getRow(const float &elevation) {
+    return std::roundf(elevation / resolution_vertical);
+  }
+
+  unsigned int getColumn(const float &azimuth) {
+    int c = std::roundf(azimuth / resolution_horizontal);
+    if (c < 0) {
+      c += width;
+    }
+    return (unsigned int)c;
+  }
+
+private:
+  bool _is_filled = false;
+
+  float resolution_horizontal;
+  float resolution_vertical;
+  float first_row_elevation;
+
+  /* 2d vector of elevation/azimuth pairs */
+  std::vector<std::vector<std::pair<float, float>>> table_el_az;
+
+  // TODO: table_to_cloud can be also vectorized with a known width*height conversion
+  /* cloud index -> lut table position */
+  std::vector<std::pair<unsigned int, unsigned int>> table_from_cloud;
+  /* lut table position -> cloud index */
+  std::map<std::pair<unsigned int, unsigned int>, unsigned int> table_to_cloud;
 };
 /*//}*/

@@ -21,11 +21,12 @@ public:
 
   void setData(std::shared_ptr<ExtractedFeatures> extracted_features);
 
+  std::shared_ptr<FeatureSelection> feature_selection;
+
 private:
   // member objects
   std::shared_ptr<mrs_lib::Profiler>             _profiler;
   std::shared_ptr<AloamMapping>                  _aloam_mapping;
-  std::shared_ptr<FeatureSelection>              _feature_selection;
   std::shared_ptr<tf2_ros::TransformBroadcaster> _tf_broadcaster;
   ros::Timer                                     _timer_odometry_loop;
 

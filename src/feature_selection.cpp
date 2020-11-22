@@ -183,8 +183,8 @@ std::tuple<std::vector<unsigned int>, std::vector<std::pair<unsigned int, float>
 
   /* const std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> neighbors = */
   /*     getNeighbors(extracted_features, features_indices_in_full_res, search_radius); */
-  const std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> neighbors =
-      getNeighborsByBB(extracted_features, features_indices_in_full_res, search_radius);
+  std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> neighbors = getNeighborsByBB(extracted_features, features_indices_in_full_res, search_radius);
+  ROS_ERROR("kun");
 
   // Iterate through input cloud
   for (unsigned int i = 0; i < features_indices_in_full_res.size(); i++) {
@@ -196,16 +196,16 @@ std::tuple<std::vector<unsigned int>, std::vector<std::pair<unsigned int, float>
       const unsigned int idx = features_indices_in_full_res.at(i).at(j);
 
       // Compute gradient
-      if (neighbors.at(idx).size() > 0) {
+      if (neighbors[idx].size() > 0) {
         const Eigen::Vector3f point_xyz = Eigen::Vector3f(extracted_features->cloud_full_res->at(idx).x, extracted_features->cloud_full_res->at(idx).y,
                                                           extracted_features->cloud_full_res->at(idx).z);
         Eigen::Vector3f       gradient  = Eigen::Vector3f::Zero();
-        for (const auto &neighbor : neighbors.at(idx)) {
+        for (const auto &neighbor : neighbors[idx]) {
           gradient += neighbor - point_xyz;
         }
 
         // Sum gradients for mean estimation
-        const float grad_norm                       = (gradient / float(neighbors.at(idx).size())).norm();
+        const float grad_norm                       = (gradient / float(neighbors[idx].size())).norm();
         gradient_norms.at(grouped_features_count++) = std::make_pair(idx, grad_norm);
 
         grad_norm_max = std::fmax(grad_norm_max, grad_norm);
@@ -277,17 +277,15 @@ std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> FeatureSelection:
 
   for (unsigned int r = 0; r < rows; r++) {
 
-    const std::unordered_map<unsigned int, unsigned int> unprocessed_cloud_indices = extracted_features->unprocessed_cloud_indices_row_maps.at(r);
+    ROS_ERROR("row: %d", r);
 
     for (unsigned int p = 0; p < features_indices_in_full_res.at(r).size(); p++) {
 
-      const unsigned int point_idx                     = features_indices_in_full_res.at(r).at(p);
-      const unsigned int point_idx_in_unprocessed_data = unprocessed_cloud_indices.at(point_idx);
+      const unsigned int                          point_idx  = features_indices_in_full_res.at(r).at(p);
+      const std::pair<unsigned int, unsigned int> point_idxs = lut->getIdxs(point_idx);
 
       const Eigen::Vector3f point = Eigen::Vector3f(cloud_full_res->at(point_idx).x, cloud_full_res->at(point_idx).y, cloud_full_res->at(point_idx).z);
       const float           R     = point.norm();
-
-      ROS_DEBUG("neighbors of point: %0.2f, %0.2f, %0.2f", point.x(), point.y(), point.z());
 
       const unsigned int max_h_idx = std::floor(max_range / (sin_hfov * R));
       const unsigned int max_v_idx = std::floor(max_range / (sin_vfov * R));
@@ -295,35 +293,46 @@ std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> FeatureSelection:
       const unsigned int row_min = std::max(0, int(r - max_v_idx));
       const unsigned int row_max = std::min(int(rows), int(r + max_v_idx));
 
+      ROS_DEBUG("point: (%0.2f, %0.2f, %0.2f), r: %d, p: %d, point_idx: %d", point.x(), point.y(), point.z(), r, p, point_idx);
+      ROS_ERROR("row min: %d, row max: %d, max_h_idx: %d, max_v_idx: %d", row_min, row_max, max_h_idx, max_v_idx);
+
       for (unsigned int i = row_min; i < row_max; i++) {
 
-        const unsigned int start_col_idx = point_idx_in_unprocessed_data + (i - r) * ROW_SIZE;
+        const unsigned int start_col_idx = point_idxs.second + (i - r) * ROW_SIZE;
 
         const unsigned int col_min = std::max(0, int(start_col_idx - max_h_idx));
         const unsigned int col_max = std::min(int(features_indices_in_full_res.at(i).size()), int(start_col_idx + max_h_idx));
 
+        ROS_ERROR("start_col_idx: %d, col min: %d, col max: %d", start_col_idx, col_min, col_max);
+
         for (unsigned int j = col_min; j < col_max; j++) {
+
+          /* ROS_ERROR("i: %d, j: %d", i, j); */
 
           if (i == r && j == p) {
             continue;
           }
 
-          for (const auto &it : extracted_features->unprocessed_cloud_indices_row_maps.at(i)) {
-            if (it.second == j) {
-              const Eigen::Vector3f neighbor = Eigen::Vector3f(cloud_full_res->at(it.first).x, cloud_full_res->at(it.first).y, cloud_full_res->at(it.first).z);
-              if ((neighbor - point).norm() < max_range) {
-                // TODO: neighbor can set this point as well, but we have to make sure that it won't be two times in the output vector
-                ROS_DEBUG("- i: %d, j: %d: %0.2f, %0.2f, %0.2f", i, j, neighbor.x(), neighbor.y(), neighbor.z());
-                neighbors_map.at(point_idx).push_back(neighbor);
-              }
-              break;
-            }
-          }
+          const unsigned int neighbor_idx = lut->getCloudIdx(i, j);
+
+          /* for (const auto &it : lut->table_to_cloud) { */
+          /*   if (it.second == j) { */
+          /*     const Eigen::Vector3f neighbor = Eigen::Vector3f(cloud_full_res->at(it.first).x, cloud_full_res->at(it.first).y, cloud_full_res->at(it.first).z); */
+
+          /*     if ((neighbor - point).norm() < max_range) { */
+          /*       // TODO: neighbor can set this point as well, but we have to make sure that it won't be two times in the output vector */
+          /*       ROS_DEBUG("- i: %d, j: %d: %0.2f, %0.2f, %0.2f", i, j, neighbor.x(), neighbor.y(), neighbor.z()); */
+          /*       neighbors_map[point_idx].push_back(neighbor); */
+          /*     } */
+          /*     break; */
+          /*   } */
+          /* } */
         }
       }
     }
   }
 
+  ROS_ERROR("pes");
   return neighbors_map;
 }
 /*//}*/
@@ -407,9 +416,8 @@ void FeatureSelection::fillColNeighbors(std::unordered_map<unsigned int, std::ve
 
     for (unsigned int i = 0; i < features_indices_in_full_res.at(r).size(); i++) {
 
-      const unsigned int point_idx                     = features_indices_in_full_res.at(r).at(i);
-      const unsigned int point_idx_in_unprocessed_data = extracted_features->unprocessed_cloud_indices_row_maps.at(r).at(point_idx);
-      const PointType    point                         = extracted_features->cloud_full_res->at(point_idx);
+      const unsigned int point_idx = features_indices_in_full_res.at(r).at(i);
+      const PointType    point     = extracted_features->cloud_full_res->at(point_idx);
 
       // go to upper rows
       if (r < number_of_rows - 1) {
@@ -418,7 +426,6 @@ void FeatureSelection::fillColNeighbors(std::unordered_map<unsigned int, std::ve
           const unsigned int start_idx_in_unprocessed_data = point_idx_in_unprocessed_data + ROW_SIZE;
 
           /* unsigned int start_idx = -1; */
-          /* for (const auto &it : extracted_features->unprocessed_cloud_indices_row_maps.at(r + 1)) { */
           /*   if () { */
           /*   } */
           /* } */
@@ -427,7 +434,6 @@ void FeatureSelection::fillColNeighbors(std::unordered_map<unsigned int, std::ve
            * wrong!"); */
           /*   return; */
           /* } */
-          /* const unsigned int point_idx_in_unprocessed_data = extracted_features->unprocessed_cloud_indices_row_maps.at(r).at(point_idx); */
           // TODO inverse map find
         }
       }
