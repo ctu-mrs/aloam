@@ -91,7 +91,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   mrs_lib::Routine profiler_routine = _profiler->createRoutine("timerOdometry", 1.0f / _scan_period_sec, 0.05, event);
 
   ros::Time stamp;
-  pcl_conversions::fromPCL(extracted_features->cloud_full_res->header.stamp, stamp);
+  pcl_conversions::fromPCL(extracted_features->cloud_raw->header.stamp, stamp);
 
   TicToc t_whole;
 
@@ -367,7 +367,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     extracted_features->aloam_diag_msg->odometry = odom_diag_msg;
 
     /* _aloam_mapping->setData(stamp, tf_lidar, _features_corners_last, _features_surfs_last, laser_cloud_full_res); */
-    _aloam_mapping->setData(stamp, tf_lidar, selected_corners, selected_surfs, extracted_features->cloud_full_res, extracted_features->aloam_diag_msg,
+    _aloam_mapping->setData(stamp, tf_lidar, selected_corners, selected_surfs, extracted_features->cloud_filt, extracted_features->aloam_diag_msg,
                             resolution_corners, resolution_surfs);
   }
   /*//}*/

@@ -88,7 +88,7 @@ private:
   tf::Transform                     _aloam_odometry;
   pcl::PointCloud<PointType>::Ptr   _features_corners_last;
   pcl::PointCloud<PointType>::Ptr   _features_surfs_last;
-  pcl::PointCloud<PointType>::Ptr   _cloud_full_res;
+  pcl::PointCloud<PointType>::Ptr   _cloud_filt;
   aloam_slam::AloamDiagnostics::Ptr _aloam_diag_msg;
   float                             _resolution_corners;
   float                             _resolution_surfs;

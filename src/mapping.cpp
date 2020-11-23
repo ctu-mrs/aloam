@@ -63,7 +63,7 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
 
 /*//{ setData() */
 void AloamMapping::setData(ros::Time time_of_data, tf::Transform aloam_odometry, pcl::PointCloud<PointType>::Ptr features_corners_last,
-                           pcl::PointCloud<PointType>::Ptr features_surfs_last, pcl::PointCloud<PointType>::Ptr cloud_full_res,
+                           pcl::PointCloud<PointType>::Ptr features_surfs_last, pcl::PointCloud<PointType>::Ptr cloud_filt,
                            aloam_slam::AloamDiagnostics::Ptr aloam_diag_msg, const float resolution_corners, const float resolution_surfs) {
 
   mrs_lib::Routine profiler_routine = _profiler->createRoutine("aloamMappingSetData");
@@ -74,7 +74,7 @@ void AloamMapping::setData(ros::Time time_of_data, tf::Transform aloam_odometry,
   _aloam_odometry        = aloam_odometry;
   _features_corners_last = features_corners_last;
   _features_surfs_last   = features_surfs_last;
-  _cloud_full_res        = cloud_full_res;
+  _cloud_filt            = cloud_filt;
   _aloam_diag_msg        = aloam_diag_msg;
   _resolution_corners    = resolution_corners;
   _resolution_surfs      = resolution_surfs;
@@ -102,7 +102,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   tf::Transform                     aloam_odometry;
   pcl::PointCloud<PointType>::Ptr   features_corners_last;
   pcl::PointCloud<PointType>::Ptr   features_surfs_last;
-  pcl::PointCloud<PointType>::Ptr   cloud_full_res;
+  pcl::PointCloud<PointType>::Ptr   cloud_filt;
   aloam_slam::AloamDiagnostics::Ptr aloam_diag_msg;
   float                             resolution_corners;
   float                             resolution_surfs;
@@ -113,7 +113,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     aloam_odometry        = _aloam_odometry;
     features_corners_last = _features_corners_last;
     features_surfs_last   = _features_surfs_last;
-    cloud_full_res        = _cloud_full_res;
+    cloud_filt            = _cloud_filt;
     aloam_diag_msg        = _aloam_diag_msg;
     resolution_corners    = _resolution_corners;
     resolution_surfs      = _resolution_surfs;
@@ -624,13 +624,13 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   if (_pub_laser_cloud_registered.getNumSubscribers() > 0) {
     // TODO: this pcl might be published in lidar frame instead of map saving some load..
     // or it might not be published at all as the data are already published by sensor and TFs are published above
-    int cloud_full_resNum = cloud_full_res->points.size();
+    int cloud_full_resNum = cloud_filt->points.size();
     for (int i = 0; i < cloud_full_resNum; i++) {
-      pointAssociateToMap(&cloud_full_res->points.at(i), &cloud_full_res->points.at(i));
+      pointAssociateToMap(&cloud_filt->points.at(i), &cloud_filt->points.at(i));
     }
 
     sensor_msgs::PointCloud2::Ptr cloud_full_res_msg = boost::make_shared<sensor_msgs::PointCloud2>();
-    pcl::toROSMsg(*cloud_full_res, *cloud_full_res_msg);
+    pcl::toROSMsg(*cloud_filt, *cloud_full_res_msg);
     cloud_full_res_msg->header.stamp    = time_aloam_odometry;
     cloud_full_res_msg->header.frame_id = _frame_map;
 

@@ -61,14 +61,16 @@ inline double deg2rad(double degrees) {
 /*//{ struct ExtractedFeatures */
 struct ExtractedFeatures
 {
-  bool                                   is_new = true;
-  pcl::PointCloud<PointType>::Ptr        cloud_full_res;
-  std::vector<unsigned int>              rows_start_idxs;
-  std::vector<std::vector<unsigned int>> indices_corners_sharp;
-  std::vector<std::vector<unsigned int>> indices_surfs_flat;
-  std::vector<std::vector<unsigned int>> indices_corners_less_sharp;
-  std::vector<std::vector<unsigned int>> indices_surfs_less_flat;
-  aloam_slam::AloamDiagnostics::Ptr      aloam_diag_msg;
+  bool                                            is_new = true;
+  pcl::PointCloud<ouster_ros::OS1::PointOS1>::Ptr cloud_raw;
+  pcl::PointCloud<PointType>::Ptr                 cloud_filt;
+  std::vector<unsigned int>                       rows_start_idxs;
+  std::vector<std::vector<unsigned int>>          indices_corners_sharp;
+  std::vector<std::vector<unsigned int>>          indices_surfs_flat;
+  std::vector<std::vector<unsigned int>>          indices_corners_less_sharp;
+  std::vector<std::vector<unsigned int>>          indices_surfs_less_flat;
+  std::unordered_map<unsigned int, unsigned int>  point_indices_in_raw_cloud;
+  aloam_slam::AloamDiagnostics::Ptr               aloam_diag_msg;
 
   pcl::PointCloud<PointType>::Ptr getSharpCorners() {
     if (!features_corners_sharp) {
@@ -98,6 +100,30 @@ struct ExtractedFeatures
     return features_surfs_less_flat;
   }
 
+  std::vector<std::vector<int>> buildOrderedFeatureTable(const std::vector<std::vector<unsigned int>> &indices_in_filt) {
+
+    std::vector<std::vector<int>> ret;
+    ret.resize(cloud_raw->height, std::vector<int>(cloud_raw->width, -1));
+
+    for (unsigned int i = 0; i < indices_in_filt.size(); i++) {
+      for (unsigned int j = 0; j < indices_in_filt.at(i).size(); j++) {
+        const unsigned int idx_in_filt = indices_in_filt.at(i).at(j);
+        /* ROS_DEBUG("i|j|ind_filt|ind_raw|r|c ... %d|%d|%d|%d|%d|%d", i, j, indices_in_filt.at(i).at(j), ind_in_raw, r, c); */
+        const auto [r, c] = getRowColInRawData(idx_in_filt);
+        ret.at(r).at(c)   = (int)idx_in_filt;
+      }
+    }
+
+    return ret;
+  }
+
+  std::tuple<unsigned int, unsigned int> getRowColInRawData(const unsigned int index_in_filt) {
+    const unsigned int ind_in_raw = point_indices_in_raw_cloud[index_in_filt];
+    const unsigned int r          = cloud_raw->at(ind_in_raw).ring;
+    const unsigned int c          = ind_in_raw - r * cloud_raw->width;
+    return std::make_tuple(r, c);
+  }
+
 private:
   pcl::PointCloud<PointType>::Ptr features_corners_sharp;
   pcl::PointCloud<PointType>::Ptr features_corners_less_sharp;
@@ -110,11 +136,11 @@ private:
     for (unsigned int i = 0; i < indices.size(); i++) {
 
       for (const unsigned int &ind : indices.at(i)) {
-        cloud->push_back(cloud_full_res->at(ind));
+        cloud->push_back(cloud_filt->at(ind));
       }
     }
 
-    cloud->header   = cloud_full_res->header;
+    cloud->header   = cloud_filt->header;
     cloud->height   = 1;
     cloud->width    = static_cast<uint32_t>(cloud->points.size());
     cloud->is_dense = true;
@@ -241,6 +267,23 @@ struct LUT
       c += width;
     }
     return (unsigned int)c;
+  }
+
+  void buildFeatureTable(std::unordered_map<unsigned int, unsigned int> &feature_map, const std::vector<std::vector<unsigned int>> &feature_indices,
+                         std::vector<std::vector<int>> &table, std::unordered_map<unsigned int, std::pair<unsigned int, unsigned int>> &inv_table) {
+
+    table.resize(height, std::vector<int>(width, -1));
+
+    for (const auto &row : feature_indices) {
+      for (const auto &ind : row) {
+        ROS_ERROR("ind: %d", ind);
+        const auto idx_pair = getIdxs(feature_map[ind]);
+        ROS_ERROR("... map[ind]: %d, r: %d, c: %d", feature_map[ind], idx_pair.first, idx_pair.second);
+
+        table.at(idx_pair.first).at(idx_pair.second) = ind;
+        inv_table[ind]                               = idx_pair;
+      }
+    }
   }
 
 private:
