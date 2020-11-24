@@ -181,7 +181,7 @@ std::tuple<std::vector<unsigned int>, std::vector<std::pair<unsigned int, float>
 
   TicToc t_tmp;
 
-  std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> neighbors = getNeighborsByBB(extracted_features, indices_in_filt, search_radius);
+  std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> neighbors = getNeighborsInBB(extracted_features, indices_in_filt, search_radius);
 
   // Iterate through input cloud
   for (unsigned int i = 0; i < indices_in_filt.size(); i++) {
@@ -259,8 +259,8 @@ float FeatureSelection::estimateResolution(const float &percent, const std::vect
 }
 /*//}*/
 
-/*//{ getNeighborsByBB() */
-std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> FeatureSelection::getNeighborsByBB(const std::shared_ptr<ExtractedFeatures> &extracted_features,
+/*//{ getNeighborsInBB() */
+std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> FeatureSelection::getNeighborsInBB(const std::shared_ptr<ExtractedFeatures> &extracted_features,
                                                                                                   const std::vector<std::vector<unsigned int>> &indices_in_filt,
                                                                                                   const float &                                 max_range) {
 
@@ -272,30 +272,35 @@ std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> FeatureSelection:
   const int cloud_width  = extracted_features->cloud_raw->width;
   const int cloud_height = ordered_table.size();
 
+  const float max_range_sq = max_range * max_range;
+
   for (const auto &indices_row : indices_in_filt) {
 
     for (const auto &idx_in_filt : indices_row) {
 
       const auto [this_r, this_c] = extracted_features->getRowColInRawData(idx_in_filt);
 
+      // TODO: these distances are available in os1 msg
       const Eigen::Vector3f point = Eigen::Vector3f(cloud_filt->at(idx_in_filt).x, cloud_filt->at(idx_in_filt).y, cloud_filt->at(idx_in_filt).z);
-      const float           R     = point.norm();
+      const float           d     = point.norm();
 
-      const unsigned int max_h_idx = std::floor(max_range / (TAN_HFOV * R));
-      const unsigned int max_v_idx = std::floor(max_range / (TAN_VFOV * R));
+      const unsigned int max_v_idx = std::floor(max_range / (TAN_VFOV * d));
 
       const unsigned int row_min = std::max(0, int(this_r - max_v_idx));
       const unsigned int row_max = std::min(cloud_height, int(this_r + max_v_idx + 1));
-      const unsigned int col_min = std::max(0, int(this_c - max_h_idx));
-      const unsigned int col_max = std::min(cloud_width, int(this_c + max_h_idx + 1));
 
-      /* ROS_DEBUG("point: (%0.2f, %0.2f, %0.2f), r: %d, c: %d, idx_in_filt: %d", point.x(), point.y(), point.z(), this_r, this_c, idx_in_filt); */
+      /* ROS_DEBUG("point: (%0.2f, %0.2f, %0.2f), d: %d, c: %d, idx_in_filt: %d", point.x(), point.y(), point.z(), this_r, this_c, idx_in_filt); */
       /* ROS_DEBUG("row min: %d, row max: %d, col min: %d, col max: %d, max_h_idx: %d, max_v_idx: %d", row_min, row_max, col_min, col_max, max_h_idx,
        * max_v_idx); */
 
       for (unsigned int i = row_min; i < row_max; i++) {
 
-        /* ROS_DEBUG("col min: %d, col max: %d", col_min, col_max); */
+        const float        k         = d * std::tan((float(this_r) - float(i)) * VFOV_RESOLUTION);
+        const unsigned int max_h_idx = std::floor((std::atan2(std::sqrt(max_range_sq - k * k), d)) / HFOV_RESOLUTION);
+        const unsigned int col_min   = std::max(0, int(this_c - max_h_idx));
+        const unsigned int col_max   = std::min(cloud_width, int(this_c + max_h_idx + 1));
+
+        /* ROS_DEBUG("col min: %d, col max: %d, k: %0.1f, max_h_idx: %d", col_min, col_max, k, max_h_idx); */
 
         for (unsigned int j = col_min; j < col_max; j++) {
 

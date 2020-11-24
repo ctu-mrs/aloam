@@ -52,7 +52,7 @@ private:
       const std::shared_ptr<ExtractedFeatures> &extracted_features, const unsigned int &features_count,
       const std::vector<std::vector<unsigned int>> &indices_in_filt, const float &search_radius);
 
-  std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> getNeighborsByBB(const std::shared_ptr<ExtractedFeatures> &    extracted_features,
+  std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> getNeighborsInBB(const std::shared_ptr<ExtractedFeatures> &    extracted_features,
                                                                                   const std::vector<std::vector<unsigned int>> &indices_in_filt,
                                                                                   const float &                                 max_range);
 
