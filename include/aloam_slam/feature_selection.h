@@ -34,11 +34,15 @@ private:
   float _corners_keep_percentile;
   float _surfs_keep_percentile;
 
-  const double       HFOV_RESOLUTION = 0.00613592315;
-  const double       VFOV_RESOLUTION = 0.03862995413;
-  const unsigned int ROW_SIZE        = 1024;
-  const double       TAN_HFOV        = std::tan(HFOV_RESOLUTION);
-  const double       TAN_VFOV        = std::tan(VFOV_RESOLUTION);
+  const double       HFOV_RESOLUTION          = 0.00613592315;
+  const double       VFOV_RESOLUTION          = 0.03862995413;
+  const unsigned int ROW_SIZE                 = 1024;
+  const double       TAN_HFOV                 = std::tan(HFOV_RESOLUTION);
+  const double       TAN_VFOV                 = std::tan(VFOV_RESOLUTION);
+  const float        NEIGH_IDX_PREC_RANGE_RES = 0.2f;
+
+  // sample -> vector<tuple(v_idx, vector<h_idx>)>
+  std::vector<std::vector<std::pair<unsigned int, unsigned int>>> _neigh_idxs_rows_cols;
   /* float _features_corners_gradient_limit_upper; */
   /* float _features_corners_gradient_limit_bottom; */
   /* float _features_surfs_gradient_limit_upper; */
@@ -68,6 +72,8 @@ private:
   void getNeighborsKdTree();
 
   float estimateResolution(const float &percent, const std::vector<float> &fnc_sorted, const float &min_res, const float &max_res);
+
+  std::vector<std::pair<unsigned int, unsigned int>> getNearestNeighborLimits(const float &point_distance);
 
   void publishCloud(ros::Publisher publisher, const pcl::PointCloud<PointType>::Ptr cloud);
 

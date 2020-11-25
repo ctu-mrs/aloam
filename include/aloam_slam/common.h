@@ -124,6 +124,11 @@ struct ExtractedFeatures
     return std::make_tuple(r, c);
   }
 
+  float getRange(const unsigned int index_in_filt) {
+    const unsigned int ind_in_raw = point_indices_in_raw_cloud[index_in_filt];
+    return cloud_raw->at(ind_in_raw).range / 1000.0f;
+  }
+
 private:
   pcl::PointCloud<PointType>::Ptr features_corners_sharp;
   pcl::PointCloud<PointType>::Ptr features_corners_less_sharp;

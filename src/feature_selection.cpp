@@ -26,6 +26,41 @@ FeatureSelection::FeatureSelection(const ros::NodeHandle &parent_nh, mrs_lib::Pa
   _resolution_corners = (_resolution_corners_max + _resolution_corners_min) / 2.0f;
   _resolution_surfs   = (_resolution_surfs_max + _resolution_surfs_min) / 2.0f;
 
+
+  // TODO: precompute for multiple resolutions (R)
+  const float  R      = 0.6f;
+  unsigned int sample = 0;
+  bool         stop   = false;
+  while (!stop) {
+
+    const float        range     = sample++ * NEIGH_IDX_PREC_RANGE_RES;
+    const unsigned int max_v_idx = std::floor(std::atan2(R, range) / VFOV_RESOLUTION);
+    ROS_DEBUG("sample: %d, range: %0.1f, max_v_idx: %d", sample - 1, range, max_v_idx);
+
+    std::vector<std::pair<unsigned int, unsigned int>> idxs;
+
+    for (unsigned int i = 0; i <= max_v_idx; i++) {
+
+      const float        k         = range * std::tan(float(i) * VFOV_RESOLUTION);
+      const unsigned int max_h_idx = std::floor((std::atan2(std::sqrt(R * R - k * k), range)) / HFOV_RESOLUTION);
+
+      ROS_DEBUG("max_h_idx: %d", max_h_idx);
+      idxs.push_back(std::make_pair(max_v_idx, max_h_idx));
+
+      if (max_v_idx == 0 && max_h_idx == 0) {
+        stop = true;
+      }
+    }
+
+    _neigh_idxs_rows_cols.push_back(idxs);
+  }
+
+  /* const float        k         = d * std::tan((float(this_r) - float(i)) * VFOV_RESOLUTION); */
+  /* const unsigned int max_h_idx = std::floor((std::atan2(std::sqrt(max_range_sq - k * k), d)) / HFOV_RESOLUTION); */
+
+  /* std::vector<float> neigh_idxs_rows; */
+  /* std::vector<float> neigh_idxs_cols; */
+
   _pub_features_corners_selected = nh_.advertise<sensor_msgs::PointCloud2>("features_corners_selected_out", 1);
   _pub_features_surfs_selected   = nh_.advertise<sensor_msgs::PointCloud2>("features_surfs_selected_out", 1);
 }
@@ -266,43 +301,41 @@ std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> FeatureSelection:
 
   std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> neighbors_map;
 
+  TicToc                                t;
   const std::vector<std::vector<int>>   ordered_table = extracted_features->buildOrderedFeatureTable(indices_in_filt);
   const pcl::PointCloud<PointType>::Ptr cloud_filt    = extracted_features->cloud_filt;
+  ROS_WARN("timer: building feature table took %0.1f ms", t.toc());
 
   const int cloud_width  = extracted_features->cloud_raw->width;
   const int cloud_height = ordered_table.size();
 
-  const float max_range_sq = max_range * max_range;
+  /* const float max_range_sq = max_range * max_range; */
 
+  int m = 0;
   for (const auto &indices_row : indices_in_filt) {
 
     for (const auto &idx_in_filt : indices_row) {
 
       const auto [this_r, this_c] = extracted_features->getRowColInRawData(idx_in_filt);
+      const float d               = extracted_features->getRange(idx_in_filt);
 
-      // TODO: these distances are available in os1 msg
-      const Eigen::Vector3f point = Eigen::Vector3f(cloud_filt->at(idx_in_filt).x, cloud_filt->at(idx_in_filt).y, cloud_filt->at(idx_in_filt).z);
-      const float           d     = point.norm();
+      const auto row_col_idxs = getNearestNeighborLimits(d);
 
-      const unsigned int max_v_idx = std::floor(max_range / (TAN_VFOV * d));
+      const unsigned int max_v_idx = row_col_idxs.back().first;
+      const unsigned int row_min   = std::max(0, int(this_r - max_v_idx));
+      const unsigned int row_max   = std::min(cloud_height, int(this_r + max_v_idx + 1));
 
-      const unsigned int row_min = std::max(0, int(this_r - max_v_idx));
-      const unsigned int row_max = std::min(cloud_height, int(this_r + max_v_idx + 1));
-
-      /* ROS_DEBUG("point: (%0.2f, %0.2f, %0.2f), d: %d, c: %d, idx_in_filt: %d", point.x(), point.y(), point.z(), this_r, this_c, idx_in_filt); */
-      /* ROS_DEBUG("row min: %d, row max: %d, col min: %d, col max: %d, max_h_idx: %d, max_v_idx: %d", row_min, row_max, col_min, col_max, max_h_idx,
-       * max_v_idx); */
+      /* ROS_DEBUG("this_r: %d, this_c: %d, row min: %d, row max: %d, max_v_idx: %d", this_r, this_c, row_min, row_max, max_v_idx); */
 
       for (unsigned int i = row_min; i < row_max; i++) {
+        const unsigned int dv      = std::abs(int(i - this_r));
+        const unsigned int h_idx   = row_col_idxs.at(dv).second;
+        const unsigned int col_min = std::max(0, int(this_c - h_idx));
+        const unsigned int col_max = std::min(cloud_width, int(this_c + h_idx + 1));
 
-        const float        k         = d * std::tan((float(this_r) - float(i)) * VFOV_RESOLUTION);
-        const unsigned int max_h_idx = std::floor((std::atan2(std::sqrt(max_range_sq - k * k), d)) / HFOV_RESOLUTION);
-        const unsigned int col_min   = std::max(0, int(this_c - max_h_idx));
-        const unsigned int col_max   = std::min(cloud_width, int(this_c + max_h_idx + 1));
-
-        /* ROS_DEBUG("col min: %d, col max: %d, k: %0.1f, max_h_idx: %d", col_min, col_max, k, max_h_idx); */
-
+        /* ROS_DEBUG("col min: %d, col max: %d, h_idx: %d", col_min, col_max, h_idx); */
         for (unsigned int j = col_min; j < col_max; j++) {
+          /* ROS_DEBUG("i: %d, j: %d", i, j); */
 
           if (i == this_r && j == this_c) {
             continue;
@@ -314,6 +347,7 @@ std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> FeatureSelection:
 
           if (neighbor_idx != -1) {
             const auto            neighbor_point = cloud_filt->at(neighbor_idx);
+            const Eigen::Vector3f point          = Eigen::Vector3f(cloud_filt->at(idx_in_filt).x, cloud_filt->at(idx_in_filt).y, cloud_filt->at(idx_in_filt).z);
             const Eigen::Vector3f neighbor       = Eigen::Vector3f(neighbor_point.x, neighbor_point.y, neighbor_point.z);
 
             if ((neighbor - point).norm() < max_range) {
@@ -324,8 +358,15 @@ std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> FeatureSelection:
           }
         }
       }
+
+      /* ROS_DEBUG("this_r: %d, row min: %d, row max: %d, v_idx: %d", this_r, row_min, row_max, v_idx); */
+      /* for (unsigned int l = 0; l < h_idxs.size(); l++) { */
+      /*   ROS_DEBUG("- l: %d, h_idxs[l]: %d", l, h_idxs.at(l)); */
+      /* } */
     }
+    /* ROS_WARN("timer: row %d took %0.1f ms", m++, t.toc()); */
   }
+  ROS_WARN("timer: double iterations took in total %0.1f ms", t.toc());
 
   /* ROS_ERROR("pes"); */
   return neighbors_map;
@@ -475,6 +516,17 @@ void FeatureSelection::getNeighborsKdTree() {
   /*   } */
   /* } */
   /*//}*/
+}
+/*//}*/
+
+/*//{ getNearestNeighborLimits() */
+std::vector<std::pair<unsigned int, unsigned int>> FeatureSelection::getNearestNeighborLimits(const float &point_distance) {
+  const unsigned int idx = std::floor(point_distance / NEIGH_IDX_PREC_RANGE_RES);
+  /* ROS_DEBUG("getNearestNeighborLimits: distance: %0.1f, idx: %d", point_distance, idx); */
+  if (idx < _neigh_idxs_rows_cols.size()) {
+    return _neigh_idxs_rows_cols.at(idx);
+  }
+  return std::vector<std::pair<unsigned int, unsigned int>>();
 }
 /*//}*/
 
