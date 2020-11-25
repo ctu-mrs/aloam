@@ -28,14 +28,14 @@ FeatureSelection::FeatureSelection(const ros::NodeHandle &parent_nh, mrs_lib::Pa
 
 
   // TODO: precompute for multiple resolutions (R)
-  const float  R      = 0.6f;
+  const float  R      = 0.25f;
   unsigned int sample = 0;
   bool         stop   = false;
   while (!stop) {
 
     const float        range     = sample++ * NEIGH_IDX_PREC_RANGE_RES;
     const unsigned int max_v_idx = std::floor(std::atan2(R, range) / VFOV_RESOLUTION);
-    ROS_DEBUG("sample: %d, range: %0.1f, max_v_idx: %d", sample - 1, range, max_v_idx);
+    /* ROS_DEBUG("sample: %d, range: %0.1f, max_v_idx: %d", sample - 1, range, max_v_idx); */
 
     std::vector<std::pair<unsigned int, unsigned int>> idxs;
 
@@ -44,7 +44,7 @@ FeatureSelection::FeatureSelection(const ros::NodeHandle &parent_nh, mrs_lib::Pa
       const float        k         = range * std::tan(float(i) * VFOV_RESOLUTION);
       const unsigned int max_h_idx = std::floor((std::atan2(std::sqrt(R * R - k * k), range)) / HFOV_RESOLUTION);
 
-      ROS_DEBUG("max_h_idx: %d", max_h_idx);
+      /* ROS_DEBUG("max_h_idx: %d", max_h_idx); */
       idxs.push_back(std::make_pair(max_v_idx, max_h_idx));
 
       if (max_v_idx == 0 && max_h_idx == 0) {
@@ -89,6 +89,7 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr, flo
       selectFeaturesFromCloudByGradient(extracted_features, extracted_features->aloam_diag_msg->feature_extraction.corner_points_less_sharp_count,
                                         extracted_features->indices_corners_less_sharp, _resolution_corners, _corners_keep_percentile);
   diag_msg.corners_time_ms = t_corners.toc();
+  diag_msg.time_ms         = diag_msg.surfs_time_ms + diag_msg.corners_time_ms;
 
   TicToc t_surfs;
   const auto [selected_surfs, surf_gradients, surf_gradients_mean, surf_gradients_std, surf_grad_cutoff] =
@@ -125,7 +126,7 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr, flo
   publishCloud(_pub_features_corners_selected, selected_corners);
   publishCloud(_pub_features_surfs_selected, selected_surfs);
 
-  ROS_WARN_THROTTLE(0.5, "[FeatureSelection] feature selection of corners and surfs: %0.1f ms", diag_msg.corners_time_ms + diag_msg.surfs_time_ms);
+  /* ROS_WARN_THROTTLE(0.5, "[FeatureSelection] feature selection of corners and surfs: %0.1f ms", diag_msg.corners_time_ms + diag_msg.surfs_time_ms); */
 
   return std::make_tuple(selected_corners, selected_surfs, _resolution_corners, _resolution_surfs);
 }
@@ -301,17 +302,17 @@ std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> FeatureSelection:
 
   std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> neighbors_map;
 
-  TicToc                                t;
-  const std::vector<std::vector<int>>   ordered_table = extracted_features->buildOrderedFeatureTable(indices_in_filt);
+  /* TicToc                                t; */
+  std::vector<std::vector<int>>         ordered_table = extracted_features->buildOrderedFeatureTable(indices_in_filt);
   const pcl::PointCloud<PointType>::Ptr cloud_filt    = extracted_features->cloud_filt;
-  ROS_WARN("timer: building feature table took %0.1f ms", t.toc());
+  /* ROS_WARN("timer: building feature table took %0.1f ms", t.toc()); */
 
   const int cloud_width  = extracted_features->cloud_raw->width;
   const int cloud_height = ordered_table.size();
 
   /* const float max_range_sq = max_range * max_range; */
+  /* int m = 0; */
 
-  int m = 0;
   for (const auto &indices_row : indices_in_filt) {
 
     for (const auto &idx_in_filt : indices_row) {
@@ -327,11 +328,13 @@ std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> FeatureSelection:
 
       /* ROS_DEBUG("this_r: %d, this_c: %d, row min: %d, row max: %d, max_v_idx: %d", this_r, this_c, row_min, row_max, max_v_idx); */
 
+      ordered_table.at(this_r).at(this_c) = -1;
+
       for (unsigned int i = row_min; i < row_max; i++) {
-        const unsigned int dv      = std::abs(int(i - this_r));
-        const unsigned int h_idx   = row_col_idxs.at(dv).second;
-        const unsigned int col_min = std::max(0, int(this_c - h_idx));
-        const unsigned int col_max = std::min(cloud_width, int(this_c + h_idx + 1));
+        const unsigned int row_diff = std::abs(int(i - this_r));
+        const unsigned int h_idx    = row_col_idxs.at(row_diff).second;
+        const unsigned int col_min  = std::max(0, int(this_c - h_idx));
+        const unsigned int col_max  = std::min(cloud_width, int(this_c + h_idx + 1));
 
         /* ROS_DEBUG("col min: %d, col max: %d, h_idx: %d", col_min, col_max, h_idx); */
         for (unsigned int j = col_min; j < col_max; j++) {
@@ -341,19 +344,19 @@ std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> FeatureSelection:
             continue;
           }
 
-          const int neighbor_idx = ordered_table.at(i).at(j);
+          const int neighbor_idx_in_filt = ordered_table.at(i).at(j);
 
-          /* ROS_ERROR("i: %d, j: %d, neighbor_idx: %d", i, j, neighbor_idx); */
+          /* ROS_ERROR("i: %d, j: %d, neighbor_idx_in_filt: %d", i, j, neighbor_idx_in_filt); */
 
-          if (neighbor_idx != -1) {
-            const auto            neighbor_point = cloud_filt->at(neighbor_idx);
+          if (neighbor_idx_in_filt != -1) {
+            const auto            neighbor_point = cloud_filt->at(neighbor_idx_in_filt);
             const Eigen::Vector3f point          = Eigen::Vector3f(cloud_filt->at(idx_in_filt).x, cloud_filt->at(idx_in_filt).y, cloud_filt->at(idx_in_filt).z);
             const Eigen::Vector3f neighbor       = Eigen::Vector3f(neighbor_point.x, neighbor_point.y, neighbor_point.z);
 
             if ((neighbor - point).norm() < max_range) {
-              // TODO: neighbor can set this point as well, but we have to make sure that it won't be two times in the output vector */
               /* ROS_DEBUG("- i: %d, j: %d: %0.2f, %0.2f, %0.2f", i, j, neighbor.x(), neighbor.y(), neighbor.z()); */
               neighbors_map[idx_in_filt].push_back(neighbor);
+              neighbors_map[neighbor_idx_in_filt].push_back(point);
             }
           }
         }
@@ -366,7 +369,7 @@ std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> FeatureSelection:
     }
     /* ROS_WARN("timer: row %d took %0.1f ms", m++, t.toc()); */
   }
-  ROS_WARN("timer: double iterations took in total %0.1f ms", t.toc());
+  /* ROS_WARN("timer: double iterations took in total %0.1f ms", t.toc()); */
 
   /* ROS_ERROR("pes"); */
   return neighbors_map;

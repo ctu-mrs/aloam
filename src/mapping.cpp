@@ -642,6 +642,14 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     }
   }
 
+  const float time_whole = t_whole.toc();
+
+  aloam_diag_msg->total_time_ms = aloam_diag_msg->feature_extraction.time_ms + aloam_diag_msg->feature_selection.corners_time_ms +
+                                  aloam_diag_msg->feature_selection.surfs_time_ms + aloam_diag_msg->odometry.time_ms + time_whole;
+  _total_running_time_ms += aloam_diag_msg->total_time_ms;
+  aloam_diag_msg->frame_count            = _frame_count;
+  aloam_diag_msg->avg_frame_proc_time_ms = _total_running_time_ms / float(_frame_count);
+
   // Publish diagnostics message
   if (_pub_diag.getNumSubscribers() > 0) {
 
@@ -660,7 +668,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     mapping_diag_msg.sizeof_map_corners_kb = (corner_points_count * sizeof_point) / 1024.0f;
     mapping_diag_msg.sizeof_map_surfs_kb   = (surf_points_count * sizeof_point) / 1024.0f;
 
-    mapping_diag_msg.time_ms                    = t_whole.toc();
+    mapping_diag_msg.time_ms                    = time_whole;
     mapping_diag_msg.time_data_preparation_ms   = time_shift;
     mapping_diag_msg.time_kdtree_init_ms        = time_build_tree;
     mapping_diag_msg.time_map_association_ms    = time_association;
@@ -673,13 +681,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
     aloam_diag_msg->mapping = mapping_diag_msg;
 
-    aloam_diag_msg->total_time_ms = aloam_diag_msg->feature_extraction.time_ms + aloam_diag_msg->feature_selection.corners_time_ms +
-                                    aloam_diag_msg->feature_selection.surfs_time_ms + aloam_diag_msg->odometry.time_ms + aloam_diag_msg->mapping.time_ms;
-    _total_running_time_ms += aloam_diag_msg->total_time_ms;
-
-    aloam_diag_msg->total_memsize_kb       = mapping_diag_msg.sizeof_map_corners_kb + mapping_diag_msg.sizeof_map_surfs_kb;
-    aloam_diag_msg->frame_count            = _frame_count;
-    aloam_diag_msg->avg_frame_proc_time_ms = _total_running_time_ms / float(_frame_count);
+    aloam_diag_msg->total_memsize_kb = mapping_diag_msg.sizeof_map_corners_kb + mapping_diag_msg.sizeof_map_surfs_kb;
     try {
       _pub_diag.publish(aloam_diag_msg);
     }
@@ -693,8 +695,6 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   _frame_count++;
 
   // Print diagnostics
-  const float time_whole = t_whole.toc();
-
   ROS_INFO_THROTTLE(1.0, "[AloamMapping] Run time: %0.1f ms (%0.1f Hz)", time_whole, std::min(_mapping_frequency, 1000.0f / time_whole));
   ROS_DEBUG_THROTTLE(
       1.0,

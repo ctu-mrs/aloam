@@ -111,8 +111,6 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2::ConstP
   TicToc t_pts;
   float  time_voxel_filtration = 0.0f;
 
-  /* pcl::PointCloud<PointType>::Ptr surf_points_less_flat = boost::make_shared<pcl::PointCloud<PointType>>(); */
-
   std::vector<std::vector<unsigned int>> indices_corners_sharp(_number_of_rings);
   std::vector<std::vector<unsigned int>> indices_corners_less_sharp(_number_of_rings);
   std::vector<std::vector<unsigned int>> indices_surfs_flat(_number_of_rings);
@@ -122,9 +120,9 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2::ConstP
   float time_q_sort = 0;
   for (int i = 0; i < _number_of_rings; i++) {
 
-    const int row_start_index = rows_start_idxs.at(i);
+    const unsigned int row_start_index = rows_start_idxs.at(i);
 
-    if (rows_end_idxs.at(i) - row_start_index < 6) {
+    if (rows_end_idxs.at(i) - row_start_index < 6 || row_start_index > rows_end_idxs.at(i)) {
       continue;
     }
 
@@ -242,6 +240,7 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2::ConstP
                          indices_surfs_less_flat.at(i));
 
     time_voxel_filtration += t_voxel_filtration.toc();
+
   }
   /*//}*/
 
