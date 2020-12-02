@@ -595,7 +595,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   geometry_msgs::TransformStamped tf_msg;
   tf_msg.header.stamp    = time_aloam_odometry;
   tf_msg.header.frame_id = _frame_fcu;
-  tf_msg.child_frame_id  = _frame_map;
+  tf_msg.child_frame_id  = _frame_map + "_orig";
   tf::transformTFToMsg(tf_fcu.inverse(), tf_msg.transform);
 
   try {
