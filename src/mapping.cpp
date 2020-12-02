@@ -15,7 +15,7 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
       _t_w_curr(_parameters + 4) {
 
   ros::NodeHandle nh_(parent_nh);
-  
+
   ros::Time::waitForValid();
 
   param_loader.loadParam("mapping_line_resolution", _resolution_line, 0.2f);
@@ -47,6 +47,7 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
   _pub_laser_cloud_registered = nh_.advertise<sensor_msgs::PointCloud2>("scan_registered_out", 1);
   _pub_odom_global            = nh_.advertise<nav_msgs::Odometry>("odom_global_out", 1);
   _pub_path                   = nh_.advertise<nav_msgs::Path>("path_out", 1);
+  _pub_eigenvalue             = nh_.advertise<mrs_msgs::Float64ArrayStamped>("eigenvalues", 1);
 
   if (_mapping_frequency > 0.0f) {
     _timer_mapping_loop = nh_.createTimer(ros::Rate(_mapping_frequency), &AloamMapping::timerMapping, this, false, true);
@@ -438,7 +439,67 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
       options.check_gradients                   = false;
       options.gradient_check_relative_precision = 1e-4;
       ceres::Solver::Summary summary;
+      /* ceres::Solve(options, &problem, &summary); */
+
+      // Get eigenvalues to measure problem degradation //{
+      TicToc t_eigenvalues;
+      // Get Jacobian
+      ceres::CRSMatrix jacobian;
+      problem.Evaluate(ceres::Problem::EvaluateOptions(), nullptr, nullptr, nullptr, &jacobian);
+
+      // Convert it to eigen matrix
+      Eigen::MatrixXd eigen_matrix;
+      eigen_matrix.resize(jacobian.num_rows, jacobian.num_cols);
+      eigen_matrix.setZero();
+
+      for (int row = 0; row < jacobian.num_rows; ++row) {
+        int start = jacobian.rows[row];
+        int end   = jacobian.rows[row + 1] - 1;
+
+        for (int i = start; i <= end; i++) {
+          int    col   = jacobian.cols[i];
+          double value = jacobian.values[i];
+
+          eigen_matrix(row, col) = value;
+        }
+      }
+
+      // calculate matrix J^T*J
+      eigen_matrix = eigen_matrix.transpose() * eigen_matrix;
+
+      // get eigenvalues and eigenvectors
+      Eigen::EigenSolver<Eigen::MatrixXd> eigensolver;
+      eigensolver.compute(eigen_matrix);
+      Eigen::VectorXd eigen_values  = eigensolver.eigenvalues().real();
+      Eigen::MatrixXd eigen_vectors = eigensolver.eigenvectors().real();
+
+
+      mrs_msgs::Float64ArrayStamped msg_eigenvalue;
+      msg_eigenvalue.header.stamp = time_aloam_odometry;
+
+      // Find eigenvalues corresponding to respective state elements
+      // the order should be theta_x, theta_y, theta_z, x, y, z
+      for (int i = 0; i < 6; i++) {
+        double eig = 0;
+        double vec = 0;
+        for (int j = 0; j < eigen_vectors.cols(); j++) {
+          if (abs(eigen_vectors(i, j)) > vec) {
+            vec = abs(eigen_vectors(i, j));
+            eig = eigen_values(j);
+          }
+        }
+        msg_eigenvalue.values.push_back(eig);
+      }
+
+      // Publish eigenvalues
+      _pub_eigenvalue.publish(msg_eigenvalue);
+
+      float time_eigenvalues = t_eigenvalues.toc();
+      /* ROS_INFO("[AloamMapping] Eigenvalue calculation took %.3f ms.", time_eigenvalues); */
+      /*//}*/
+
       ceres::Solve(options, &problem, &summary);
+
       time_solver += t_solver.toc();
     }
     time_optimization = t_opt.toc();

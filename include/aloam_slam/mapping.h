@@ -36,6 +36,7 @@
 #include <std_srvs/Trigger.h>
 
 #include <std_msgs/String.h>
+#include <mrs_msgs/Float64ArrayStamped.h>
 
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
@@ -95,6 +96,7 @@ private:
   ros::Publisher _pub_laser_cloud_registered;
   ros::Publisher _pub_odom_global;
   ros::Publisher _pub_path;
+  ros::Publisher _pub_eigenvalue;
 
   // services
   ros::ServiceServer _srv_reset_mapping;

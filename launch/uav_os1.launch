@@ -60,6 +60,9 @@
       <remap from="~odom_global_out" to="aloam/odom"/>
       <remap from="~map_out" to="aloam/map"/>
       <remap from="~scan_registered_out" to="aloam/scan_registered"/>
+      <remap from="~eigenvalues" to="aloam/eigenvalues"/>
+        
+      <remap from="~profiler" to="profiler"/>
         
       <!-- Service servers -->
       <remap from="~srv_reset_mapping_in" to="aloam/reset/mapping"/>
