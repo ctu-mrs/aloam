@@ -62,22 +62,25 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
 /*//}*/
 
 /*//{ setData() */
-void AloamMapping::setData(ros::Time time_of_data, tf::Transform aloam_odometry, pcl::PointCloud<PointType>::Ptr features_corners_last,
-                           pcl::PointCloud<PointType>::Ptr features_surfs_last, pcl::PointCloud<PointType>::Ptr cloud_filt,
-                           aloam_slam::AloamDiagnostics::Ptr aloam_diag_msg, const float resolution_corners, const float resolution_surfs) {
+void AloamMapping::setData(ros::Time time_of_data, tf::Transform aloam_odometry, pcl::PointCloud<PointType>::Ptr corners_fullres,
+                           pcl::PointCloud<PointType>::Ptr surfs_fullres, pcl::PointCloud<PointType>::Ptr corners_selected,
+                           pcl::PointCloud<PointType>::Ptr surfs_selected, pcl::PointCloud<PointType>::Ptr laserCloudFullRes,
+                           aloam_slam::AloamDiagnostics::Ptr aloam_diag_msg, const float resolution_line, const float resolution_plane) {
 
   mrs_lib::Routine profiler_routine = _profiler->createRoutine("aloamMappingSetData");
 
   std::scoped_lock lock(_mutex_odometry_data);
-  _has_new_data          = true;
-  _time_aloam_odometry   = time_of_data;
-  _aloam_odometry        = aloam_odometry;
-  _features_corners_last = features_corners_last;
-  _features_surfs_last   = features_surfs_last;
-  _cloud_filt            = cloud_filt;
-  _aloam_diag_msg        = aloam_diag_msg;
-  _resolution_corners    = resolution_corners;
-  _resolution_surfs      = resolution_surfs;
+  _has_new_data                   = true;
+  _time_aloam_odometry            = time_of_data;
+  _aloam_odometry                 = aloam_odometry;
+  _features_corners_last_fullres  = corners_fullres;
+  _features_surfs_last_fullres    = surfs_fullres;
+  _features_corners_last_selected = corners_selected;
+  _features_surfs_last_selected   = surfs_selected;
+  _cloud_filt                     = laserCloudFullRes;
+  _aloam_diag_msg                 = aloam_diag_msg;
+  _resolution_corners             = resolution_line;
+  _resolution_surfs               = resolution_plane;
 }
 /*//}*/
 
@@ -100,23 +103,27 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
   ros::Time                         time_aloam_odometry;
   tf::Transform                     aloam_odometry;
-  pcl::PointCloud<PointType>::Ptr   features_corners_last;
-  pcl::PointCloud<PointType>::Ptr   features_surfs_last;
+  pcl::PointCloud<PointType>::Ptr   features_corners_last_fullres;
+  pcl::PointCloud<PointType>::Ptr   features_surfs_last_fullres;
+  pcl::PointCloud<PointType>::Ptr   features_corners_last_selected;
+  pcl::PointCloud<PointType>::Ptr   features_surfs_last_selected;
   pcl::PointCloud<PointType>::Ptr   cloud_filt;
   aloam_slam::AloamDiagnostics::Ptr aloam_diag_msg;
   float                             resolution_corners;
   float                             resolution_surfs;
   {
     std::scoped_lock lock(_mutex_odometry_data);
-    _has_new_data         = false;
-    time_aloam_odometry   = _time_aloam_odometry;
-    aloam_odometry        = _aloam_odometry;
-    features_corners_last = _features_corners_last;
-    features_surfs_last   = _features_surfs_last;
-    cloud_filt            = _cloud_filt;
-    aloam_diag_msg        = _aloam_diag_msg;
-    resolution_corners    = _resolution_corners;
-    resolution_surfs      = _resolution_surfs;
+    _has_new_data                  = false;
+    time_aloam_odometry            = _time_aloam_odometry;
+    aloam_odometry                 = _aloam_odometry;
+    features_corners_last_fullres  = _features_corners_last_fullres;
+    features_surfs_last_fullres    = _features_surfs_last_fullres;
+    features_corners_last_selected = _features_corners_last_selected;
+    features_surfs_last_selected   = _features_surfs_last_selected;
+    cloud_filt                     = _cloud_filt;
+    aloam_diag_msg                 = _aloam_diag_msg;
+    resolution_corners             = _resolution_corners;
+    resolution_surfs               = _resolution_surfs;
   }
   /*//}*/
 
@@ -319,13 +326,20 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   filter_downsize_surfs.setLeafSize(resolution_surfs, resolution_surfs, resolution_surfs);
 
   /*//{*/
-  pcl::PointCloud<PointType>::Ptr features_corners_stack = boost::make_shared<pcl::PointCloud<PointType>>();
-  filter_downsize_corners.setInputCloud(features_corners_last);
-  filter_downsize_corners.filter(*features_corners_stack);
+  // TODO: here create only from selected features
+  pcl::PointCloud<PointType>::Ptr features_corners_selected_stack = boost::make_shared<pcl::PointCloud<PointType>>();
+  pcl::PointCloud<PointType>::Ptr features_corners_fullres_stack  = boost::make_shared<pcl::PointCloud<PointType>>();
+  filter_downsize_corners.setInputCloud(features_corners_last_selected);
+  filter_downsize_corners.filter(*features_corners_selected_stack);
+  filter_downsize_corners.setInputCloud(features_corners_last_fullres);
+  filter_downsize_corners.filter(*features_corners_fullres_stack);
 
-  pcl::PointCloud<PointType>::Ptr features_surfs_stack = boost::make_shared<pcl::PointCloud<PointType>>();
-  filter_downsize_surfs.setInputCloud(features_surfs_last);
-  filter_downsize_surfs.filter(*features_surfs_stack);
+  pcl::PointCloud<PointType>::Ptr features_surfs_selected_stack = boost::make_shared<pcl::PointCloud<PointType>>();
+  pcl::PointCloud<PointType>::Ptr features_surfs_fullres_stack  = boost::make_shared<pcl::PointCloud<PointType>>();
+  filter_downsize_surfs.setInputCloud(features_surfs_last_selected);
+  filter_downsize_surfs.filter(*features_surfs_selected_stack);
+  filter_downsize_surfs.setInputCloud(features_surfs_last_fullres);
+  filter_downsize_surfs.filter(*features_surfs_fullres_stack);
 
   /* printf("map prepare time %f ms\n", t_shift.toc()); */
   /* printf("map corner num %d  surf num %d \n", laserCloudCornerFromMapNum, laserCloudSurfFromMapNum); */
@@ -356,8 +370,8 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
       TicToc t_data;
       int    corner_num = 0;
 
-      for (unsigned int i = 0; i < features_corners_stack->points.size(); i++) {
-        const PointType point_ori = features_corners_stack->points.at(i);
+      for (unsigned int i = 0; i < features_corners_selected_stack->points.size(); i++) {
+        const PointType point_ori = features_corners_selected_stack->points.at(i);
         PointType       point_sel;
         // double sqrtDis = point_ori.x * point_ori.x + point_ori.y * point_ori.y + point_ori.z * point_ori.z;
         pointAssociateToMap(&point_ori, &point_sel);
@@ -399,8 +413,8 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
       }
 
       int surf_num = 0;
-      for (unsigned int i = 0; i < features_surfs_stack->points.size(); i++) {
-        const PointType point_ori = features_surfs_stack->points.at(i);
+      for (unsigned int i = 0; i < features_surfs_selected_stack->points.size(); i++) {
+        const PointType point_ori = features_surfs_selected_stack->points.at(i);
         PointType       point_sel;
         pointAssociateToMap(&point_ori, &point_sel);
         kdtree_map_surfs->nearestKSearch(point_sel, 5, point_search_indices, point_search_sq_dist);
@@ -467,9 +481,10 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
     TicToc t_add;
 
-    for (unsigned int i = 0; i < features_corners_stack->points.size(); i++) {
+    // TODO: here associate all corner points
+    for (unsigned int i = 0; i < features_corners_fullres_stack->points.size(); i++) {
       PointType point_sel;
-      pointAssociateToMap(&features_corners_stack->points.at(i), &point_sel);
+      pointAssociateToMap(&features_corners_fullres_stack->points.at(i), &point_sel);
 
       int cubeI = int((point_sel.x + 25.0) / 50.0) + _cloud_center_width;
       int cubeJ = int((point_sel.y + 25.0) / 50.0) + _cloud_center_height;
@@ -488,9 +503,10 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
       }
     }
 
-    for (unsigned int i = 0; i < features_surfs_stack->points.size(); i++) {
+    // TODO: here associate all surf points
+    for (unsigned int i = 0; i < features_surfs_fullres_stack->points.size(); i++) {
       PointType point_sel;
-      pointAssociateToMap(&features_surfs_stack->points.at(i), &point_sel);
+      pointAssociateToMap(&features_surfs_fullres_stack->points.at(i), &point_sel);
 
       int cubeI = int((point_sel.x + 25.0) / 50.0) + _cloud_center_width;
       int cubeJ = int((point_sel.y + 25.0) / 50.0) + _cloud_center_height;

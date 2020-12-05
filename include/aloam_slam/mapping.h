@@ -65,9 +65,10 @@ public:
 
   bool is_initialized = false;
 
-  void setData(ros::Time time_of_data, tf::Transform aloam_odometry, pcl::PointCloud<PointType>::Ptr laserCloudCornerLast,
-               pcl::PointCloud<PointType>::Ptr laserCloudSurfLast, pcl::PointCloud<PointType>::Ptr laserCloudFullRes,
-               aloam_slam::AloamDiagnostics::Ptr aloam_diag_msg, const float resolution_line, const float resolution_plane);
+  void setData(ros::Time time_of_data, tf::Transform aloam_odometry, pcl::PointCloud<PointType>::Ptr corners_fullres,
+               pcl::PointCloud<PointType>::Ptr surfs_fullres, pcl::PointCloud<PointType>::Ptr corners_selected, pcl::PointCloud<PointType>::Ptr surfs_selected,
+               pcl::PointCloud<PointType>::Ptr laserCloudFullRes, aloam_slam::AloamDiagnostics::Ptr aloam_diag_msg, const float resolution_line,
+               const float resolution_plane);
 
 private:
   // member objects
@@ -86,8 +87,10 @@ private:
   bool                              _has_new_data = false;
   ros::Time                         _time_aloam_odometry;
   tf::Transform                     _aloam_odometry;
-  pcl::PointCloud<PointType>::Ptr   _features_corners_last;
-  pcl::PointCloud<PointType>::Ptr   _features_surfs_last;
+  pcl::PointCloud<PointType>::Ptr   _features_corners_last_fullres;
+  pcl::PointCloud<PointType>::Ptr   _features_surfs_last_fullres;
+  pcl::PointCloud<PointType>::Ptr   _features_corners_last_selected;
+  pcl::PointCloud<PointType>::Ptr   _features_surfs_last_selected;
   pcl::PointCloud<PointType>::Ptr   _cloud_filt;
   aloam_slam::AloamDiagnostics::Ptr _aloam_diag_msg;
   float                             _resolution_corners;

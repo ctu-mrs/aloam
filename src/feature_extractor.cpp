@@ -240,7 +240,6 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2::ConstP
                          indices_surfs_less_flat.at(i));
 
     time_voxel_filtration += t_voxel_filtration.toc();
-
   }
   /*//}*/
 

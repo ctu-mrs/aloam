@@ -367,8 +367,8 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     extracted_features->aloam_diag_msg->odometry = odom_diag_msg;
 
     /* _aloam_mapping->setData(stamp, tf_lidar, _features_corners_last, _features_surfs_last, laser_cloud_full_res); */
-    _aloam_mapping->setData(stamp, tf_lidar, selected_corners, selected_surfs, extracted_features->cloud_filt, extracted_features->aloam_diag_msg,
-                            resolution_corners, resolution_surfs);
+    _aloam_mapping->setData(stamp, tf_lidar, _features_corners_last, _features_surfs_last, selected_corners, selected_surfs, extracted_features->cloud_filt,
+                            extracted_features->aloam_diag_msg, resolution_corners, resolution_surfs);
   }
   /*//}*/
 

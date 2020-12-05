@@ -87,7 +87,7 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr, flo
   TicToc t_corners;
   const auto [selected_corners, corner_gradients, corner_gradients_mean, corner_gradients_std, corner_grad_cutoff] =
       selectFeaturesFromCloudByGradient(extracted_features, extracted_features->aloam_diag_msg->feature_extraction.corner_points_less_sharp_count,
-                                        extracted_features->indices_corners_less_sharp, _resolution_corners, _corners_keep_percentile);
+                                        extracted_features->indices_corners_less_sharp, 2.0 * _resolution_corners, _corners_keep_percentile);
   diag_msg.corners_time_ms = t_corners.toc();
   diag_msg.time_ms         = diag_msg.surfs_time_ms + diag_msg.corners_time_ms;
 
@@ -150,7 +150,7 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, std::vector<float>, float, float, fl
   const auto [standalone_points_indices, gradients, grad_norm_mean, grad_norm_std] =
       estimateGradients(extracted_features, features_count, indices_in_filt, search_radius);
 
-  const float grad_cutoff_thrd = gradients.at(std::floor(percentile * gradients.size())).second;
+  float grad_cutoff_thrd = 0.0f;
 
   /* const unsigned int min_feature_count = std::floor(_features_min_count_percent * (features_count - standalone_points.size())); */
 
@@ -160,28 +160,34 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, std::vector<float>, float, float, fl
     gradient_norms_all.at(i) = 1.0;
   }
 
-  // Select features with gradient above mean
-  size_t k = standalone_points_indices.size();
-  for (unsigned int i = 0; i < gradients.size(); i++) {
+  // Select features with gradient above given percentile
+  if (gradients.size() > 0) {
+    size_t k         = standalone_points_indices.size();
+    grad_cutoff_thrd = gradients.at(std::floor(percentile * gradients.size())).second;
 
-    const float grad                                            = gradients.at(i).second;
-    gradient_norms_all.at(standalone_points_indices.size() + i) = grad;
+    for (unsigned int i = 0; i < gradients.size(); i++) {
 
-    // Select points with grad norm above mean only
-    /* if (grad >= grad_norm_mean || i < min_feature_count) { */
-    // TODO: keep atleast min_feature_count
-    if (grad >= grad_cutoff_thrd) {
-      const int            cloud_idx  = gradients.at(i).first;
-      const pcl::PointXYZI point_grad = extracted_features->cloud_filt->at(cloud_idx);
+      const float grad                                            = gradients.at(i).second;
+      gradient_norms_all.at(standalone_points_indices.size() + i) = grad;
 
-      /* point_grad.intensity       = grad; */
+      // Select points with grad norm above mean only
+      /* if (grad >= grad_norm_mean || i < min_feature_count) { */
+      // TODO: keep atleast min_feature_count
+      if (grad >= grad_cutoff_thrd) {
+        const int            cloud_idx  = gradients.at(i).first;
+        const pcl::PointXYZI point_grad = extracted_features->cloud_filt->at(cloud_idx);
+        /* point_grad.intensity       = grad; */
 
-      selected_features->at(k++) = point_grad;
+        selected_features->at(k++) = point_grad;
+      }
     }
-  }
 
-  if (k != features_count) {
-    selected_features->resize(k);
+    if (k != features_count) {
+      selected_features->resize(k);
+    }
+
+  } else {
+    ROS_WARN("[FeatureSelection] Gradients size is 0.");
   }
 
   selected_features->header   = extracted_features->cloud_filt->header;
@@ -272,7 +278,8 @@ std::tuple<std::vector<unsigned int>, std::vector<std::pair<unsigned int, float>
   grad_norm_std = std::sqrt(grad_norm_std / float(features_count));
 
   // Sort gradients in non-ascending order
-  std::sort(gradient_norms.begin(), gradient_norms.end(), [&](const std::pair<int, float> &i, const std::pair<int, float> &j) { return i.second > j.second; });
+  std::sort(gradient_norms.begin(), gradient_norms.end(),
+            [&](const std::pair<unsigned int, float> &i, const std::pair<unsigned int, float> &j) { return i.second > j.second; });
 
   /* const float time_mean_std_estimation = t_tmp.toc() - time_first_iteration; */
   /* ROS_WARN("[FeatureExtractor]: Select features timing -> finding neighbors: %0.1f ms, finding gradients: %0.1f ms, mean/std estimation: %0.1f ms", */
