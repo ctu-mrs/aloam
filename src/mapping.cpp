@@ -321,6 +321,8 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   /* printf("map corner num %d  surf num %d \n", laserCloudCornerFromMapNum, laserCloudSurfFromMapNum); */
   const float time_shift = t_shift.toc();
 
+  mrs_msgs::Float64ArrayStamped msg_eigenvalue;
+
   if (map_features_corners->points.size() > 10 && map_features_surfs->points.size() > 50) {
     TicToc                           t_tree;
     pcl::KdTreeFLANN<PointType>::Ptr kdtree_map_corners(new pcl::KdTreeFLANN<PointType>());
@@ -474,8 +476,9 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
       Eigen::MatrixXd eigen_vectors = eigensolver.eigenvectors().real();
 
 
-      mrs_msgs::Float64ArrayStamped msg_eigenvalue;
+      /* mrs_msgs::Float64ArrayStamped msg_eigenvalue; */
       msg_eigenvalue.header.stamp = time_aloam_odometry;
+      msg_eigenvalue.values.clear();
 
       // Find eigenvalues corresponding to respective state elements
       // the order should be theta_x, theta_y, theta_z, x, y, z
@@ -611,6 +614,20 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   fcu_odom_msg->header.stamp           = time_aloam_odometry;
   tf::pointTFToMsg(tf_fcu.getOrigin(), fcu_odom_msg->pose.pose.position);
   tf::quaternionTFToMsg(tf_fcu.getRotation(), fcu_odom_msg->pose.pose.orientation);
+
+  for (int i = 0; i < 6; i++) {
+    // switch rotational and translational eigenvalues
+    int index = i;
+    if (i > 2) {
+      index = i - 3;
+    } else {
+      index = i + 3;
+    }
+    // publish in the covariance field
+    if (msg_eigenvalue.values.size() == 6) {
+      fcu_odom_msg->pose.covariance[index * 6 + index] = msg_eigenvalue.values.at(i);
+    }
+  }
 
 
   // add points distant only 10cm (idea: throttle bandwidth)
