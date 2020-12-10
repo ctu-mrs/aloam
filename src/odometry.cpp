@@ -31,7 +31,7 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::string uav_n
     _features_surfs_last   = boost::make_shared<pcl::PointCloud<PointType>>();
   }
 
-  _q_w_curr = Eigen::Quaterniond(1, 0, 0, 0);  // eigen has qw, qx, qy, qz notation
+  _q_w_curr = Eigen::Quaterniond::Identity();  // eigen has qw, qx, qy, qz notation
   _t_w_curr = Eigen::Vector3d(0, 0, 0);
 
   _transformer = std::make_shared<mrs_lib::Transformer>("AloamOdometry", uav_name);
@@ -433,6 +433,64 @@ void AloamOdometry::setData(pcl::PointCloud<PointType>::Ptr corner_points_sharp,
   _cloud_full_ress          = laser_cloud_full_res;
 }
 /*//}*/
+
+/* setTransform() //{ */
+
+void AloamOdometry::setTransform(const Eigen::Vector3d& t, const Eigen::Quaterniond& q, const ros::Time& stamp)
+{
+  _q_w_curr = q;
+  _t_w_curr = t;
+
+  // Transform odometry from lidar frame to fcu frame
+  tf::Transform tf_lidar;
+  tf_lidar.setOrigin(tf::Vector3(_t_w_curr.x(), _t_w_curr.y(), _t_w_curr.z()));
+  geometry_msgs::Quaternion ori;
+  tf::quaternionEigenToMsg(_q_w_curr, ori);
+  tf::Quaternion tf_q;
+  tf::quaternionMsgToTF(ori, tf_q);
+  tf_lidar.setRotation(tf_q);
+
+  /*//{ Publish odometry */
+
+  // Publish inverse TF transform (lidar -> odom)
+  tf::Transform tf_fcu = tf_lidar * _tf_lidar_to_fcu;
+
+  geometry_msgs::TransformStamped tf_msg;
+  tf_msg.header.stamp    = stamp;
+  tf_msg.header.frame_id = _frame_fcu;
+  tf_msg.child_frame_id  = _frame_odom;
+  tf::transformTFToMsg(tf_fcu.inverse(), tf_msg.transform);
+
+  try {
+    _tf_broadcaster->sendTransform(tf_msg);
+  }
+  catch (...) {
+    ROS_ERROR("[AloamOdometry]: Exception caught during publishing TF: %s - %s.", tf_msg.child_frame_id.c_str(), tf_msg.header.frame_id.c_str());
+  }
+
+  // Publish nav_msgs::Odometry msg in odom frame
+  if (_pub_odometry_local.getNumSubscribers() > 0) {
+    // Publish nav_msgs::Odometry msg
+    nav_msgs::Odometry::Ptr laser_odometry_msg = boost::make_shared<nav_msgs::Odometry>();
+    laser_odometry_msg->header.stamp           = stamp;
+    laser_odometry_msg->header.frame_id        = _frame_odom;
+    laser_odometry_msg->child_frame_id         = _frame_fcu;
+    tf::pointTFToMsg(tf_fcu.getOrigin(), laser_odometry_msg->pose.pose.position);
+    tf::quaternionTFToMsg(tf_fcu.getRotation(), laser_odometry_msg->pose.pose.orientation);
+
+    try {
+      _pub_odometry_local.publish(laser_odometry_msg);
+    }
+    catch (...) {
+      ROS_ERROR("[AloamOdometry]: Exception caught during publishing topic %s.", _pub_odometry_local.getTopic().c_str());
+    }
+  }
+
+  /*//}*/
+
+}
+
+//}
 
 /*//{ TransformToStart() */
 void AloamOdometry::TransformToStart(PointType const *const pi, PointType *const po) {

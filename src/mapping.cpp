@@ -27,10 +27,10 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
 
   _map_publish_period = 1.0f / _map_publish_period;
 
-  _q_wmap_wodom = Eigen::Quaterniond(1, 0, 0, 0);
+  _q_wmap_wodom = Eigen::Quaterniond::Identity();
   _t_wmap_wodom = Eigen::Vector3d(0, 0, 0);
 
-  _q_wodom_curr = Eigen::Quaterniond(1, 0, 0, 0);
+  _q_wodom_curr = Eigen::Quaterniond::Identity();
   _t_wodom_curr = Eigen::Vector3d(0, 0, 0);
 
   {
@@ -690,6 +690,82 @@ bool AloamMapping::callbackResetMapping([[maybe_unused]] std_srvs::Trigger::Requ
   return true;
 }
 /*//}*/
+
+/* setTransform() //{ */
+
+void AloamMapping::setTransform(const Eigen::Vector3d& t, const Eigen::Quaterniond& q, const ros::Time& stamp)
+{
+  _q_wodom_curr = q;
+  _t_wodom_curr = t;
+
+  transformAssociateToMap();
+  transformUpdate();
+
+  // Publish TF
+  // TF fcu -> aloam origin (_t_w_curr and _q_w_curr is in origin -> fcu frame, hence inversion)
+  tf::Transform  tf_lidar;
+  tf::Quaternion tf_q;
+  tf_lidar.setOrigin(tf::Vector3(_t_w_curr(0), _t_w_curr(1), _t_w_curr(2)));
+  tf::quaternionEigenToTF(_q_w_curr, tf_q);
+  tf_lidar.setRotation(tf_q);
+
+  tf::Transform tf_fcu = tf_lidar * _tf_lidar_to_fcu;
+
+  geometry_msgs::TransformStamped tf_msg;
+  tf_msg.header.stamp    = stamp;
+  tf_msg.header.frame_id = _frame_fcu;
+  tf_msg.child_frame_id  = _frame_map;
+  tf::transformTFToMsg(tf_fcu.inverse(), tf_msg.transform);
+
+  try {
+    _tf_broadcaster->sendTransform(tf_msg);
+  }
+  catch (...) {
+    ROS_ERROR("[AloamMapping]: Exception caught during publishing TF: %s - %s.", tf_msg.child_frame_id.c_str(), tf_msg.header.frame_id.c_str());
+  }
+
+  // Create nav_msgs::Odometry msg
+  nav_msgs::Odometry::Ptr fcu_odom_msg = boost::make_shared<nav_msgs::Odometry>();
+  fcu_odom_msg->header.frame_id        = _frame_map;
+  fcu_odom_msg->header.stamp           = stamp;
+  tf::pointTFToMsg(tf_fcu.getOrigin(), fcu_odom_msg->pose.pose.position);
+  tf::quaternionTFToMsg(tf_fcu.getRotation(), fcu_odom_msg->pose.pose.orientation);
+
+  // add points distant only 10cm (idea: throttle bandwidth)
+  if ((_t_w_curr - _path_last_added_pos).norm() > 0.1) {
+    _path_last_added_pos = _t_w_curr;
+
+    // Create geometry_msgs::PoseStamped msg
+    geometry_msgs::PoseStamped fcu_pose_msg;
+    fcu_pose_msg.header     = fcu_odom_msg->header;
+    fcu_pose_msg.pose       = fcu_odom_msg->pose.pose;
+    _laser_path_msg->header = fcu_odom_msg->header;
+    _laser_path_msg->poses.push_back(fcu_pose_msg);
+
+    // Publish nav_msgs::Path msg
+    if (_pub_path.getNumSubscribers() > 0) {
+      try {
+        _pub_path.publish(_laser_path_msg);
+      }
+      catch (...) {
+        ROS_ERROR("[AloamMapping]: Exception caught during publishing topic %s.", _pub_path.getTopic().c_str());
+      }
+    }
+  }
+
+  // Publish nav_msgs::Odometry msg
+  if (_pub_odom_global.getNumSubscribers() > 0) {
+    fcu_odom_msg->child_frame_id = _frame_fcu;
+    try {
+      _pub_odom_global.publish(fcu_odom_msg);
+    }
+    catch (...) {
+      ROS_ERROR("[AloamMapping]: Exception caught during publishing topic %s.", _pub_odom_global.getTopic().c_str());
+    }
+  }
+}
+
+//}
 
 }  // namespace aloam_slam
 

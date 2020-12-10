@@ -25,6 +25,7 @@
 #include <tf/transform_broadcaster.h>
 #include <tf_conversions/tf_eigen.h>
 #include <tf2_ros/transform_broadcaster.h>
+#include <tf2_eigen/tf2_eigen.h>
 
 #include <eigen3/Eigen/Dense>
 #include <eigen_conversions/eigen_msg.h>
@@ -64,10 +65,12 @@ public:
   AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, std::shared_ptr<mrs_lib::Profiler> profiler, std::string frame_fcu,
                std::string frame_map, float scan_frequency, tf::Transform tf_lidar_to_fcu);
 
-  bool is_initialized = false;
+  std::atomic<bool> is_initialized = false;
 
   void setData(ros::Time time_of_data, tf::Transform aloam_odometry, pcl::PointCloud<PointType>::Ptr laserCloudCornerLast,
                pcl::PointCloud<PointType>::Ptr laserCloudSurfLast, pcl::PointCloud<PointType>::Ptr laserCloudFullRes);
+
+  void setTransform(const Eigen::Vector3d& t, const Eigen::Quaterniond& q, const ros::Time& stamp);
 
 private:
   // member objects

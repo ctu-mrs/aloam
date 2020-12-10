@@ -23,6 +23,7 @@ find_package(catkin REQUIRED COMPONENTS
   mrs_lib
   eigen_conversions
   tf_conversions
+  tf2_eigen
   nodelet
   pcl_ros
   os1_driver
