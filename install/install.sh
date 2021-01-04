@@ -2,6 +2,7 @@
 
 # get path to script
 SCRIPT_PATH="$( cd "$(dirname "$0")" ; pwd -P )"
+distro=`lsb_release -r | awk '{ print $2 }'`
 
 # CMake
 sudo apt-get install --yes cmake
@@ -22,7 +23,14 @@ sudo apt-get install --yes libeigen3-dev
 sudo apt-get install --yes libsuitesparse-dev
  
 # PCL
-sudo apt-get install --yes ros-melodic-pcl-ros ros-melodic-pcl-conversions ros-melodic-pcl-msgs
+if [ "$distro" = "18.04" ]; then
+  sudo apt-get install --yes ros-melodic-pcl-ros ros-melodic-pcl-conversions ros-melodic-pcl-msgs
+elif [ "$distro" = "20.04" ]; then
+  sudo apt-get install --yes ros-noetic-pcl-ros ros-noetic-pcl-conversions ros-noetic-pcl-msgs
+else
+  echo -e "\e[31mUbuntu version not 18.04 or 20.04, installing Noetic packages.\e[0m"
+  sudo apt-get install --yes ros-noetic-pcl-ros ros-noetic-pcl-conversions ros-noetic-pcl-msgs
+fi
 
 # download ceres solver
 cd $SCRIPT_PATH
