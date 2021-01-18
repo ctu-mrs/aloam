@@ -4,7 +4,7 @@
 #include "aloam_slam/odometry.h"
 #include "aloam_slam/mapping.h"
 
-#include <os1_driver/ouster_ros/point_os1.h>
+#include <ouster_ros/point.h>
 
 namespace aloam_slam
 {

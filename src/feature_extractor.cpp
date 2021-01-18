@@ -346,7 +346,7 @@ void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::
   TicToc t_prepare;
 
   // Create PointOS1 pointcloud {x, y, z, intensity, t, reflectivity, ring, noise, range}
-  pcl::PointCloud<ouster_ros::OS1::PointOS1>::Ptr cloud_pcl = boost::make_shared<pcl::PointCloud<ouster_ros::OS1::PointOS1>>();
+  pcl::PointCloud<ouster_ros::Point>::Ptr cloud_pcl = boost::make_shared<pcl::PointCloud<ouster_ros::Point>>();
   pcl::fromROSMsg(*cloud, *cloud_pcl);
 
   /*//{ Precompute points indices */
