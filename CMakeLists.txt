@@ -25,7 +25,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf_conversions
   nodelet
   pcl_ros
-  os1_driver
+  ouster_ros
 )
 
 find_package(PCL REQUIRED COMPONENTS)
