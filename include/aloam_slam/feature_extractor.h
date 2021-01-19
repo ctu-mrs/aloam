@@ -44,6 +44,9 @@ private:
   void parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr &cloud_processed,
                                 std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices, float &processing_time);
 
+  void removeNaNFromPointCloud(const pcl::PointCloud<ouster_ros::Point>::Ptr &cloud_in, pcl::PointCloud<ouster_ros::Point>::Ptr &cloud_out,
+                               std::unordered_map<unsigned int, unsigned int> &indices);
+
   bool hasField(const std::string field, const sensor_msgs::PointCloud2::ConstPtr &msg);
 
   // callbacks
