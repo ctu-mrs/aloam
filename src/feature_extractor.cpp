@@ -337,8 +337,12 @@ void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::
   TicToc t_prepare;
 
   // Create PointOS1 pointcloud {x, y, z, intensity, t, reflectivity, ring, noise, range}
-  pcl::PointCloud<ouster_ros::OS1::PointOS1>::Ptr cloud_pcl = boost::make_shared<pcl::PointCloud<ouster_ros::OS1::PointOS1>>();
-  pcl::fromROSMsg(*cloud, *cloud_pcl);
+  pcl::PointCloud<ouster_ros::Point>::Ptr        cloud_raw = boost::make_shared<pcl::PointCloud<ouster_ros::Point>>();
+  pcl::PointCloud<ouster_ros::Point>::Ptr        cloud_pcl = boost::make_shared<pcl::PointCloud<ouster_ros::Point>>();
+  std::unordered_map<unsigned int, unsigned int> indices_in_raw_cloud;
+
+  pcl::fromROSMsg(*cloud, *cloud_raw);
+  removeNaNFromPointCloud(cloud_raw, cloud_pcl, indices_in_raw_cloud);
 
   /*//{ Precompute points indices */
   const int   cloud_size    = cloud_pcl->points.size();
@@ -399,6 +403,39 @@ void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::
   processing_time = t_prepare.toc();
 }
 /*//}*/
+
+/*//{ removeNaNFromPointCloud() */
+void FeatureExtractor::removeNaNFromPointCloud(const pcl::PointCloud<ouster_ros::Point>::Ptr &cloud_in, pcl::PointCloud<ouster_ros::Point>::Ptr &cloud_out,
+                                               std::unordered_map<unsigned int, unsigned int> &indices) {
+
+  if (cloud_in->is_dense) {
+    cloud_out = cloud_in;
+    return;
+  }
+
+  unsigned int k = 0;
+
+  cloud_out->resize(cloud_in->size());
+
+  for (unsigned int i = 0; i < cloud_in->size(); i++) {
+
+    if (std::isfinite(cloud_in->at(i).x) && std::isfinite(cloud_in->at(i).y) && std::isfinite(cloud_in->at(i).z)) {
+      cloud_out->at(k) = cloud_in->at(i);
+      indices[k]       = i;
+
+      k++;
+    }
+  }
+
+  cloud_out->header   = cloud_in->header;
+  cloud_out->is_dense = true;
+
+  if (cloud_in->size() != k) {
+    cloud_out->resize(k);
+  }
+}
+/*//}*/
+
 
 /*//{ hasField() */
 bool FeatureExtractor::hasField(const std::string field, const sensor_msgs::PointCloud2::ConstPtr &msg) {

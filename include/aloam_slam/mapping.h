@@ -31,7 +31,7 @@
 #include <eigen_conversions/eigen_msg.h>
 
 #include <ceres/ceres.h>
-#include <opencv/cv.h>
+/* #include <opencv/cv.h> */
 
 #include <std_srvs/SetBool.h>
 #include <std_srvs/Trigger.h>
