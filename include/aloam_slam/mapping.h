@@ -13,6 +13,7 @@
 #include <thread>
 #include <iostream>
 #include <mutex>
+#include <condition_variable>
 #include <queue>
 
 #include <pcl/point_cloud.h>
@@ -86,6 +87,7 @@ private:
 
   // Feature extractor newest data
   std::mutex                      _mutex_odometry_data;
+  std::condition_variable         _cv_odometry_data;
   bool                            _has_new_data = false;
   ros::Time                       _time_aloam_odometry;
   tf::Transform                   _aloam_odometry;
