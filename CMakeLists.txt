@@ -18,7 +18,6 @@ find_package(catkin REQUIRED COMPONENTS
   rosbag
   std_msgs
   image_transport
-  cv_bridge
   tf
   mrs_lib
   eigen_conversions
@@ -30,7 +29,6 @@ find_package(catkin REQUIRED COMPONENTS
 )
 
 find_package(PCL REQUIRED COMPONENTS)
-find_package(OpenCV REQUIRED)
 find_package(Ceres REQUIRED)
 
 find_package(Eigen3 REQUIRED)
@@ -46,7 +44,6 @@ include_directories(
   ${catkin_INCLUDE_DIRS} 
   ${PCL_INCLUDE_DIRS}
   ${CERES_INCLUDE_DIRS}
-  ${OpenCV_INCLUDE_DIRS}
   ${Eigen_INCLUDE_DIRS}
   )
 
