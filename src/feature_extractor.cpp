@@ -473,7 +473,7 @@ void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::
 /*//}*/
 
 /*//{ removeNaNFromPointCloud() */
-void FeatureExtractor::removeNaNFromPointCloud(const pcl::PointCloud<ouster_ros::Point>::Ptr cloud_in, pcl::PointCloud<ouster_ros::Point>::Ptr &cloud_out,
+void FeatureExtractor::removeNaNFromPointCloud(const pcl::PointCloud<ouster_ros::Point>::Ptr &cloud_in, pcl::PointCloud<ouster_ros::Point>::Ptr &cloud_out,
                                                std::unordered_map<unsigned int, unsigned int> &indices) {
 
   if (cloud_in->is_dense) {

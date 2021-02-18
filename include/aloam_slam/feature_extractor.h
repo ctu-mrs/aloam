@@ -50,7 +50,7 @@ private:
                                 std::vector<unsigned int> &rows_end_indices, std::unordered_map<unsigned int, unsigned int> &indices_in_raw_cloud,
                                 float &processing_time);
 
-  void removeNaNFromPointCloud(const pcl::PointCloud<ouster_ros::Point>::Ptr cloud_in, pcl::PointCloud<ouster_ros::Point>::Ptr &cloud_out,
+  void removeNaNFromPointCloud(const pcl::PointCloud<ouster_ros::Point>::Ptr &cloud_in, pcl::PointCloud<ouster_ros::Point>::Ptr &cloud_out,
                                std::unordered_map<unsigned int, unsigned int> &indices);
 
   bool hasField(const std::string field, const sensor_msgs::PointCloud2::ConstPtr &msg);
