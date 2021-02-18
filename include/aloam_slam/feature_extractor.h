@@ -17,7 +17,7 @@ public:
   FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, std::shared_ptr<mrs_lib::Profiler> profiler,
                    std::shared_ptr<AloamOdometry> odometry, std::string lidar_frame, float scan_period_sec);
 
-  bool is_initialized = false;
+  std::atomic<bool> is_initialized = false;
 
 private:
   // member objects
@@ -39,7 +39,6 @@ private:
   long int _frame_count = 0;
 
   int _number_of_rings;
-  int _os1_rings_diff;
 
   bool _data_have_ring_field;
 

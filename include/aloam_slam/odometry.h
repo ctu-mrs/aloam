@@ -17,11 +17,13 @@ public:
                 std::shared_ptr<AloamMapping> aloam_mapping, std::string frame_fcu, std::string frame_lidar, std::string frame_odom, float scan_period_sec,
                 tf::Transform tf_lidar_to_fcu);
 
-  bool is_initialized = false;
+  std::atomic<bool> is_initialized = false;
 
   void setData(std::shared_ptr<ExtractedFeatures> extracted_features);
 
   std::shared_ptr<FeatureSelection> feature_selection;
+
+  void setTransform(const Eigen::Vector3d &t, const Eigen::Quaterniond &q, const ros::Time &stamp);
 
 private:
   // member objects
