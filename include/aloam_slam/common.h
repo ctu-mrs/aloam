@@ -40,7 +40,7 @@
 
 #include <pcl/point_types.h>
 
-#include <os1_driver/ouster_ros/point_os1.h>
+#include <ouster_ros/point.h>
 
 #include "aloam_slam/AloamDiagnostics.h"
 #include "aloam_slam/FeatureSelectionDiagnostics.h"
@@ -61,16 +61,16 @@ inline double deg2rad(double degrees) {
 /*//{ struct ExtractedFeatures */
 struct ExtractedFeatures
 {
-  bool                                            is_new = true;
-  pcl::PointCloud<ouster_ros::OS1::PointOS1>::Ptr cloud_raw;
-  pcl::PointCloud<PointType>::Ptr                 cloud_filt;
-  std::vector<unsigned int>                       rows_start_idxs;
-  std::vector<std::vector<unsigned int>>          indices_corners_sharp;
-  std::vector<std::vector<unsigned int>>          indices_surfs_flat;
-  std::vector<std::vector<unsigned int>>          indices_corners_less_sharp;
-  std::vector<std::vector<unsigned int>>          indices_surfs_less_flat;
-  std::unordered_map<unsigned int, unsigned int>  point_indices_in_raw_cloud;
-  aloam_slam::AloamDiagnostics::Ptr               aloam_diag_msg;
+  bool                                           is_new = true;
+  pcl::PointCloud<ouster_ros::Point>::Ptr        cloud_raw;
+  pcl::PointCloud<PointType>::Ptr                cloud_filt;
+  std::vector<unsigned int>                      rows_start_idxs;
+  std::vector<std::vector<unsigned int>>         indices_corners_sharp;
+  std::vector<std::vector<unsigned int>>         indices_surfs_flat;
+  std::vector<std::vector<unsigned int>>         indices_corners_less_sharp;
+  std::vector<std::vector<unsigned int>>         indices_surfs_less_flat;
+  std::unordered_map<unsigned int, unsigned int> point_indices_in_raw_cloud;
+  aloam_slam::AloamDiagnostics::Ptr              aloam_diag_msg;
 
   pcl::PointCloud<PointType>::Ptr getSharpCorners() {
     if (!features_corners_sharp) {

@@ -57,12 +57,12 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2::ConstP
   }
 
   // Process input data per row
-  std::vector<unsigned int>                       rows_start_idxs(_number_of_rings, 0);
-  std::vector<unsigned int>                       rows_end_idxs(_number_of_rings, 0);
-  std::unordered_map<unsigned int, unsigned int>  point_indices_in_raw_cloud;
-  float                                           processing_time;
-  pcl::PointCloud<ouster_ros::OS1::PointOS1>::Ptr laser_cloud_raw  = boost::make_shared<pcl::PointCloud<ouster_ros::OS1::PointOS1>>();
-  pcl::PointCloud<PointType>::Ptr                 laser_cloud_filt = boost::make_shared<pcl::PointCloud<PointType>>();
+  std::vector<unsigned int>                      rows_start_idxs(_number_of_rings, 0);
+  std::vector<unsigned int>                      rows_end_idxs(_number_of_rings, 0);
+  std::unordered_map<unsigned int, unsigned int> point_indices_in_raw_cloud;
+  float                                          processing_time;
+  pcl::PointCloud<ouster_ros::Point>::Ptr        laser_cloud_raw  = boost::make_shared<pcl::PointCloud<ouster_ros::Point>>();
+  pcl::PointCloud<PointType>::Ptr                laser_cloud_filt = boost::make_shared<pcl::PointCloud<PointType>>();
   if (_data_have_ring_field) {
     parseRowsFromOS1CloudMsg(laserCloudMsg, laser_cloud_raw, laser_cloud_filt, rows_start_idxs, rows_end_idxs, point_indices_in_raw_cloud, processing_time);
   } else {
@@ -397,7 +397,7 @@ void FeatureExtractor::parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::Con
 /*//}*/
 
 /*//{ parseRowsFromOS1CloudMsg() */
-void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<ouster_ros::OS1::PointOS1>::Ptr &cloud_raw,
+void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<ouster_ros::Point>::Ptr &cloud_raw,
                                                 pcl::PointCloud<PointType>::Ptr &cloud_filt, std::vector<unsigned int> &rows_start_indices,
                                                 std::vector<unsigned int> &                     rows_end_indices,
                                                 std::unordered_map<unsigned int, unsigned int> &indices_in_raw_cloud, float &processing_time) {
@@ -407,7 +407,7 @@ void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::
   pcl::fromROSMsg(*cloud, *cloud_raw);
 
   // Remove NaNs
-  pcl::PointCloud<ouster_ros::OS1::PointOS1>::Ptr cloud_pcl = boost::make_shared<pcl::PointCloud<ouster_ros::OS1::PointOS1>>();
+  pcl::PointCloud<ouster_ros::Point>::Ptr cloud_pcl = boost::make_shared<pcl::PointCloud<ouster_ros::Point>>();
   removeNaNFromPointCloud(cloud_raw, cloud_pcl, indices_in_raw_cloud);
 
   /*//{ Precompute points indices */
@@ -473,9 +473,8 @@ void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::
 /*//}*/
 
 /*//{ removeNaNFromPointCloud() */
-void FeatureExtractor::removeNaNFromPointCloud(const pcl::PointCloud<ouster_ros::OS1::PointOS1>::Ptr cloud_in,
-                                               pcl::PointCloud<ouster_ros::OS1::PointOS1>::Ptr &     cloud_out,
-                                               std::unordered_map<unsigned int, unsigned int> &      indices) {
+void FeatureExtractor::removeNaNFromPointCloud(const pcl::PointCloud<ouster_ros::Point>::Ptr cloud_in, pcl::PointCloud<ouster_ros::Point>::Ptr &cloud_out,
+                                               std::unordered_map<unsigned int, unsigned int> &indices) {
 
   if (cloud_in->is_dense) {
     cloud_out = cloud_in;

@@ -45,12 +45,12 @@ private:
 
   void parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr &cloud_processed,
                              std::vector<unsigned int> &rows_start_indices, std::vector<unsigned int> &rows_end_indices, float &processing_time);
-  void parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<ouster_ros::OS1::PointOS1>::Ptr &cloud_raw,
+  void parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<ouster_ros::Point>::Ptr &cloud_raw,
                                 pcl::PointCloud<PointType>::Ptr &cloud_filt, std::vector<unsigned int> &rows_start_indices,
                                 std::vector<unsigned int> &rows_end_indices, std::unordered_map<unsigned int, unsigned int> &indices_in_raw_cloud,
                                 float &processing_time);
 
-  void removeNaNFromPointCloud(const pcl::PointCloud<ouster_ros::OS1::PointOS1>::Ptr cloud_in, pcl::PointCloud<ouster_ros::OS1::PointOS1>::Ptr &cloud_out,
+  void removeNaNFromPointCloud(const pcl::PointCloud<ouster_ros::Point>::Ptr cloud_in, pcl::PointCloud<ouster_ros::Point>::Ptr &cloud_out,
                                std::unordered_map<unsigned int, unsigned int> &indices);
 
   bool hasField(const std::string field, const sensor_msgs::PointCloud2::ConstPtr &msg);

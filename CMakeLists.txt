@@ -27,7 +27,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf2_eigen
   nodelet
   pcl_ros
-  os1_driver
+  ouster_ros
 )
 
 find_package(PCL REQUIRED COMPONENTS)
