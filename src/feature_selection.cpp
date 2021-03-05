@@ -84,43 +84,47 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr, flo
     return std::make_tuple(extracted_features->getLessSharpCorners(), extracted_features->getLessFlatSurfs(), _resolution_corners, _resolution_surfs);
   }
 
-  TicToc t_corners;
-  const auto [selected_corners, corner_gradients, corner_gradients_mean, corner_gradients_std, corner_grad_cutoff] =
+  TicToc     t_corners;
+  const auto feature_set_corners =
       selectFeaturesFromCloudByGradient(extracted_features, extracted_features->aloam_diag_msg->feature_extraction.corner_points_less_sharp_count,
                                         extracted_features->indices_corners_less_sharp, 2.0 * _resolution_corners, _corners_keep_percentile);
   diag_msg.corners_time_ms = t_corners.toc();
-  diag_msg.time_ms         = diag_msg.surfs_time_ms + diag_msg.corners_time_ms;
 
-  TicToc t_surfs;
-  const auto [selected_surfs, surf_gradients, surf_gradients_mean, surf_gradients_std, surf_grad_cutoff] =
+  TicToc     t_surfs;
+  const auto feature_set_surfs =
       selectFeaturesFromCloudByGradient(extracted_features, extracted_features->aloam_diag_msg->feature_extraction.surf_points_less_flat_count,
                                         extracted_features->indices_surfs_less_flat, _resolution_surfs, _surfs_keep_percentile);
   diag_msg.surfs_time_ms = t_surfs.toc();
+  diag_msg.time_ms       = diag_msg.surfs_time_ms + diag_msg.corners_time_ms;
 
-  _resolution_corners = estimateResolution(corner_grad_cutoff, corner_gradients, _resolution_corners_min, _resolution_corners_max);
-  _resolution_surfs   = estimateResolution(surf_grad_cutoff, surf_gradients, _resolution_surfs_min, _resolution_surfs_max);
+  // TODO: analyze the influence of estimateResolution method
+  /* _resolution_corners = estimateResolution(corner_grad_cutoff, corner_gradients, _resolution_corners_min, _resolution_corners_max); */
+  /* _resolution_surfs   = estimateResolution(surf_grad_cutoff, surf_gradients, _resolution_surfs_min, _resolution_surfs_max); */
   /* _resolution_corners = 0.4f; */
   /* _resolution_surfs   = 0.8f; */
 
-  diag_msg.number_of_features_out         = selected_corners->size() + selected_surfs->size();
-  diag_msg.number_of_corners_out          = selected_corners->size();
-  diag_msg.number_of_surfs_out            = selected_surfs->size();
+  diag_msg.number_of_corners_out          = feature_set_corners.sorted_features_selected.size();
+  diag_msg.number_of_surfs_out            = feature_set_surfs.sorted_features_selected.size();
+  diag_msg.number_of_features_out         = diag_msg.number_of_corners_out + diag_msg.number_of_surfs_out;
   diag_msg.corners_resolution             = _resolution_corners;
   diag_msg.surfs_resolution               = _resolution_surfs;
   diag_msg.corners_keep_percentile        = _corners_keep_percentile;
   diag_msg.surfs_keep_percentile          = _surfs_keep_percentile;
-  diag_msg.corners_cutoff_thrd            = corner_grad_cutoff;
-  diag_msg.surfs_cutoff_thrd              = surf_grad_cutoff;
-  diag_msg.corners_gradient_mean          = corner_gradients_mean;
-  diag_msg.surfs_gradient_mean            = surf_gradients_mean;
-  diag_msg.corners_gradient_stddev        = corner_gradients_std;
-  diag_msg.surfs_gradient_stddev          = surf_gradients_std;
-  diag_msg.corners_gradient_sorted        = corner_gradients;
-  diag_msg.surfs_gradient_sorted          = surf_gradients;
-  diag_msg.sizeof_features_corners_kb_out = (selected_corners->size() * POINT_SIZE) / 1024.0f;
-  diag_msg.sizeof_features_surfs_kb_out   = (selected_surfs->size() * POINT_SIZE) / 1024.0f;
+  diag_msg.corners_gradient_mean          = feature_set_corners.grad_mean;
+  diag_msg.surfs_gradient_mean            = feature_set_surfs.grad_mean;
+  diag_msg.corners_gradient_stddev        = feature_set_corners.grad_stddev;
+  diag_msg.surfs_gradient_stddev          = feature_set_surfs.grad_stddev;
+  diag_msg.corners_selected_gradients     = getGradients(feature_set_corners.sorted_features_selected);
+  diag_msg.surfs_selected_gradients       = getGradients(feature_set_surfs.sorted_features_selected);
+  diag_msg.corners_others_gradients       = getGradients(feature_set_corners.sorted_features_others);
+  diag_msg.surfs_others_gradients         = getGradients(feature_set_surfs.sorted_features_others);
+  diag_msg.sizeof_features_corners_kb_out = (feature_set_corners.sorted_features_selected.size() * POINT_SIZE) / 1024.0f;
+  diag_msg.sizeof_features_surfs_kb_out   = (feature_set_surfs.sorted_features_selected.size() * POINT_SIZE) / 1024.0f;
 
   extracted_features->aloam_diag_msg->feature_selection = diag_msg;
+
+  const auto selected_corners = featuresToCloud(extracted_features, feature_set_corners.sorted_features_selected);
+  const auto selected_surfs   = featuresToCloud(extracted_features, feature_set_surfs.sorted_features_selected);
 
   // Publish selected features
   publishCloud(_pub_features_corners_selected, selected_corners);
@@ -133,19 +137,23 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr, flo
 /*//}*/
 
 /*//{ selectFeaturesFromCloudByGradient() */
-std::tuple<pcl::PointCloud<PointType>::Ptr, std::vector<float>, float, float, float> FeatureSelection::selectFeaturesFromCloudByGradient(
-    const std::shared_ptr<ExtractedFeatures> &extracted_features, const unsigned int &features_count,
-    const std::vector<std::vector<unsigned int>> &indices_in_filt, const float &search_radius, const float &percentile) {
+FEATURE_SET FeatureSelection::selectFeaturesFromCloudByGradient(const std::shared_ptr<ExtractedFeatures> &    extracted_features,
+                                                                const unsigned int &                          features_count,
+                                                                const std::vector<std::vector<unsigned int>> &indices_in_filt, const float &search_radius,
+                                                                const float &percentile) {
 
-  pcl::PointCloud<PointType>::Ptr selected_features = boost::make_shared<pcl::PointCloud<PointType>>();
-  std::vector<float>              gradient_norms_all;
+  FEATURE_SET feature_set;
+
+  // TODO: parametrize by segments
+  feature_set.idx_row_from = 0;
+  feature_set.idx_row_to   = ROW_SIZE;
 
   if (features_count == 0) {
-    return std::make_tuple(selected_features, gradient_norms_all, -1.0f, -1.0f, -1.0f);
+    return feature_set;
   }
 
-  selected_features->resize(features_count);
-  gradient_norms_all.resize(features_count);
+  feature_set.sorted_features_selected.resize(features_count);
+  feature_set.sorted_features_others.resize(features_count);
 
   const auto [standalone_points_indices, gradients, grad_norm_mean, grad_norm_std] =
       estimateGradients(extracted_features, features_count, indices_in_filt, search_radius);
@@ -156,46 +164,43 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, std::vector<float>, float, float, fl
 
   // Fill with features, which have no neighbors (standalone)
   for (unsigned int i = 0; i < standalone_points_indices.size(); i++) {
-    selected_features->at(i) = extracted_features->cloud_filt->at(standalone_points_indices.at(i));
-    gradient_norms_all.at(i) = 1.0;
+    FEATURE f;
+    f.idx_in_filt_cloud                        = standalone_points_indices.at(i);
+    f.gradient                                 = 1.0f;
+    feature_set.sorted_features_selected.at(i) = f;
   }
 
   // Select features with gradient above given percentile
+  unsigned int k_selected = standalone_points_indices.size();
+  unsigned int k_others   = 0;
   if (gradients.size() > 0) {
-    size_t k         = standalone_points_indices.size();
     grad_cutoff_thrd = gradients.at(std::floor(percentile * gradients.size())).second;
 
     for (unsigned int i = 0; i < gradients.size(); i++) {
 
-      const float grad                                            = gradients.at(i).second;
-      gradient_norms_all.at(standalone_points_indices.size() + i) = grad;
+      FEATURE f;
+      f.idx_in_filt_cloud = gradients.at(i).first;
+      f.gradient          = gradients.at(i).second;
 
-      // Select points with grad norm above mean only
-      /* if (grad >= grad_norm_mean || i < min_feature_count) { */
-      // TODO: keep atleast min_feature_count
-      if (grad >= grad_cutoff_thrd) {
-        const int            cloud_idx  = gradients.at(i).first;
-        const pcl::PointXYZI point_grad = extracted_features->cloud_filt->at(cloud_idx);
-        /* point_grad.intensity       = grad; */
-
-        selected_features->at(k++) = point_grad;
+      // TODO: always keep atleast min_feature_count in sorted features
+      if (f.gradient >= grad_cutoff_thrd) {
+        feature_set.sorted_features_selected.at(k_selected++) = f;
+      } else {
+        feature_set.sorted_features_others.at(k_others++) = f;
       }
     }
-
-    if (k != features_count) {
-      selected_features->resize(k);
-    }
-
   } else {
     ROS_WARN("[FeatureSelection] Gradients size is 0.");
   }
 
-  selected_features->header   = extracted_features->cloud_filt->header;
-  selected_features->width    = 1;
-  selected_features->height   = selected_features->points.size();
-  selected_features->is_dense = true;
+  if (k_selected != features_count) {
+    feature_set.sorted_features_selected.resize(k_selected);
+  }
+  if (k_others != features_count) {
+    feature_set.sorted_features_others.resize(k_others);
+  }
 
-  return std::make_tuple(selected_features, gradient_norms_all, grad_norm_mean, grad_norm_std, grad_cutoff_thrd);
+  return feature_set;
 }
 /*//}*/
 
@@ -383,109 +388,6 @@ std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> FeatureSelection:
 }
 /*//}*/
 
-/*//{ getNeighbors() */
-std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> FeatureSelection::getNeighbors(const std::shared_ptr<ExtractedFeatures> &    extracted_features,
-                                                                                              const std::vector<std::vector<unsigned int>> &indices_in_filt,
-                                                                                              const float &                                 max_range) {
-  // TODO: use given ranges, precompute angles
-  //
-  /* const double max_range_sq = std::pow(max_range, 2); */
-
-  /* std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> neighbors_map; */
-
-  /* unsigned int cnt = 0; */
-
-  /* for (const auto &row_indices : indices_in_filt) { */
-  /*   fillRowNeighbors(neighbors_map, extracted_features->cloud_filt, row_indices, max_range_sq); */
-  /* } */
-  /* fillColNeighbors(neighbors_map, extracted_features, indices_in_filt, max_range_sq); */
-}
-/*//}*/
-
-/*//{ fillRowNeighbors() */
-void FeatureSelection::fillRowNeighbors(std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> &neighbors,
-                                        const pcl::PointCloud<PointType>::Ptr &cloud_filt, const std::vector<unsigned int> &row_features_idxs,
-                                        const float &max_range_sq) {
-
-  for (unsigned int i = 0; i < row_features_idxs.size(); i++) {
-
-    const unsigned int point_idx = row_features_idxs.at(i);
-    const PointType    point     = cloud_filt->at(point_idx);
-
-    const double d1   = std::sqrt(point.x * point.x + point.y * point.y + point.z * point.z);
-    const double d1d1 = d1 * d1;
-
-    // Iterate left
-    for (int l = i - 1; l >= 0; l--) {
-      // TODO: use given ranges, precompute angle
-      const int             neighbor_idx = row_features_idxs.at(l);
-      const Eigen::Vector3f neighbor     = Eigen::Vector3f(cloud_filt->at(neighbor_idx).x, cloud_filt->at(neighbor_idx).y, cloud_filt->at(neighbor_idx).z);
-
-      const double d2    = neighbor.norm();
-      const double angle = (point_idx - neighbor_idx) * HFOV_RESOLUTION;
-      const double rr    = d1d1 + d2 * d2 - 2.0 * d1 * d2 * std::cos(angle);
-      if (rr > max_range_sq) {
-        break;
-      }
-
-      neighbors.at(point_idx).push_back(neighbor);
-    }
-
-    // Iterate right
-    for (unsigned int r = i + 1; r < row_features_idxs.size(); r++) {
-      // TODO: use given ranges, precompute angle
-      const int             neighbor_idx = row_features_idxs.at(r);
-      const Eigen::Vector3f neighbor     = Eigen::Vector3f(cloud_filt->at(neighbor_idx).x, cloud_filt->at(neighbor_idx).y, cloud_filt->at(neighbor_idx).z);
-
-      const double d2    = neighbor.norm();
-      const double angle = (neighbor_idx - point_idx) * HFOV_RESOLUTION;
-      const double rr    = d1d1 + d2 * d2 - 2.0 * d1 * d2 * std::cos(angle);
-      if (rr > max_range_sq) {
-        break;
-      }
-
-      neighbors.at(point_idx).push_back(neighbor);
-    }
-  }
-}
-/*//}*/
-
-/*//{ fillColNeighbors() */
-void FeatureSelection::fillColNeighbors(std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> &neighbors,
-                                        const std::shared_ptr<ExtractedFeatures> &                      extracted_features,
-                                        const std::vector<std::vector<unsigned int>> &indices_in_filt, const float &max_range_sq) {
-  const unsigned int number_of_rows = indices_in_filt.size();
-
-  for (unsigned int r = 0; r < number_of_rows; r++) {
-
-    for (unsigned int i = 0; i < indices_in_filt.at(r).size(); i++) {
-
-      const unsigned int point_idx = indices_in_filt.at(r).at(i);
-      /* const PointType    point     = extracted_features->cloud_filt->at(point_idx); */
-
-      // go to upper rows
-      if (r < number_of_rows - 1) {
-        for (unsigned int j = 0; j < indices_in_filt.at(r + 1).size(); j++) {
-
-          /* const unsigned int start_idx_in_unprocessed_data = point_idx_in_unprocessed_data + ROW_SIZE; */
-
-          /* unsigned int start_idx = -1; */
-          /*   if () { */
-          /*   } */
-          /* } */
-          /* if (start_idx == -1) { */
-          /*   ROS_ERROR("[FeatureSelection] Did not find current index in the map of indices in unprocessed data. This should never happen, something is
-           * wrong!"); */
-          /*   return; */
-          /* } */
-          // TODO inverse map find
-        }
-      }
-    }
-  }
-}
-/*//}*/
-
 /*//{ getNeighborsKdTree() */
 void FeatureSelection::getNeighborsKdTree() {
   // TODO: implement for comparison of kdtree radius search and our speedup
@@ -540,8 +442,18 @@ std::vector<std::pair<unsigned int, unsigned int>> FeatureSelection::getNearestN
 }
 /*//}*/
 
+/*//{ getGradients() */
+std::vector<float> FeatureSelection::getGradients(const std::vector<FEATURE> &feature_vector) {
+  std::vector<float> gradients(feature_vector.size(), 0.0f);
+  for (unsigned int i = 0; i < feature_vector.size(); i++) {
+    gradients.at(i) = feature_vector.at(i).gradient;
+  }
+  return gradients;
+}
+/*//}*/
+
 /*//{ publishCloud() */
-void FeatureSelection::publishCloud(ros::Publisher publisher, const pcl::PointCloud<PointType>::Ptr cloud) {
+void FeatureSelection::publishCloud(ros::Publisher publisher, const pcl::PointCloud<PointType>::Ptr &cloud) {
   if (publisher.getNumSubscribers() > 0) {
 
     sensor_msgs::PointCloud2::Ptr cloud_msg = boost::make_shared<sensor_msgs::PointCloud2>();
@@ -555,6 +467,27 @@ void FeatureSelection::publishCloud(ros::Publisher publisher, const pcl::PointCl
     }
   }
 }
+/*//}*/
+
+/*//{ featuresToCloud() */
+pcl::PointCloud<PointType>::Ptr FeatureSelection::featuresToCloud(const std::shared_ptr<ExtractedFeatures> &extracted_features,
+                                                                  const std::vector<FEATURE> &              feature_vec) {
+
+  pcl::PointCloud<PointType>::Ptr cloud = boost::make_shared<pcl::PointCloud<PointType>>();
+  cloud->header                         = extracted_features->cloud_filt->header;
+  cloud->width                          = 1;
+  cloud->height                         = feature_vec.size();
+  cloud->is_dense                       = true;
+
+  cloud->resize(feature_vec.size());
+  for (unsigned int i = 0; i < feature_vec.size(); i++) {
+    const PointType p = extracted_features->cloud_filt->at(feature_vec.at(i).idx_in_filt_cloud);
+    cloud->at(i)      = p;
+  }
+
+  return cloud;
+}
+
 /*//}*/
 
 }  // namespace aloam_slam

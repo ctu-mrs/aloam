@@ -30,11 +30,11 @@
 
   <!--//{ DATA PROCESSING PARAMETERS -->
   <arg name="lidar3d/min_range" default="0.6" />
-  <arg name="lidar3d/max_range" default="20.0" />
+  <arg name="lidar3d/max_range" default="30.0" />
   <arg name="lidar3d/downsample_row_step" default="4" />
   <arg name="lidar3d/downsample_col_step" default="1" />
   <arg name="lidar3d/publish_cloud_over_max_range" default="true" />
-  <arg name="lidar3d/filter/intensity" default="true" />
+  <arg name="lidar3d/filter/intensity" default="false" />
   <arg name="lidar3d/filter/intensity/value" default="100" />
   <arg name="lidar3d/filter/intensity/range" default="10.0" />
   
@@ -100,8 +100,9 @@
       <arg name="lidar3d_publish_cloud_over_max_range" value="$(eval arg('lidar3d/publish_cloud_over_max_range'))" />
       <arg name="lidar3d_min_range" value="$(arg lidar3d/min_range)" />
       <arg name="lidar3d_max_range" value="$(arg lidar3d/max_range)" />
-      <arg name="lidar3d_downsample_row_step" default="$(arg lidar3d/downsample_row_step)" />
-      <arg name="lidar3d_downsample_col_step" default="$(arg lidar3d/downsample_col_step)" />
+      <arg name="lidar3d/downsampling/dynamic_row_selection" default="false" />
+      <arg name="lidar3d/downsampling/row_step" default="$(arg lidar3d/downsample_row_step)" />
+      <arg name="lidar3d/downsampling/col_step" default="$(arg lidar3d/downsample_col_step)" />
       <arg if="$(eval arg('RUN_TYPE') == 'simulation')" name="lidar3d_filter_intensity_en" value="false" />
       <arg unless="$(eval arg('RUN_TYPE') == 'simulation')" name="lidar3d_filter_intensity_en" value="$(arg lidar3d/filter/intensity)" />
       <arg name="lidar3d_filter_intensity_thrd" value="$(arg lidar3d/filter/intensity/value)" />
@@ -157,7 +158,7 @@
       <arg name="nodelet" value="$(arg nodelet)" />
       <arg name="nodelet_manager" value="$(arg nodelet_manager)" />
       <arg name="launch_prefix" value="$(arg launch_prefix)" />
-      <arg name="launch_delay" default="2" />
+      <arg name="launch_delay" default="1" />
 
     </include>
     <!--//}-->
