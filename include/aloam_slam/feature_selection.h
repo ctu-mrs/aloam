@@ -10,7 +10,7 @@ namespace aloam_slam
 struct FEATURE
 {
   unsigned int idx_in_filt_cloud;
-  float        gradient;
+  float        gradient = 0.0f;
 };
 
 struct FEATURE_SET
@@ -49,6 +49,8 @@ private:
   float _resolution_surfs_max;
 
   bool  _features_selection_enabled;
+  bool  _corners_keep_standalone;
+  bool  _surfs_keep_standalone;
   float _features_min_count_percent;
   float _corners_keep_percentile;
   float _surfs_keep_percentile;
@@ -69,12 +71,12 @@ private:
 
   FEATURE_SET selectFeaturesFromCloudByGradient(const std::shared_ptr<ExtractedFeatures> &extracted_features, const unsigned int &features_count,
                                                 const std::vector<std::vector<unsigned int>> &indices_in_filt, const float &search_radius,
-                                                const float &percentile);
+                                                const float &percentile, const bool &keep_standalone);
 
   std::tuple<std::vector<FEATURE>, std::vector<FEATURE>, float, float> estimateGradients(const std::shared_ptr<ExtractedFeatures> &    extracted_features,
                                                                                          const unsigned int &                          features_count,
                                                                                          const std::vector<std::vector<unsigned int>> &indices_in_filt,
-                                                                                         const float &                                 search_radius);
+                                                                                         const float &search_radius, const bool &keep_standalone);
 
   std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> getNeighborsInBB(const std::shared_ptr<ExtractedFeatures> &    extracted_features,
                                                                                   const std::vector<std::vector<unsigned int>> &indices_in_filt,

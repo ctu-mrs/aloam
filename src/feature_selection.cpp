@@ -17,7 +17,9 @@ FeatureSelection::FeatureSelection(const ros::NodeHandle &parent_nh, mrs_lib::Pa
   param_loader.loadParam("feature_selection/enable", _features_selection_enabled, false);
   param_loader.loadParam("feature_selection/min_count_percent", _features_min_count_percent, 0.3f);
   param_loader.loadParam("feature_selection/corners/keep_percentile", _corners_keep_percentile, 0.5f);
+  param_loader.loadParam("feature_selection/corners/keep_standalone", _corners_keep_standalone, false);
   param_loader.loadParam("feature_selection/surfs/keep_percentile", _surfs_keep_percentile, 0.5f);
+  param_loader.loadParam("feature_selection/surfs/keep_standalone", _surfs_keep_standalone, false);
   /* param_loader.loadParam("feature_selection/corners/gradient/limit/upper", _features_corners_gradient_limit_upper, 1.0f); */
   /* param_loader.loadParam("feature_selection/corners/gradient/limit/bottom", _features_corners_gradient_limit_bottom, 0.0f); */
   /* param_loader.loadParam("feature_selection/surfs/gradient/limit/upper", _features_surfs_gradient_limit_upper, 1.0f); */
@@ -87,13 +89,13 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr, flo
   TicToc     t_corners;
   const auto feature_set_corners =
       selectFeaturesFromCloudByGradient(extracted_features, extracted_features->aloam_diag_msg->feature_extraction.corner_points_less_sharp_count,
-                                        extracted_features->indices_corners_less_sharp, 2.0 * _resolution_corners, _corners_keep_percentile);
+                                        extracted_features->indices_corners_less_sharp, 2.0 * _resolution_corners, _corners_keep_percentile, _corners_keep_standalone);
   diag_msg.corners_time_ms = t_corners.toc();
 
   TicToc     t_surfs;
   const auto feature_set_surfs =
       selectFeaturesFromCloudByGradient(extracted_features, extracted_features->aloam_diag_msg->feature_extraction.surf_points_less_flat_count,
-                                        extracted_features->indices_surfs_less_flat, _resolution_surfs, _surfs_keep_percentile);
+                                        extracted_features->indices_surfs_less_flat, _resolution_surfs, _surfs_keep_percentile, _surfs_keep_standalone);
   diag_msg.surfs_time_ms = t_surfs.toc();
   diag_msg.time_ms       = diag_msg.surfs_time_ms + diag_msg.corners_time_ms;
 
@@ -140,7 +142,7 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr, flo
 FEATURE_SET FeatureSelection::selectFeaturesFromCloudByGradient(const std::shared_ptr<ExtractedFeatures> &    extracted_features,
                                                                 const unsigned int &                          features_count,
                                                                 const std::vector<std::vector<unsigned int>> &indices_in_filt, const float &search_radius,
-                                                                const float &percentile) {
+                                                                const float &percentile, const bool &keep_standalone) {
 
   FEATURE_SET feature_set;
 
@@ -158,7 +160,7 @@ FEATURE_SET FeatureSelection::selectFeaturesFromCloudByGradient(const std::share
   /* return std::make_tuple(standalone_features, coupled_features, grad_norm_mean, grad_norm_std); */
   /* const auto [standalone_points_indices, gradients, grad_norm_mean, grad_norm_std] = */
   const auto [standalone_features, coupled_features, grad_norm_mean, grad_norm_std] =
-      estimateGradients(extracted_features, features_count, indices_in_filt, search_radius);
+      estimateGradients(extracted_features, features_count, indices_in_filt, search_radius, keep_standalone);
 
   feature_set.grad_mean   = grad_norm_mean;
   feature_set.grad_stddev = grad_norm_std;
@@ -203,7 +205,7 @@ FEATURE_SET FeatureSelection::selectFeaturesFromCloudByGradient(const std::share
 /*//{ estimateGradients() */
 std::tuple<std::vector<FEATURE>, std::vector<FEATURE>, float, float> FeatureSelection::estimateGradients(
     const std::shared_ptr<ExtractedFeatures> &extracted_features, const unsigned int &features_count,
-    const std::vector<std::vector<unsigned int>> &indices_in_filt, const float &search_radius) {
+    const std::vector<std::vector<unsigned int>> &indices_in_filt, const float &search_radius, const bool &keep_standalone) {
 
   // DEBUG
   /* for (unsigned int i = 0; i < indices_in_full_res.size(); i++) { */
@@ -238,8 +240,17 @@ std::tuple<std::vector<FEATURE>, std::vector<FEATURE>, float, float> FeatureSele
       FEATURE f;
       f.idx_in_filt_cloud = idx;
 
-      // Compute gradient
-      if (neighbors[idx].size() > 0) {
+      if (neighbors[idx].empty()) {
+
+        if (keep_standalone) {
+          f.gradient                                         = 1.0f;
+          standalone_features.at(standalone_feature_count++) = f;
+        } else {
+          coupled_features.at(coupled_feature_count++) = f;
+        }
+      } else {
+
+        // Compute gradient
         const Eigen::Vector3f point_xyz =
             Eigen::Vector3f(extracted_features->cloud_filt->at(idx).x, extracted_features->cloud_filt->at(idx).y, extracted_features->cloud_filt->at(idx).z);
         Eigen::Vector3f gradient = Eigen::Vector3f::Zero();
@@ -248,14 +259,11 @@ std::tuple<std::vector<FEATURE>, std::vector<FEATURE>, float, float> FeatureSele
         }
 
         // Sum gradients for mean estimation
-        const float grad_norm                        = (gradient / float(neighbors[idx].size())).norm();
-        f.gradient                                   = grad_norm;
-        coupled_features.at(coupled_feature_count++) = f;
+        f.gradient = (gradient / float(neighbors[idx].size())).norm();
 
-        grad_norm_max = std::fmax(grad_norm_max, grad_norm);
-      } else {
-        f.gradient                                         = 1.0f;
-        standalone_features.at(standalone_feature_count++) = f;
+        grad_norm_max = std::fmax(grad_norm_max, f.gradient);
+
+        coupled_features.at(coupled_feature_count++) = f;
       }
     }
   }
