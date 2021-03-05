@@ -155,32 +155,28 @@ FEATURE_SET FeatureSelection::selectFeaturesFromCloudByGradient(const std::share
   feature_set.sorted_features_selected.resize(features_count);
   feature_set.sorted_features_others.resize(features_count);
 
-  const auto [standalone_points_indices, gradients, grad_norm_mean, grad_norm_std] =
+  /* return std::make_tuple(standalone_features, coupled_features, grad_norm_mean, grad_norm_std); */
+  /* const auto [standalone_points_indices, gradients, grad_norm_mean, grad_norm_std] = */
+  const auto [standalone_features, coupled_features, grad_norm_mean, grad_norm_std] =
       estimateGradients(extracted_features, features_count, indices_in_filt, search_radius);
+
+  feature_set.grad_mean   = grad_norm_mean;
+  feature_set.grad_stddev = grad_norm_std;
 
   float grad_cutoff_thrd = 0.0f;
 
   /* const unsigned int min_feature_count = std::floor(_features_min_count_percent * (features_count - standalone_points.size())); */
 
   // Fill with features, which have no neighbors (standalone)
-  for (unsigned int i = 0; i < standalone_points_indices.size(); i++) {
-    FEATURE f;
-    f.idx_in_filt_cloud                        = standalone_points_indices.at(i);
-    f.gradient                                 = 1.0f;
-    feature_set.sorted_features_selected.at(i) = f;
-  }
+  feature_set.sorted_features_selected.insert(feature_set.sorted_features_selected.begin(), standalone_features.begin(), standalone_features.end());
 
   // Select features with gradient above given percentile
-  unsigned int k_selected = standalone_points_indices.size();
+  unsigned int k_selected = standalone_features.size();
   unsigned int k_others   = 0;
-  if (gradients.size() > 0) {
-    grad_cutoff_thrd = gradients.at(std::floor(percentile * gradients.size())).second;
+  if (coupled_features.size() > 0) {
+    grad_cutoff_thrd = coupled_features.at(std::floor(percentile * coupled_features.size())).gradient;
 
-    for (unsigned int i = 0; i < gradients.size(); i++) {
-
-      FEATURE f;
-      f.idx_in_filt_cloud = gradients.at(i).first;
-      f.gradient          = gradients.at(i).second;
+    for (const auto &f : coupled_features) {
 
       // TODO: always keep atleast min_feature_count in sorted features
       if (f.gradient >= grad_cutoff_thrd) {
@@ -205,7 +201,7 @@ FEATURE_SET FeatureSelection::selectFeaturesFromCloudByGradient(const std::share
 /*//}*/
 
 /*//{ estimateGradients() */
-std::tuple<std::vector<unsigned int>, std::vector<std::pair<unsigned int, float>>, float, float> FeatureSelection::estimateGradients(
+std::tuple<std::vector<FEATURE>, std::vector<FEATURE>, float, float> FeatureSelection::estimateGradients(
     const std::shared_ptr<ExtractedFeatures> &extracted_features, const unsigned int &features_count,
     const std::vector<std::vector<unsigned int>> &indices_in_filt, const float &search_radius) {
 
@@ -217,14 +213,14 @@ std::tuple<std::vector<unsigned int>, std::vector<std::pair<unsigned int, float>
   /*   } */
   /* } */
 
-  unsigned int grouped_features_count    = 0;
-  unsigned int standalone_features_count = 0;
-  float        grad_norm_max             = 0.0f;
-  float        grad_norm_mean            = 0.0f;
-  float        grad_norm_std             = 0.0f;
+  unsigned int coupled_feature_count    = 0;
+  unsigned int standalone_feature_count = 0;
+  float        grad_norm_max            = 0.0f;
+  float        grad_norm_mean           = 0.0f;
+  float        grad_norm_std            = 0.0f;
 
-  std::vector<unsigned int>                   standalone_points_indices(features_count);
-  std::vector<std::pair<unsigned int, float>> gradient_norms(features_count);
+  std::vector<FEATURE> standalone_features(features_count);
+  std::vector<FEATURE> coupled_features(features_count);
 
   TicToc t_tmp;
 
@@ -239,6 +235,9 @@ std::tuple<std::vector<unsigned int>, std::vector<std::pair<unsigned int, float>
 
       const unsigned int idx = indices_in_filt.at(i).at(j);
 
+      FEATURE f;
+      f.idx_in_filt_cloud = idx;
+
       // Compute gradient
       if (neighbors[idx].size() > 0) {
         const Eigen::Vector3f point_xyz =
@@ -249,48 +248,49 @@ std::tuple<std::vector<unsigned int>, std::vector<std::pair<unsigned int, float>
         }
 
         // Sum gradients for mean estimation
-        const float grad_norm                       = (gradient / float(neighbors[idx].size())).norm();
-        gradient_norms.at(grouped_features_count++) = std::make_pair(idx, grad_norm);
+        const float grad_norm                        = (gradient / float(neighbors[idx].size())).norm();
+        f.gradient                                   = grad_norm;
+        coupled_features.at(coupled_feature_count++) = f;
 
         grad_norm_max = std::fmax(grad_norm_max, grad_norm);
       } else {
-        standalone_points_indices.at(standalone_features_count++) = idx;
+        f.gradient                                         = 1.0f;
+        standalone_features.at(standalone_feature_count++) = f;
       }
     }
   }
 
   /* const float time_first_iteration = t_tmp.toc() - time_build_tree; */
 
-  if (grouped_features_count != features_count) {
-    gradient_norms.resize(grouped_features_count);
+  if (coupled_feature_count != features_count) {
+    coupled_features.resize(coupled_feature_count);
   }
-  if (standalone_features_count != features_count) {
-    standalone_points_indices.resize(standalone_features_count);
+  if (standalone_feature_count != features_count) {
+    standalone_features.resize(standalone_feature_count);
   }
 
-  for (unsigned int i = 0; i < grouped_features_count; i++) {
-    gradient_norms.at(i).second /= grad_norm_max;
-    grad_norm_mean += gradient_norms.at(i).second;
+  for (auto &f : coupled_features) {
+    f.gradient /= grad_norm_max;
+    grad_norm_mean += f.gradient;
   }
 
   // Estimate mean
-  grad_norm_mean /= float(grouped_features_count);
+  grad_norm_mean /= float(coupled_feature_count);
 
   // Estimate standard deviation
-  for (unsigned int i = 0; i < grouped_features_count; i++) {
-    grad_norm_std += std::pow(gradient_norms.at(i).second - grad_norm_mean, 2);
+  for (auto &f : coupled_features) {
+    grad_norm_std += std::pow(f.gradient - grad_norm_mean, 2);
   }
   grad_norm_std = std::sqrt(grad_norm_std / float(features_count));
 
   // Sort gradients in non-ascending order
-  std::sort(gradient_norms.begin(), gradient_norms.end(),
-            [&](const std::pair<unsigned int, float> &i, const std::pair<unsigned int, float> &j) { return i.second > j.second; });
+  std::sort(coupled_features.begin(), coupled_features.end(), [&](const FEATURE &i, const FEATURE &j) { return i.gradient > j.gradient; });
 
   /* const float time_mean_std_estimation = t_tmp.toc() - time_first_iteration; */
   /* ROS_WARN("[FeatureExtractor]: Select features timing -> finding neighbors: %0.1f ms, finding gradients: %0.1f ms, mean/std estimation: %0.1f ms", */
   /*          time_build_tree, time_first_iteration, time_mean_std_estimation); */
 
-  return std::make_tuple(standalone_points_indices, gradient_norms, grad_norm_mean, grad_norm_std);
+  return std::make_tuple(standalone_features, coupled_features, grad_norm_mean, grad_norm_std);
 }
 /*//}*/
 
@@ -424,7 +424,7 @@ void FeatureSelection::getNeighborsKdTree() {
 
   /*     grad_norm_max = std::fmax(grad_norm_max, grad_norm); */
   /*   } else { */
-  /*     standalone_points_indices.at(standalone_features_count++) = i; */
+  /*     standalone_points_indices.at(standalone_feature_count++) = i; */
   /*   } */
   /* } */
   /*//}*/

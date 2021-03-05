@@ -22,15 +22,6 @@ struct FEATURE_SET
   float        grad_stddev  = -1.0f;
   unsigned int idx_row_from = 0;
   unsigned int idx_row_to   = 0;
-  /* feature_set.selected_features           = boost::make_shared<pcl::PointCloud<PointType>>(); */
-  /*   feature_set.selected_features->header   = extracted_features->cloud_filt->header; */
-  /*   feature_set.selected_features->width    = 1; */
-  /*   feature_set.selected_features->height   = feature_set.sorted_features.size(); */
-  /*   feature_set.selected_features->is_dense = true; */
-  /*   for (const auto &f : feature_set.sorted_features) { */
-  /*     if (f.selected) { */
-  /*     } */
-  /*   } */
 };
 
 
@@ -80,9 +71,10 @@ private:
                                                 const std::vector<std::vector<unsigned int>> &indices_in_filt, const float &search_radius,
                                                 const float &percentile);
 
-  std::tuple<std::vector<unsigned int>, std::vector<std::pair<unsigned int, float>>, float, float> estimateGradients(
-      const std::shared_ptr<ExtractedFeatures> &extracted_features, const unsigned int &features_count,
-      const std::vector<std::vector<unsigned int>> &indices_in_filt, const float &search_radius);
+  std::tuple<std::vector<FEATURE>, std::vector<FEATURE>, float, float> estimateGradients(const std::shared_ptr<ExtractedFeatures> &    extracted_features,
+                                                                                         const unsigned int &                          features_count,
+                                                                                         const std::vector<std::vector<unsigned int>> &indices_in_filt,
+                                                                                         const float &                                 search_radius);
 
   std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> getNeighborsInBB(const std::shared_ptr<ExtractedFeatures> &    extracted_features,
                                                                                   const std::vector<std::vector<unsigned int>> &indices_in_filt,
