@@ -4,6 +4,7 @@
 #include "aloam_slam/mapping.h"
 #include <pcl/search/organized.h>
 
+
 namespace aloam_slam
 {
 
@@ -13,15 +14,23 @@ struct FEATURE
   float        gradient = 0.0f;
 };
 
+using FEATURE_VEC = std::vector<FEATURE>;
+
 struct FEATURE_SET
 {
-  std::vector<FEATURE> sorted_features_selected;
-  std::vector<FEATURE> sorted_features_others;
+  FEATURE_VEC features_standalone;      // or selected
+  FEATURE_VEC features_coupled_sorted;  // or others
 
-  float        grad_mean    = -1.0f;
-  float        grad_stddev  = -1.0f;
-  unsigned int idx_row_from = 0;
-  unsigned int idx_row_to   = 0;
+  float        grad_mean   = -1.0f;
+  float        grad_stddev = -1.0f;
+  unsigned int idx_row_from;
+  unsigned int idx_row_to;
+};
+
+struct LOCAL_FEATURE_SETS
+{
+  unsigned int             number_of_local_segments;
+  std::vector<FEATURE_SET> feature_sets;
 };
 
 
@@ -71,12 +80,11 @@ private:
 
   FEATURE_SET selectFeaturesFromCloudByGradient(const std::shared_ptr<ExtractedFeatures> &extracted_features, const unsigned int &features_count,
                                                 const std::vector<std::vector<unsigned int>> &indices_in_filt, const float &search_radius,
-                                                const float &percentile, const bool &keep_standalone);
+                                                const float &percentile, const bool &keep_standalone, const unsigned int &number_of_segments);
 
-  std::tuple<std::vector<FEATURE>, std::vector<FEATURE>, float, float> estimateGradients(const std::shared_ptr<ExtractedFeatures> &    extracted_features,
-                                                                                         const unsigned int &                          features_count,
-                                                                                         const std::vector<std::vector<unsigned int>> &indices_in_filt,
-                                                                                         const float &search_radius, const bool &keep_standalone);
+  LOCAL_FEATURE_SETS estimateGradients(const std::shared_ptr<ExtractedFeatures> &extracted_features, const unsigned int &features_count,
+                                       const std::vector<std::vector<unsigned int>> &indices_in_filt, const float &search_radius, const bool &keep_standalone,
+                                       const unsigned int &number_of_segments);
 
   std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> getNeighborsInBB(const std::shared_ptr<ExtractedFeatures> &    extracted_features,
                                                                                   const std::vector<std::vector<unsigned int>> &indices_in_filt,

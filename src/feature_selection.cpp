@@ -87,15 +87,15 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr, flo
   }
 
   TicToc     t_corners;
-  const auto feature_set_corners =
-      selectFeaturesFromCloudByGradient(extracted_features, extracted_features->aloam_diag_msg->feature_extraction.corner_points_less_sharp_count,
-                                        extracted_features->indices_corners_less_sharp, 2.0 * _resolution_corners, _corners_keep_percentile, _corners_keep_standalone);
+  const auto feature_set_corners = selectFeaturesFromCloudByGradient(
+      extracted_features, extracted_features->aloam_diag_msg->feature_extraction.corner_points_less_sharp_count, extracted_features->indices_corners_less_sharp,
+      2.0 * _resolution_corners, _corners_keep_percentile, _corners_keep_standalone, 1);
   diag_msg.corners_time_ms = t_corners.toc();
 
   TicToc     t_surfs;
   const auto feature_set_surfs =
       selectFeaturesFromCloudByGradient(extracted_features, extracted_features->aloam_diag_msg->feature_extraction.surf_points_less_flat_count,
-                                        extracted_features->indices_surfs_less_flat, _resolution_surfs, _surfs_keep_percentile, _surfs_keep_standalone);
+                                        extracted_features->indices_surfs_less_flat, _resolution_surfs, _surfs_keep_percentile, _surfs_keep_standalone, 1);
   diag_msg.surfs_time_ms = t_surfs.toc();
   diag_msg.time_ms       = diag_msg.surfs_time_ms + diag_msg.corners_time_ms;
 
@@ -105,8 +105,8 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr, flo
   /* _resolution_corners = 0.4f; */
   /* _resolution_surfs   = 0.8f; */
 
-  diag_msg.number_of_corners_out          = feature_set_corners.sorted_features_selected.size();
-  diag_msg.number_of_surfs_out            = feature_set_surfs.sorted_features_selected.size();
+  diag_msg.number_of_corners_out          = feature_set_corners.features_standalone.size();
+  diag_msg.number_of_surfs_out            = feature_set_surfs.features_standalone.size();
   diag_msg.number_of_features_out         = diag_msg.number_of_corners_out + diag_msg.number_of_surfs_out;
   diag_msg.corners_resolution             = _resolution_corners;
   diag_msg.surfs_resolution               = _resolution_surfs;
@@ -116,17 +116,17 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr, flo
   diag_msg.surfs_gradient_mean            = feature_set_surfs.grad_mean;
   diag_msg.corners_gradient_stddev        = feature_set_corners.grad_stddev;
   diag_msg.surfs_gradient_stddev          = feature_set_surfs.grad_stddev;
-  diag_msg.corners_selected_gradients     = getGradients(feature_set_corners.sorted_features_selected);
-  diag_msg.surfs_selected_gradients       = getGradients(feature_set_surfs.sorted_features_selected);
-  diag_msg.corners_others_gradients       = getGradients(feature_set_corners.sorted_features_others);
-  diag_msg.surfs_others_gradients         = getGradients(feature_set_surfs.sorted_features_others);
-  diag_msg.sizeof_features_corners_kb_out = (feature_set_corners.sorted_features_selected.size() * POINT_SIZE) / 1024.0f;
-  diag_msg.sizeof_features_surfs_kb_out   = (feature_set_surfs.sorted_features_selected.size() * POINT_SIZE) / 1024.0f;
+  diag_msg.corners_selected_gradients     = getGradients(feature_set_corners.features_standalone);
+  diag_msg.surfs_selected_gradients       = getGradients(feature_set_surfs.features_standalone);
+  diag_msg.corners_others_gradients       = getGradients(feature_set_corners.features_coupled_sorted);
+  diag_msg.surfs_others_gradients         = getGradients(feature_set_surfs.features_coupled_sorted);
+  diag_msg.sizeof_features_corners_kb_out = (feature_set_corners.features_standalone.size() * POINT_SIZE) / 1024.0f;
+  diag_msg.sizeof_features_surfs_kb_out   = (feature_set_surfs.features_standalone.size() * POINT_SIZE) / 1024.0f;
 
   extracted_features->aloam_diag_msg->feature_selection = diag_msg;
 
-  const auto selected_corners = featuresToCloud(extracted_features, feature_set_corners.sorted_features_selected);
-  const auto selected_surfs   = featuresToCloud(extracted_features, feature_set_surfs.sorted_features_selected);
+  const auto selected_corners = featuresToCloud(extracted_features, feature_set_corners.features_standalone);
+  const auto selected_surfs   = featuresToCloud(extracted_features, feature_set_surfs.features_standalone);
 
   // Publish selected features
   publishCloud(_pub_features_corners_selected, selected_corners);
@@ -142,70 +142,74 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr, flo
 FEATURE_SET FeatureSelection::selectFeaturesFromCloudByGradient(const std::shared_ptr<ExtractedFeatures> &    extracted_features,
                                                                 const unsigned int &                          features_count,
                                                                 const std::vector<std::vector<unsigned int>> &indices_in_filt, const float &search_radius,
-                                                                const float &percentile, const bool &keep_standalone) {
+                                                                const float &percentile, const bool &keep_standalone, const unsigned int &number_of_segments) {
 
-  FEATURE_SET feature_set;
-
-  // TODO: parametrize by segments
-  feature_set.idx_row_from = 0;
-  feature_set.idx_row_to   = ROW_SIZE;
+  FEATURE_SET out;
 
   if (features_count == 0) {
-    return feature_set;
+    return out;
   }
 
-  feature_set.sorted_features_selected.resize(features_count);
-  feature_set.sorted_features_others.resize(features_count);
+  FEATURE_VEC  features_selected(features_count);
+  FEATURE_VEC  features_others(features_count);
+  unsigned int features_selected_ptr = 0;
+  unsigned int features_others_ptr   = 0;
+  float        mean                  = 0.0f;
+  float        stddev                = 0.0f;
 
-  /* return std::make_tuple(standalone_features, coupled_features, grad_norm_mean, grad_norm_std); */
-  /* const auto [standalone_points_indices, gradients, grad_norm_mean, grad_norm_std] = */
-  const auto [standalone_features, coupled_features, grad_norm_mean, grad_norm_std] =
-      estimateGradients(extracted_features, features_count, indices_in_filt, search_radius, keep_standalone);
+  const LOCAL_FEATURE_SETS local_feature_sets =
+      estimateGradients(extracted_features, features_count, indices_in_filt, search_radius, keep_standalone, number_of_segments);
 
-  feature_set.grad_mean   = grad_norm_mean;
-  feature_set.grad_stddev = grad_norm_std;
+  for (const auto &feature_set : local_feature_sets.feature_sets) {
 
-  float grad_cutoff_thrd = 0.0f;
+    // Select standalone features (no neighbors)
+    features_selected.insert(features_selected.begin() + features_selected_ptr, feature_set.features_standalone.begin(), feature_set.features_standalone.end());
+    features_selected_ptr += feature_set.features_standalone.size();
 
-  /* const unsigned int min_feature_count = std::floor(_features_min_count_percent * (features_count - standalone_points.size())); */
+    // Select features with gradient above given percentile
+    if (!feature_set.features_coupled_sorted.empty()) {
+      const float grad_cutoff_thrd = feature_set.features_coupled_sorted.at(std::floor(percentile * feature_set.features_coupled_sorted.size())).gradient;
 
-  // Fill with features, which have no neighbors (standalone)
-  feature_set.sorted_features_selected.insert(feature_set.sorted_features_selected.begin(), standalone_features.begin(), standalone_features.end());
+      for (const auto &f : feature_set.features_coupled_sorted) {
 
-  // Select features with gradient above given percentile
-  unsigned int k_selected = standalone_features.size();
-  unsigned int k_others   = 0;
-  if (coupled_features.size() > 0) {
-    grad_cutoff_thrd = coupled_features.at(std::floor(percentile * coupled_features.size())).gradient;
-
-    for (const auto &f : coupled_features) {
-
-      // TODO: always keep atleast min_feature_count in sorted features
-      if (f.gradient >= grad_cutoff_thrd) {
-        feature_set.sorted_features_selected.at(k_selected++) = f;
-      } else {
-        feature_set.sorted_features_others.at(k_others++) = f;
+        // TODO: always keep atleast min_feature_count in sorted features
+        if (f.gradient >= grad_cutoff_thrd) {
+          features_selected.at(features_selected_ptr++) = f;
+        } else {
+          features_others.at(features_others_ptr++) = f;
+        }
       }
+    } else {
+      ROS_WARN("[FeatureSelection] Gradients size is 0.");
     }
-  } else {
-    ROS_WARN("[FeatureSelection] Gradients size is 0.");
+
+    mean += feature_set.grad_mean;
+    stddev += feature_set.grad_stddev;
   }
 
-  if (k_selected != features_count) {
-    feature_set.sorted_features_selected.resize(k_selected);
+  if (features_selected_ptr != features_count) {
+    features_selected.resize(features_selected_ptr);
   }
-  if (k_others != features_count) {
-    feature_set.sorted_features_others.resize(k_others);
+  if (features_others_ptr != features_count) {
+    features_others.resize(features_others_ptr);
   }
 
-  return feature_set;
+  out.features_standalone     = features_selected;
+  out.features_coupled_sorted = features_others;
+
+  out.grad_mean   = mean / float(number_of_segments);
+  out.grad_stddev = stddev / float(number_of_segments);
+  /* out.idx_row_from = feature_set.idx_row_from; */
+  /* out.idx_row_to   = feature_set.idx_row_to; */
+
+  return out;
 }
 /*//}*/
 
 /*//{ estimateGradients() */
-std::tuple<std::vector<FEATURE>, std::vector<FEATURE>, float, float> FeatureSelection::estimateGradients(
-    const std::shared_ptr<ExtractedFeatures> &extracted_features, const unsigned int &features_count,
-    const std::vector<std::vector<unsigned int>> &indices_in_filt, const float &search_radius, const bool &keep_standalone) {
+LOCAL_FEATURE_SETS FeatureSelection::estimateGradients(const std::shared_ptr<ExtractedFeatures> &extracted_features, const unsigned int &features_count,
+                                                       const std::vector<std::vector<unsigned int>> &indices_in_filt, const float &search_radius,
+                                                       const bool &keep_standalone, const unsigned int &number_of_segments) {
 
   // DEBUG
   /* for (unsigned int i = 0; i < indices_in_full_res.size(); i++) { */
@@ -215,90 +219,99 @@ std::tuple<std::vector<FEATURE>, std::vector<FEATURE>, float, float> FeatureSele
   /*   } */
   /* } */
 
-  unsigned int coupled_feature_count    = 0;
-  unsigned int standalone_feature_count = 0;
-  float        grad_norm_max            = 0.0f;
-  float        grad_norm_mean           = 0.0f;
-  float        grad_norm_std            = 0.0f;
+  // Prepare return struct
+  LOCAL_FEATURE_SETS local_feature_sets;
+  local_feature_sets.number_of_local_segments = number_of_segments;
+  local_feature_sets.feature_sets.resize(number_of_segments);
 
-  std::vector<FEATURE> standalone_features(features_count);
-  std::vector<FEATURE> coupled_features(features_count);
-
-  TicToc t_tmp;
-
+  // Precompute neneighbors for each feature in cloud
   std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> neighbors = getNeighborsInBB(extracted_features, indices_in_filt, search_radius);
 
-  // Iterate through input cloud
-  for (unsigned int i = 0; i < indices_in_filt.size(); i++) {
+  const unsigned int seg_step = ROW_SIZE / number_of_segments;
+  for (unsigned int seg_no = 0; seg_no < number_of_segments; seg_no++) {
+    unsigned int coupled_feature_count    = 0;
+    unsigned int standalone_feature_count = 0;
+    float        grad_norm_max            = 0.0f;
+    float        grad_norm_mean           = 0.0f;
+    float        grad_norm_std            = 0.0f;
 
-    // TODO: pass also ranges to speed-up, inner indexes might be the same for entire row
+    std::vector<FEATURE> standalone_features(features_count);
+    std::vector<FEATURE> coupled_features(features_count);
 
-    for (unsigned int j = 0; j < indices_in_filt.at(i).size(); j++) {
+    // Iterate through input cloud
+    for (unsigned int i = 0; i < indices_in_filt.size(); i++) {
+      for (unsigned int j = 0; j < indices_in_filt.at(i).size(); j++) {
+        const unsigned int idx = indices_in_filt.at(i).at(j);
 
-      const unsigned int idx = indices_in_filt.at(i).at(j);
+        FEATURE f;
+        f.idx_in_filt_cloud = idx;
 
-      FEATURE f;
-      f.idx_in_filt_cloud = idx;
+        if (neighbors[idx].empty()) {
 
-      if (neighbors[idx].empty()) {
-
-        if (keep_standalone) {
-          f.gradient                                         = 1.0f;
-          standalone_features.at(standalone_feature_count++) = f;
+          if (keep_standalone) {
+            f.gradient                                         = 1.0f;
+            standalone_features.at(standalone_feature_count++) = f;
+          } else {
+            coupled_features.at(coupled_feature_count++) = f;
+          }
         } else {
+
+          // Compute gradient
+          const Eigen::Vector3f point_xyz =
+              Eigen::Vector3f(extracted_features->cloud_filt->at(idx).x, extracted_features->cloud_filt->at(idx).y, extracted_features->cloud_filt->at(idx).z);
+          Eigen::Vector3f gradient = Eigen::Vector3f::Zero();
+          for (const auto &neighbor : neighbors[idx]) {
+            gradient += neighbor - point_xyz;
+          }
+
+          // Sum gradients for mean estimation
+          f.gradient = (gradient / float(neighbors[idx].size())).norm();
+
+          grad_norm_max = std::fmax(grad_norm_max, f.gradient);
+
           coupled_features.at(coupled_feature_count++) = f;
         }
-      } else {
-
-        // Compute gradient
-        const Eigen::Vector3f point_xyz =
-            Eigen::Vector3f(extracted_features->cloud_filt->at(idx).x, extracted_features->cloud_filt->at(idx).y, extracted_features->cloud_filt->at(idx).z);
-        Eigen::Vector3f gradient = Eigen::Vector3f::Zero();
-        for (const auto &neighbor : neighbors[idx]) {
-          gradient += neighbor - point_xyz;
-        }
-
-        // Sum gradients for mean estimation
-        f.gradient = (gradient / float(neighbors[idx].size())).norm();
-
-        grad_norm_max = std::fmax(grad_norm_max, f.gradient);
-
-        coupled_features.at(coupled_feature_count++) = f;
       }
     }
+
+    if (coupled_feature_count != features_count) {
+      coupled_features.resize(coupled_feature_count);
+    }
+    if (standalone_feature_count != features_count) {
+      standalone_features.resize(standalone_feature_count);
+    }
+
+    for (auto &f : coupled_features) {
+      f.gradient /= grad_norm_max;
+      grad_norm_mean += f.gradient;
+    }
+
+    // Estimate mean
+    grad_norm_mean /= float(coupled_feature_count);
+
+    // Estimate standard deviation
+    for (auto &f : coupled_features) {
+      grad_norm_std += std::pow(f.gradient - grad_norm_mean, 2);
+    }
+    grad_norm_std = std::sqrt(grad_norm_std / float(features_count));
+
+    // Sort gradients in non-ascending order
+    std::sort(coupled_features.begin(), coupled_features.end(), [&](const FEATURE &i, const FEATURE &j) { return i.gradient > j.gradient; });
+
+    local_feature_sets.feature_sets.at(seg_no).features_standalone     = standalone_features;
+    local_feature_sets.feature_sets.at(seg_no).features_coupled_sorted = coupled_features;
+    local_feature_sets.feature_sets.at(seg_no).grad_mean               = grad_norm_mean;
+    local_feature_sets.feature_sets.at(seg_no).grad_stddev             = grad_norm_std;
+    local_feature_sets.feature_sets.at(seg_no).idx_row_from            = seg_no * seg_step;
+    local_feature_sets.feature_sets.at(seg_no).idx_row_to              = (seg_no + 1) * seg_step;
   }
-
-  /* const float time_first_iteration = t_tmp.toc() - time_build_tree; */
-
-  if (coupled_feature_count != features_count) {
-    coupled_features.resize(coupled_feature_count);
-  }
-  if (standalone_feature_count != features_count) {
-    standalone_features.resize(standalone_feature_count);
-  }
-
-  for (auto &f : coupled_features) {
-    f.gradient /= grad_norm_max;
-    grad_norm_mean += f.gradient;
-  }
-
-  // Estimate mean
-  grad_norm_mean /= float(coupled_feature_count);
-
-  // Estimate standard deviation
-  for (auto &f : coupled_features) {
-    grad_norm_std += std::pow(f.gradient - grad_norm_mean, 2);
-  }
-  grad_norm_std = std::sqrt(grad_norm_std / float(features_count));
-
-  // Sort gradients in non-ascending order
-  std::sort(coupled_features.begin(), coupled_features.end(), [&](const FEATURE &i, const FEATURE &j) { return i.gradient > j.gradient; });
 
   /* const float time_mean_std_estimation = t_tmp.toc() - time_first_iteration; */
   /* ROS_WARN("[FeatureExtractor]: Select features timing -> finding neighbors: %0.1f ms, finding gradients: %0.1f ms, mean/std estimation: %0.1f ms", */
   /*          time_build_tree, time_first_iteration, time_mean_std_estimation); */
 
-  return std::make_tuple(standalone_features, coupled_features, grad_norm_mean, grad_norm_std);
+  return local_feature_sets;
+  /* return std::make_tuple(standalone_features, coupled_features, grad_norm_mean, grad_norm_std); */
 }
 /*//}*/
 
