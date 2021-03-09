@@ -11,6 +11,7 @@ namespace aloam_slam
 struct FEATURE
 {
   unsigned int idx_in_filt_cloud;
+  unsigned int local_segment;
   float        gradient = 0.0f;
 };
 
