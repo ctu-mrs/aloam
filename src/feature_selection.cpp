@@ -15,6 +15,7 @@ FeatureSelection::FeatureSelection(const ros::NodeHandle &parent_nh, mrs_lib::Pa
   param_loader.loadParam("mapping_resolution/surfs/max", _resolution_surfs_max, 1.0f);
 
   param_loader.loadParam("feature_selection/enable", _features_selection_enabled, false);
+  param_loader.loadParam("feature_selection/local_segments", _features_selection_number_of_segments, 1);
   param_loader.loadParam("feature_selection/min_count_percent", _features_min_count_percent, 0.3f);
   param_loader.loadParam("feature_selection/corners/keep_percentile", _corners_keep_percentile, 0.5f);
   param_loader.loadParam("feature_selection/corners/keep_standalone", _corners_keep_standalone, false);
@@ -89,13 +90,13 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr, flo
   TicToc     t_corners;
   const auto feature_set_corners = selectFeaturesFromCloudByGradient(
       extracted_features, extracted_features->aloam_diag_msg->feature_extraction.corner_points_less_sharp_count, extracted_features->indices_corners_less_sharp,
-      2.0 * _resolution_corners, _corners_keep_percentile, _corners_keep_standalone, 4);
+      2.0 * _resolution_corners, _corners_keep_percentile, _corners_keep_standalone, _features_selection_number_of_segments);
   diag_msg.corners_time_ms = t_corners.toc();
 
   TicToc     t_surfs;
-  const auto feature_set_surfs =
-      selectFeaturesFromCloudByGradient(extracted_features, extracted_features->aloam_diag_msg->feature_extraction.surf_points_less_flat_count,
-                                        extracted_features->indices_surfs_less_flat, _resolution_surfs, _surfs_keep_percentile, _surfs_keep_standalone, 4);
+  const auto feature_set_surfs = selectFeaturesFromCloudByGradient(
+      extracted_features, extracted_features->aloam_diag_msg->feature_extraction.surf_points_less_flat_count, extracted_features->indices_surfs_less_flat,
+      _resolution_surfs, _surfs_keep_percentile, _surfs_keep_standalone, _features_selection_number_of_segments);
   diag_msg.surfs_time_ms = t_surfs.toc();
   diag_msg.time_ms       = diag_msg.surfs_time_ms + diag_msg.corners_time_ms;
 
@@ -125,12 +126,16 @@ std::tuple<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr, flo
 
   extracted_features->aloam_diag_msg->feature_selection = diag_msg;
 
-  const auto selected_corners = featuresToCloud(extracted_features, feature_set_corners.features_standalone);
-  const auto selected_surfs   = featuresToCloud(extracted_features, feature_set_surfs.features_standalone);
+  const auto selected_corners = featuresToCloud(extracted_features, feature_set_corners.features_standalone, false);
+  const auto selected_surfs   = featuresToCloud(extracted_features, feature_set_surfs.features_standalone, false);
+
+  // TODO: remove this redundancy after testing
+  const auto selected_corners_viz = featuresToCloud(extracted_features, feature_set_corners.features_standalone, true);
+  const auto selected_surfs_viz   = featuresToCloud(extracted_features, feature_set_surfs.features_standalone, true);
 
   // Publish selected features
-  publishCloud(_pub_features_corners_selected, selected_corners);
-  publishCloud(_pub_features_surfs_selected, selected_surfs);
+  publishCloud(_pub_features_corners_selected, selected_corners_viz);
+  publishCloud(_pub_features_surfs_selected, selected_surfs_viz);
 
   /* ROS_WARN_THROTTLE(0.5, "[FeatureSelection] feature selection of corners and surfs: %0.1f ms", diag_msg.corners_time_ms + diag_msg.surfs_time_ms); */
 
@@ -500,7 +505,7 @@ void FeatureSelection::publishCloud(ros::Publisher publisher, const pcl::PointCl
 
 /*//{ featuresToCloud() */
 pcl::PointCloud<PointType>::Ptr FeatureSelection::featuresToCloud(const std::shared_ptr<ExtractedFeatures> &extracted_features,
-                                                                  const std::vector<FEATURE> &              feature_vec) {
+                                                                  const std::vector<FEATURE> &feature_vec, const bool &color_by_segment) {
 
   pcl::PointCloud<PointType>::Ptr cloud = boost::make_shared<pcl::PointCloud<PointType>>();
   cloud->header                         = extracted_features->cloud_filt->header;
@@ -512,6 +517,9 @@ pcl::PointCloud<PointType>::Ptr FeatureSelection::featuresToCloud(const std::sha
   for (unsigned int i = 0; i < feature_vec.size(); i++) {
     const PointType p = extracted_features->cloud_filt->at(feature_vec.at(i).idx_in_filt_cloud);
     cloud->at(i)      = p;
+    if (color_by_segment) {
+      cloud->at(i).intensity = feature_vec.at(i).local_segment;
+    }
   }
 
   return cloud;

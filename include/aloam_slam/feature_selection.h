@@ -61,6 +61,7 @@ private:
   bool  _features_selection_enabled;
   bool  _corners_keep_standalone;
   bool  _surfs_keep_standalone;
+  int   _features_selection_number_of_segments;
   float _features_min_count_percent;
   float _corners_keep_percentile;
   float _surfs_keep_percentile;
@@ -98,7 +99,8 @@ private:
   std::vector<std::pair<unsigned int, unsigned int>> getNearestNeighborLimits(const float &point_distance);
 
   void                            publishCloud(ros::Publisher publisher, const pcl::PointCloud<PointType>::Ptr &cloud);
-  pcl::PointCloud<PointType>::Ptr featuresToCloud(const std::shared_ptr<ExtractedFeatures> &extracted_features, const std::vector<FEATURE> &feature_vec);
+  pcl::PointCloud<PointType>::Ptr featuresToCloud(const std::shared_ptr<ExtractedFeatures> &extracted_features, const std::vector<FEATURE> &feature_vec,
+                                                  const bool &color_by_segment = false);
 
   std::vector<float> getGradients(const std::vector<FEATURE> &feature_vector);
 
