@@ -36,10 +36,10 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::string uav_n
 
   _transformer = std::make_shared<mrs_lib::Transformer>("AloamOdometry", uav_name);
 
-  mrs_lib::SubscribeHandlerOptions shopts;
-  shopts.nh         = nh_;
-  shopts.node_name  = "AloamOdometry";
-  shopts.threadsafe = true;
+  /* mrs_lib::SubscribeHandlerOptions shopts; */
+  /* shopts.nh         = nh_; */
+  /* shopts.node_name  = "AloamOdometry"; */
+  /* shopts.threadsafe = true; */
 
   /* _sub_handler_orientation = mrs_lib::SubscribeHandler<nav_msgs::Odometry>(shopts, "orientation_in", mrs_lib::no_timeout); */
 

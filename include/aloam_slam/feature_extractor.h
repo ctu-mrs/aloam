@@ -5,6 +5,7 @@
 #include "aloam_slam/mapping.h"
 
 #include <ouster_ros/point.h>
+#include <mrs_lib/subscribe_handler.h>
 
 namespace aloam_slam
 {
@@ -19,7 +20,7 @@ public:
 private:
   // member objects
   std::shared_ptr<mrs_lib::Profiler> _profiler;
-  ros::Subscriber                    _sub_laser_cloud;
+  mrs_lib::SubscribeHandler<sensor_msgs::PointCloud2> _sub_laser_cloud;
 
   std::shared_ptr<AloamOdometry> _odometry;
 
@@ -49,7 +50,7 @@ private:
   bool hasField(const std::string field, const sensor_msgs::PointCloud2::ConstPtr &msg);
 
   // callbacks
-  void callbackLaserCloud(const sensor_msgs::PointCloud2::ConstPtr &laserCloudMsg);
+  void callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs::PointCloud2>& laserCloudMsg);
 };
 }  // namespace aloam_slam
 #endif

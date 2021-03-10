@@ -20,17 +20,23 @@ FeatureExtractor::FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::Pa
 
   _initialization_frames_delay = int(1.0 / scan_period_sec);
 
-  _sub_laser_cloud = nh_.subscribe("laser_cloud_in", 1, &FeatureExtractor::callbackLaserCloud, this, ros::TransportHints().tcpNoDelay());
+  /* _sub_laser_cloud = nh_.subscribe("laser_cloud_in", 1, &FeatureExtractor::callbackLaserCloud, this, ros::TransportHints().tcpNoDelay()); */
 
-  ROS_INFO("[AloamFeatureExtractor]: Listening laser cloud at topic: %s", _sub_laser_cloud.getTopic().c_str());
+  mrs_lib::SubscribeHandlerOptions shopts;
+  shopts.nh         = nh_;
+  shopts.node_name  = "FeatureExtractor";
+  _sub_laser_cloud = mrs_lib::SubscribeHandler<sensor_msgs::PointCloud2>(shopts, "laser_cloud_in", mrs_lib::no_timeout, &FeatureExtractor::callbackLaserCloud, this);
+
+  /* ROS_INFO_STREAM("[AloamFeatureExtractor]: Listening to laser cloud at topic: " << _sub_laser_cloud.topicName()); */
 }
 /*//}*/
 
 /*//{ laserCloudHandler */
-void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2::ConstPtr &laserCloudMsg) {
-  if (!is_initialized) {
+void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs::PointCloud2>& sub) {
+  if (!is_initialized || !sub.hasMsg())
     return;
-  }
+
+  const auto laserCloudMsg = sub.getMsg();
   if (laserCloudMsg->data.size() == 0) {
     ROS_WARN("[AloamFeatureExtractor]: Received empty laser cloud msg. Skipping frame.");
     return;

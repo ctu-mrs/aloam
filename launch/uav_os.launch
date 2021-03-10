@@ -11,7 +11,7 @@
   <arg name="map_frame" default="$(arg UAV_NAME)/aloam_origin"/>
 
   <!-- SENSOR PARAMETERS -->
-  <arg name="points_topic" default="os_cloud_node/points_processed" />
+  <arg name="points_topic" default="os_cloud_nodelet/points_processed" />
   <arg name="number_of_rings" default="16" />
   <arg name="vertical_fov" default="33.2" />
   <arg name="sensor_frequency" default="10.0" />

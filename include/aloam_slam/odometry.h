@@ -3,8 +3,6 @@
 
 #include "aloam_slam/mapping.h"
 
-#include <mrs_lib/subscribe_handler.h>
-
 namespace aloam_slam
 {
 class AloamOdometry {
