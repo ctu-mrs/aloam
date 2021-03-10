@@ -99,9 +99,8 @@ void AloamSlam::onInit() {
     feature_extractor->is_initialized = true;
     aloam_odometry->is_initialized    = true;
     aloam_mapping->is_initialized     = true;
+    ROS_INFO("[Aloam]: \033[1;32minitialized\033[0m");
   }
-
-  ROS_INFO("[Aloam]: initialized");
 }
 
 //}
@@ -133,9 +132,8 @@ void AloamSlam::initOdom()
 
   try
   {
+    ROS_WARN_STREAM("[Aloam] Waiting for transformation between " << frame_lidar << " and " << frame_init << ".");
     const geometry_msgs::TransformStamped T = tfBuffer.lookupTransform(frame_init, frame_lidar, ros::Time(0), ros::Duration(666));
-    /* Eigen::Isometry3d init_T; */
-    /* tf2::fromMsg(T.transform, init_T); */
     Eigen::Isometry3d init_T = tf2::transformToEigen(T.transform);
     Eigen::Vector3d t(init_T.translation());
     Eigen::Quaterniond q(init_T.rotation());
@@ -146,6 +144,7 @@ void AloamSlam::initOdom()
     feature_extractor->is_initialized = true;
     aloam_odometry->is_initialized    = true;
     aloam_mapping->is_initialized     = true;
+    ROS_INFO("[Aloam]: \033[1;32minitialized\033[0m");
   }
   catch (tf2::TransformException &ex)
   {

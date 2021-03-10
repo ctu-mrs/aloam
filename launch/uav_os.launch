@@ -6,12 +6,12 @@
 
   <!-- DEFAULT PARAMETERS AND FRAMES -->
   <arg name="fcu_frame" default="$(arg UAV_NAME)/fcu"/>
-  <arg name="lidar_frame" default="$(arg UAV_NAME)/os1_lidar"/>
+  <arg name="lidar_frame" default="$(arg UAV_NAME)/ouster_sensor"/>
   <arg name="odom_frame" default="$(arg UAV_NAME)/aloam_odom_origin"/>
   <arg name="map_frame" default="$(arg UAV_NAME)/aloam_origin"/>
 
   <!-- SENSOR PARAMETERS -->
-  <arg name="points_topic" default="os1_cloud_node/points_processed" />
+  <arg name="points_topic" default="os_cloud_node/points_processed" />
   <arg name="number_of_rings" default="16" />
   <arg name="vertical_fov" default="33.2" />
   <arg name="sensor_frequency" default="10.0" />

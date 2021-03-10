@@ -215,7 +215,7 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2::ConstP
   surf_points_flat->header.frame_id         = _frame_map;
   surf_points_less_flat->header.frame_id    = _frame_map;
 
-  pcl::uint64_t stamp;
+  std::uint64_t stamp;
   pcl_conversions::toPCL(laserCloudMsg->header.stamp, stamp);
   laser_cloud->header.stamp              = stamp;
   corner_points_sharp->header.stamp      = stamp;

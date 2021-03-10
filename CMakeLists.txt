@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(aloam_slam)
+cmake_policy(SET CMP0048 NEW)
+project(aloam_slam VERSION 666)
 
 # we really need to replace the general flags because
 # we cannot build this with march=native
