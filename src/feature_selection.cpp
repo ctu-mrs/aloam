@@ -367,6 +367,10 @@ std::unordered_map<unsigned int, std::vector<Eigen::Vector3f>> FeatureSelection:
       const float d               = extracted_features->getRange(idx_in_filt);
 
       const auto row_col_idxs = getNearestNeighborLimits(d);
+      // TODO: Remove after correct R inside the look-up-table is used
+      if (row_col_idxs.empty()) {
+        continue;
+      }
 
       const unsigned int max_v_idx = row_col_idxs.back().first;
       const unsigned int row_min   = std::max(0, int(this_r - max_v_idx));
