@@ -82,6 +82,12 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   }
   /*//}*/
 
+  if (laser_cloud_full_res->empty())
+  {
+    ROS_WARN_THROTTLE(1.0, "[AloamOdometry]: Received an empty input cloud, skipping!");
+    return;
+  }
+
   mrs_lib::Routine profiler_routine = _profiler->createRoutine("timerOdometry", 1.0f / _scan_period_sec, 0.05, event);
 
   ros::Time stamp;
