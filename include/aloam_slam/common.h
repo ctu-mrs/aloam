@@ -64,7 +64,7 @@ struct ExtractedFeatures
   bool                                           is_new = true;
   pcl::PointCloud<ouster_ros::Point>::Ptr        cloud_raw;
   pcl::PointCloud<PointType>::Ptr                cloud_filt;
-  std::vector<unsigned int>                      rows_start_idxs;
+  std::vector<int>                               rows_start_idxs;
   std::vector<std::vector<unsigned int>>         indices_corners_sharp;
   std::vector<std::vector<unsigned int>>         indices_surfs_flat;
   std::vector<std::vector<unsigned int>>         indices_corners_less_sharp;
