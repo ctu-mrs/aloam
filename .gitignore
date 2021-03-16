@@ -1,3 +1,4 @@
 install/tmp
 *.swp
 *.swo
+lib
