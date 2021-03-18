@@ -51,7 +51,7 @@
  
     <!--//{ OCTOMAP SERVER PARAMETERS -->
     <arg name="map_builder" default="true" />
-    <arg name="map_builder/topics" default="" />
+    <arg name="map_builder/topics" default="$(find aloam_slam)/config/topics_aloam.yaml" />
     <arg name="map_builder/resolution" default="0.20" />
     <arg name="map_builder/alpha/occupied" default="1.0" />
     <arg name="map_builder/alpha/free" default="1.0" />
@@ -89,7 +89,7 @@
     <!--//}-->
 
     <!--//{ DATA PROCESSING NODELET -->
-    <include file="$(find mrs_pcl_tools)/launch/uav_os1_filtration.launch">
+    <include file="$(find mrs_pcl_tools)/launch/uav_os_filtration.launch">
       <arg name="nodelet" value="$(arg nodelet)" />
       <arg name="nodelet_manager" value="$(arg nodelet_manager)" />
       <arg name="launch_prefix" value="$(arg launch_prefix)" />
@@ -115,7 +115,7 @@
     <!--//}-->
 
     <!--//{ OCTOMAP SERVER NODELET-->
-    <include if="$(arg map_builder)" file="$(find octomap_server)/launch/uav_os1_nodelet.launch">
+    <include if="$(arg map_builder)" file="$(find octomap_server)/launch/uav_nodelet.launch">
       <arg name="nodelet" value="$(arg nodelet)" />
       <arg name="nodelet_manager" value="$(arg nodelet_manager)" />
       <arg name="launch_prefix" value="$(arg launch_prefix)" />

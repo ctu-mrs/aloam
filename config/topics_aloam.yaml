@@ -1,0 +1,3 @@
+topics_pcl2: ["aloam/scan_registered"] # sensor_msgs::PointCloud2 clouds
+frames_pcl2: ["os1_lidar"] # non-namespaced frames of topics_pcl2 clouds (required only for pcl2 topics published in map frame)
+over_max_range_free_space_len: [-1.0] # length of rays, which will be inserted to map as free space (full ray inserted when <0)
