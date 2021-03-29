@@ -28,6 +28,7 @@
   <arg name="nodelet_manager" default="" />
   <arg name="launch_delay" default=""/>
   <arg name="launch_prefix" default=""/>
+  <arg name="remap_tf" default="false" />
 
   <group ns="$(arg UAV_NAME)">
     
@@ -49,6 +50,7 @@
       <param name="map_publish_rate" type="double" value="$(arg map_publish_rate)" />
       <param name="mapping_line_resolution" type="double" value="$(arg mapping_line_resolution)" />
       <param name="mapping_plane_resolution" type="double" value="$(arg mapping_plane_resolution)" />
+      <param name="remap_tf" type="bool" value="$(arg remap_tf)" />
 
       <!-- Subscribers -->
       <remap from="~laser_cloud_in" to="$(arg points_topic)"/>
@@ -60,6 +62,7 @@
       <remap from="~odom_global_out" to="aloam/odom"/>
       <remap from="~map_out" to="aloam/map"/>
       <remap from="~scan_registered_out" to="aloam/scan_registered"/>
+      <remap from="~eigenvalues" to="aloam/eigenvalues"/>
         
       <!-- Service servers -->
       <remap from="~srv_reset_mapping_in" to="aloam/reset/mapping"/>

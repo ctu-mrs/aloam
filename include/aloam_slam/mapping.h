@@ -51,6 +51,7 @@
 #include <mrs_lib/mutex.h>
 #include <mrs_lib/transformer.h>
 #include <mrs_lib/attitude_converter.h>
+#include <mrs_msgs/Float64ArrayStamped.h>
 
 #include "aloam_slam/common.h"
 #include "aloam_slam/tic_toc.h"
@@ -100,6 +101,7 @@ private:
   ros::Publisher _pub_laser_cloud_registered;
   ros::Publisher _pub_odom_global;
   ros::Publisher _pub_path;
+  ros::Publisher _pub_eigenvalue;
 
   // services
   ros::ServiceServer _srv_reset_mapping;
@@ -115,6 +117,7 @@ private:
   float _scan_frequency;
   float _mapping_frequency;
   float _map_publish_period;
+  bool _remap_tf;
 
   tf::Transform _tf_lidar_to_fcu;
 

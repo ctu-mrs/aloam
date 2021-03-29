@@ -22,6 +22,7 @@ find_package(catkin REQUIRED COMPONENTS
   cv_bridge
   tf
   mrs_lib
+  mrs_msgs
   eigen_conversions
   tf_conversions
   tf2_eigen
@@ -39,7 +40,7 @@ set(Eigen_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIRS})
 set(Eigen_LIBRARIES ${Eigen_LIBRARIES})
 
 catkin_package(
-  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs mrs_lib eigen_conversions tf_conversions pcl_ros
+  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs mrs_lib mrs_msgs eigen_conversions tf_conversions pcl_ros
 )
 
 include_directories(
