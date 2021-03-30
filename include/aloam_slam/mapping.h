@@ -61,6 +61,16 @@
 
 namespace aloam_slam
 {
+
+  template <typename pc_t>
+  inline bool isfinite(const pc_t& pc)
+  {
+    for (const auto& pt : pc.points)
+      if (!pcl::isFinite(pt))
+        return false;
+    return true;
+  }
+
 class AloamMapping {
 
 public:

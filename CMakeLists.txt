@@ -4,11 +4,13 @@ project(aloam_slam VERSION 666)
 
 # we really need to replace the general flags because
 # we cannot build this with march=native
-set(CMAKE_CXX_FLAGS "-std=c++17")
+set(CMAKE_CXX_FLAGS "")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+add_definitions(-g)
+add_definitions(-O3)
 
 find_package(catkin REQUIRED COMPONENTS
   geometry_msgs

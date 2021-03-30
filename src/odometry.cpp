@@ -36,8 +36,7 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::string uav_n
 
   _transformer = std::make_shared<mrs_lib::Transformer>("AloamOdometry", uav_name);
 
-  /* mrs_lib::SubscribeHandlerOptions shopts; */
-  /* shopts.nh         = nh_; */
+  /* mrs_lib::SubscribeHandlerOptions shopts(nh_); */
   /* shopts.node_name  = "AloamOdometry"; */
   /* shopts.threadsafe = true; */
 
@@ -437,6 +436,17 @@ void AloamOdometry::setData(pcl::PointCloud<PointType>::Ptr corner_points_sharp,
   _surf_points_flat         = surf_points_flat;
   _surf_points_less_flat    = surf_points_less_flat;
   _cloud_full_ress          = laser_cloud_full_res;
+
+  /* if (!isfinite(*_corner_points_sharp)) */
+  /*   std::cerr << "                                                                [AloamOdometry::setData]: _corner_points_sharp are not finite!!" << "\n"; */
+  /* if (!isfinite(*_corner_points_less_sharp)) */
+  /*   std::cerr << "                                                                [AloamOdometry::setData]: _corner_points_less_sharp are not finite!!" << "\n"; */
+  /* if (!isfinite(*_surf_points_flat)) */
+  /*   std::cerr << "                                                                [AloamOdometry::setData]: _surf_points_flat are not finite!!" << "\n"; */
+  /* if (!isfinite(*_surf_points_less_flat)) */
+  /*   std::cerr << "                                                                [AloamOdometry::setData]: _surf_points_less_flat are not finite!!" << "\n"; */
+  /* if (!isfinite(*_cloud_full_ress)) */
+  /*   std::cerr << "                                                                [AloamOdometry::setData]: _cloud_full_ress are not finite!!" << "\n"; */
 }
 /*//}*/
 

@@ -78,6 +78,13 @@ void AloamMapping::setData(ros::Time time_of_data, tf::Transform aloam_odometry,
     _cloud_full_res        = cloud_full_res;
   }
   _cv_odometry_data.notify_all();
+
+  /* if (!isfinite(*_features_corners_last)) */
+  /*   std::cerr << "                                                                [AloamMapping::setData]: _features_corners_last are not finite!!" << "\n"; */
+  /* if (!isfinite(*_features_surfs_last)) */
+  /*   std::cerr << "                                                                [AloamMapping::setData]: _features_surfs_last are not finite!!" << "\n"; */
+  /* if (!isfinite(*_cloud_full_res)) */
+  /*   std::cerr << "                                                                [AloamMapping::setData]: _cloud_full_res are not finite!!" << "\n"; */
 }
 /*//}*/
 
