@@ -2,9 +2,18 @@ cmake_minimum_required(VERSION 2.8.3)
 cmake_policy(SET CMP0048 NEW)
 project(aloam_slam VERSION 666)
 
-# we really need to replace the general flags because
-# we cannot build this with march=native
-set(CMAKE_CXX_FLAGS "-std=c++17")
+# Override CXX flags inherited from workspace, if precompiled PCL binaries from debian repos are used
+if (DEFINED ENV{PCL_CROSS_COMPILATION})
+  set(PCL_CROSS_COMPILATION $ENV{PCL_CROSS_COMPILATION})
+else()
+  set(PCL_CROSS_COMPILATION "true")
+endif()
+if(${PCL_CROSS_COMPILATION} STREQUAL "true")
+  message("Using precompiled PCL binaries from debian repos. Overriding catkin workspace CMAKE_CXX_FLAGS.")
+  set(CMAKE_CXX_FLAGS "-std=c++17")
+else()
+  message("Using custom-built PCL binaries. Inheriting all CMAKE_CXX_FLAGS from catkin workspace.")
+endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -27,10 +36,12 @@ find_package(catkin REQUIRED COMPONENTS
   tf2_eigen
   nodelet
   pcl_ros
+  pcl_conversions
+  pcl_msgs
   ouster_ros
 )
 
-find_package(PCL REQUIRED COMPONENTS)
+find_package(PCL REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(Ceres REQUIRED)
 
@@ -39,7 +50,7 @@ set(Eigen_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIRS})
 set(Eigen_LIBRARIES ${Eigen_LIBRARIES})
 
 catkin_package(
-  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs mrs_lib eigen_conversions tf_conversions pcl_ros
+  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs mrs_lib eigen_conversions tf_conversions pcl_ros pcl_conversions pcl_msgs
 )
 
 include_directories(

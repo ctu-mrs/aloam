@@ -11,6 +11,14 @@ SCRIPT_PATH="$( cd "$(dirname "$0")" ; pwd -P )"
 CERES_PATH=$SCRIPT_PATH/../lib
 CERES_VERSION=1.14.0
 
+# IMPORTANT: These variables should match the settings of your catkin workspace
+PROFILE="RelWithDebInfo" # RelWithDebInfo, Release, Debug
+BUILD_WITH_MARCH_NATIVE=false
+if [ ! -z "$PCL_CROSS_COMPILATION" ]; then
+  BUILD_WITH_MARCH_NATIVE=$PCL_CROSS_COMPILATION
+fi
+CMAKE_STANDARD=17
+
 # install dependencies
 sudo apt update
 sudo apt-get -y install \
@@ -23,6 +31,36 @@ sudo apt-get -y install \
   ros-$ROS_DISTRO-pcl-conversions \
   ros-$ROS_DISTRO-pcl-msgs
 
+# Build with march native?
+if $BUILD_WITH_MARCH_NATIVE; then
+  CMAKE_MARCH_NATIVE="-march=native"
+else
+  CMAKE_MARCH_NATIVE=""
+fi
+
+# Profile-dependent flags
+if [[ "$PROFILE" == "RelWithDebInfo" ]]; then
+  BUILD_FLAGS_PROFILE=(
+                  -DCMAKE_CXX_FLAGS_${PROFILE^^}="-O2 -g"
+                  -DCMAKE_C_FLAGS_${PROFILE^^}="-O2 -g")
+elif [[ "$PROFILE" == "Release" ]]; then
+  BUILD_FLAGS_PROFILE=(
+                  -DCMAKE_CXX_FLAGS_${PROFILE^^}="-O3"
+                  -DCMAKE_C_FLAGS_${PROFILE^^}="-O3")
+else
+  BUILD_FLAGS_PROFILE=(
+                  -DCMAKE_CXX_FLAGS_${PROFILE^^}="-O0 -g"
+                  -DCMAKE_C_FLAGS_${PROFILE^^}="-O0 -g")
+fi
+
+# Defaults taken from mrs_workspace building flags
+BUILD_FLAGS_GENERAL=( 
+              -DCMAKE_EXPORT_COMPILE_COMMANDS=ON 
+              -DCMAKE_CXX_STANDARD=$CMAKE_STANDARD 
+              -DCMAKE_BUILD_TYPE=$PROFILE
+              -DCMAKE_CXX_FLAGS="-std=c++$CMAKE_STANDARD $CMAKE_MARCH_NATIVE" 
+              -DCMAKE_C_FLAGS="$CMAKE_MARCH_NATIVE"
+            )
 
 # download ceres solver
 [ ! -d $CERES_PATH ] && mkdir -p $CERES_PATH
@@ -40,6 +78,6 @@ fi
 cd $CERES_PATH/ceres-solver-$CERES_VERSION
 [ ! -d "build" ] && mkdir build
 cd build
-cmake ..
+cmake "${BUILD_FLAGS_GENERAL[@]}" "${BUILD_FLAGS_PROFILE[@]}" ../
 make -j$[$(nproc) - 1]
 sudo make install
