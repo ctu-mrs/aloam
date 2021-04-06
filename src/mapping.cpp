@@ -22,6 +22,7 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
   param_loader.loadParam("mapping_plane_resolution", _resolution_plane, 0.4f);
   param_loader.loadParam("mapping_rate", _mapping_frequency, 5.0f);
   param_loader.loadParam("map_publish_rate", _map_publish_period, 0.5f);
+  param_loader.loadParam("remap_tf", _remap_tf, false);
 
   /* _mapping_frequency = std::min(scan_frequency, _mapping_frequency);  // cannot be higher than scan frequency */
 
@@ -47,6 +48,7 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
   _pub_laser_cloud_registered = nh_.advertise<sensor_msgs::PointCloud2>("scan_registered_out", 1);
   _pub_odom_global            = nh_.advertise<nav_msgs::Odometry>("odom_global_out", 1);
   _pub_path                   = nh_.advertise<nav_msgs::Path>("path_out", 1);
+  _pub_eigenvalue             = nh_.advertise<mrs_msgs::Float64ArrayStamped>("eigenvalues", 1);
 
   if (_mapping_frequency > 0.0f) {
     _timer_mapping_loop = nh_.createTimer(ros::Rate(_mapping_frequency), &AloamMapping::timerMapping, this, true, true);
@@ -76,6 +78,13 @@ void AloamMapping::setData(ros::Time time_of_data, tf::Transform aloam_odometry,
     _cloud_full_res        = cloud_full_res;
   }
   _cv_odometry_data.notify_all();
+
+  /* if (!isfinite(*_features_corners_last)) */
+  /*   std::cerr << "                                                                [AloamMapping::setData]: _features_corners_last are not finite!!" << "\n"; */
+  /* if (!isfinite(*_features_surfs_last)) */
+  /*   std::cerr << "                                                                [AloamMapping::setData]: _features_surfs_last are not finite!!" << "\n"; */
+  /* if (!isfinite(*_cloud_full_res)) */
+  /*   std::cerr << "                                                                [AloamMapping::setData]: _cloud_full_res are not finite!!" << "\n"; */
 }
 /*//}*/
 
@@ -445,6 +454,63 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event)
         options.check_gradients                   = false;
         options.gradient_check_relative_precision = 1e-4;
         ceres::Solver::Summary summary;
+
+        // Get eigenvalues to measure problem degradation //{
+        TicToc t_eigenvalues;
+        // Get Jacobian
+        ceres::CRSMatrix jacobian;
+        problem.Evaluate(ceres::Problem::EvaluateOptions(), nullptr, nullptr, nullptr, &jacobian);
+
+        // Convert it to eigen matrix
+        Eigen::MatrixXd eigen_matrix;
+        eigen_matrix.resize(jacobian.num_rows, jacobian.num_cols);
+        eigen_matrix.setZero();
+
+        for (int row = 0; row < jacobian.num_rows; ++row) {
+          int start = jacobian.rows[row];
+          int end   = jacobian.rows[row + 1] - 1;
+
+          for (int i = start; i <= end; i++) {
+            int    col   = jacobian.cols[i];
+            double value = jacobian.values[i];
+
+            eigen_matrix(row, col) = value;
+          }
+        }
+
+        // calculate matrix J^T*J
+        eigen_matrix = eigen_matrix.transpose() * eigen_matrix;
+
+        // get eigenvalues and eigenvectors
+        Eigen::EigenSolver<Eigen::MatrixXd> eigensolver;
+        eigensolver.compute(eigen_matrix);
+        Eigen::VectorXd eigen_values  = eigensolver.eigenvalues().real();
+        Eigen::MatrixXd eigen_vectors = eigensolver.eigenvectors().real();
+
+        mrs_msgs::Float64ArrayStamped msg_eigenvalue;
+        msg_eigenvalue.header.stamp = time_aloam_odometry;
+        msg_eigenvalue.values.clear();
+
+        // Find eigenvalues corresponding to respective state elements
+        // the order should be theta_x, theta_y, theta_z, x, y, z
+        for (int i = 0; i < 6; i++) {
+          double eig = 0;
+          double vec = 0;
+          for (int j = 0; j < eigen_vectors.cols(); j++) {
+            if (abs(eigen_vectors(i, j)) > vec) {
+              vec = abs(eigen_vectors(i, j));
+              eig = eigen_values(j);
+            }
+          }
+          msg_eigenvalue.values.push_back(eig);
+        }
+
+        // Publish eigenvalues
+        _pub_eigenvalue.publish(msg_eigenvalue);
+
+        float time_eigenvalues = t_eigenvalues.toc();
+        /* ROS_INFO("[AloamMapping] Eigenvalue calculation took %.3f ms.", time_eigenvalues); */
+        /*//}*/
         ceres::Solve(options, &problem, &summary);
         time_solver += t_solver.toc();
       }
@@ -541,7 +607,11 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event)
     geometry_msgs::TransformStamped tf_msg;
     tf_msg.header.stamp    = time_aloam_odometry;
     tf_msg.header.frame_id = _frame_fcu;
-    tf_msg.child_frame_id  = _frame_map;
+    if (_remap_tf) {
+      tf_msg.child_frame_id  = _frame_map + "_orig";
+    } else {
+      tf_msg.child_frame_id  = _frame_map;
+    }
     tf::transformTFToMsg(tf_fcu.inverse(), tf_msg.transform);
 
     try {
@@ -722,7 +792,11 @@ void AloamMapping::setTransform(const Eigen::Vector3d& t, const Eigen::Quaternio
   geometry_msgs::TransformStamped tf_msg;
   tf_msg.header.stamp    = stamp;
   tf_msg.header.frame_id = _frame_fcu;
-  tf_msg.child_frame_id  = _frame_map;
+  if (_remap_tf) {
+    tf_msg.child_frame_id  = _frame_map + "_orig";
+  } else {
+    tf_msg.child_frame_id  = _frame_map;
+  }
   tf::transformTFToMsg(tf_fcu.inverse(), tf_msg.transform);
 
   try {

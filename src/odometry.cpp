@@ -36,8 +36,7 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::string uav_n
 
   _transformer = std::make_shared<mrs_lib::Transformer>("AloamOdometry", uav_name);
 
-  /* mrs_lib::SubscribeHandlerOptions shopts; */
-  /* shopts.nh         = nh_; */
+  /* mrs_lib::SubscribeHandlerOptions shopts(nh_); */
   /* shopts.node_name  = "AloamOdometry"; */
   /* shopts.threadsafe = true; */
 
@@ -81,6 +80,12 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     laser_cloud_full_res     = _cloud_full_ress;
   }
   /*//}*/
+
+  if (laser_cloud_full_res->empty())
+  {
+    ROS_WARN_THROTTLE(1.0, "[AloamOdometry]: Received an empty input cloud, skipping!");
+    return;
+  }
 
   mrs_lib::Routine profiler_routine = _profiler->createRoutine("timerOdometry", 1.0f / _scan_period_sec, 0.05, event);
 
@@ -431,6 +436,17 @@ void AloamOdometry::setData(pcl::PointCloud<PointType>::Ptr corner_points_sharp,
   _surf_points_flat         = surf_points_flat;
   _surf_points_less_flat    = surf_points_less_flat;
   _cloud_full_ress          = laser_cloud_full_res;
+
+  /* if (!isfinite(*_corner_points_sharp)) */
+  /*   std::cerr << "                                                                [AloamOdometry::setData]: _corner_points_sharp are not finite!!" << "\n"; */
+  /* if (!isfinite(*_corner_points_less_sharp)) */
+  /*   std::cerr << "                                                                [AloamOdometry::setData]: _corner_points_less_sharp are not finite!!" << "\n"; */
+  /* if (!isfinite(*_surf_points_flat)) */
+  /*   std::cerr << "                                                                [AloamOdometry::setData]: _surf_points_flat are not finite!!" << "\n"; */
+  /* if (!isfinite(*_surf_points_less_flat)) */
+  /*   std::cerr << "                                                                [AloamOdometry::setData]: _surf_points_less_flat are not finite!!" << "\n"; */
+  /* if (!isfinite(*_cloud_full_ress)) */
+  /*   std::cerr << "                                                                [AloamOdometry::setData]: _cloud_full_ress are not finite!!" << "\n"; */
 }
 /*//}*/
 

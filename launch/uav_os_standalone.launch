@@ -18,7 +18,7 @@
   <arg name="vertical_fov" default="90" />
   <arg name="sensor_frequency" default="10.0" />
   <arg name="min_range" default="1.5" />
-  <arg name="max_range" default="40.0" />
+  <arg name="max_range" default="50.0" />
   <arg name="filter/intensity" default="false" />
   <arg name="filter/intensity/value" default="100" />
   <arg name="filter/intensity/range" default="10.0" />
@@ -95,14 +95,15 @@
     <arg name="nodelet_manager" value="$(arg nodelet_manager)" />
     <arg name="launch_prefix" value="$(arg launch_prefix)" />
 
-    <arg name="lidar3d_republish" value="true" />
-    <arg name="lidar3d_min_range" value="$(arg min_range)" />
-    <arg name="lidar3d_max_range" value="$(arg max_range)" />
+    <arg name="lidar3d/republish" value="true" />
+    <arg name="lidar3d/range_clip/use" value="true" />
+    <arg name="lidar3d/range_clip/min" value="$(arg min_range)" />
+    <arg name="lidar3d/range_clip/max" value="$(arg max_range)" />
 
-    <arg if="$(eval arg('RUN_TYPE') == 'simulation')" name="lidar3d_filter_intensity_en" value="false" />
-    <arg unless="$(eval arg('RUN_TYPE') == 'simulation')" name="lidar3d_filter_intensity_en" value="$(arg filter/intensity)" />
-    <arg name="lidar3d_filter_intensity_thrd" value="$(arg filter/intensity/value)" />
-    <arg name="lidar3d_filter_intensity_range" value="$(arg filter/intensity/range)" />
+    <arg if="$(eval arg('RUN_TYPE') == 'simulation')" name="lidar3d/filter_intensity_en" value="false" />
+    <arg unless="$(eval arg('RUN_TYPE') == 'simulation')" name="lidar3d/filter_intensity_en" value="$(arg filter/intensity)" />
+    <arg name="lidar3d/filter_intensity_thrd" value="$(arg filter/intensity/value)" />
+    <arg name="lidar3d/filter_intensity_range" value="$(arg filter/intensity/range)" />
 
   </include>
 

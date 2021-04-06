@@ -108,13 +108,14 @@ void AloamSlam::onInit() {
 /*//{ getStaticTf() */
 tf::Transform AloamSlam::getStaticTf(std::string frame_from, std::string frame_to) {
   tf::Transform                         tf_ret;
-  std::shared_ptr<mrs_lib::Transformer> transformer_ = std::make_shared<mrs_lib::Transformer>("Aloam");
+  mrs_lib::Transformer transformer("Aloam");
   ros::Duration(1.0).sleep(); // Wait for TF buffer to fill
 
   ROS_INFO_ONCE("[Aloam]: Looking for transform from %s to %s", frame_from.c_str(), frame_to.c_str());
-  auto tf_lidar_fcu = transformer_->getTransform(frame_from, frame_to, ros::Time(0));
+  auto tf_lidar_fcu = transformer.getTransform(frame_from, frame_to, ros::Time(0));
   while (!tf_lidar_fcu) {
-    tf_lidar_fcu = transformer_->getTransform(frame_from, frame_to, ros::Time(0));
+    tf_lidar_fcu = transformer.getTransform(frame_from, frame_to, ros::Time(0));
+    ros::Duration(0.1).sleep();
   }
   ROS_INFO("[Aloam]: Successfully found transformation from %s to %s.", frame_from.c_str(), frame_to.c_str());
 
@@ -127,28 +128,36 @@ tf::Transform AloamSlam::getStaticTf(std::string frame_from, std::string frame_t
 
 void AloamSlam::initOdom()
 {
-  tf2_ros::Buffer tfBuffer;
-  tf2_ros::TransformListener tfListener(tfBuffer);
+  mrs_lib::Transformer transformer("Aloam");
 
-  try
+  ROS_WARN_STREAM("[Aloam] Waiting for transformation between " << frame_lidar << " and " << frame_init << ".");
+  bool got_tf = false;
+  while (!got_tf && ros::ok())
   {
-    ROS_WARN_STREAM("[Aloam] Waiting for transformation between " << frame_lidar << " and " << frame_init << ".");
-    const geometry_msgs::TransformStamped T = tfBuffer.lookupTransform(frame_init, frame_lidar, ros::Time(0), ros::Duration(666));
-    Eigen::Isometry3d init_T = tf2::transformToEigen(T.transform);
-    Eigen::Vector3d t(init_T.translation());
-    Eigen::Quaterniond q(init_T.rotation());
+    const auto tf_opt = transformer.getTransform(frame_lidar, frame_init, ros::Time(0));
+    if (tf_opt.has_value())
+    {
+      const auto mrs_tf = tf_opt.value();
+      const auto tf = mrs_tf.getTransformEigen();
 
-    aloam_odometry->setTransform(t, q, T.header.stamp);
-    aloam_mapping->setTransform(t, q, T.header.stamp);
+      /* Eigen::Isometry3d init_T = tf2::transformToEigen(tf.transform); */
+      Eigen::Vector3d t(tf.translation());
+      Eigen::Quaterniond q(tf.rotation());
 
-    feature_extractor->is_initialized = true;
-    aloam_odometry->is_initialized    = true;
-    aloam_mapping->is_initialized     = true;
-    ROS_INFO("[Aloam]: \033[1;32minitialized\033[0m");
-  }
-  catch (tf2::TransformException &ex)
-  {
-    ROS_ERROR("[AloamSlam]: Did not get initialization transform in time.");
+      aloam_odometry->setTransform(t, q, mrs_tf.stamp());
+      aloam_mapping->setTransform(t, q, mrs_tf.stamp());
+
+      feature_extractor->is_initialized = true;
+      aloam_odometry->is_initialized    = true;
+      aloam_mapping->is_initialized     = true;
+      got_tf = true;
+      ROS_INFO("[Aloam]: \033[1;32minitialized\033[0m");
+    }
+    else
+    {
+      ROS_WARN_STREAM_THROTTLE(1.0, "[AloamSlam]: Did not get odometry initialization transform between " << frame_lidar << " and " << frame_init << ".");
+      ros::Duration(0.1).sleep();
+    }
   }
 }
 

@@ -22,10 +22,10 @@ FeatureExtractor::FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::Pa
 
   /* _sub_laser_cloud = nh_.subscribe("laser_cloud_in", 1, &FeatureExtractor::callbackLaserCloud, this, ros::TransportHints().tcpNoDelay()); */
 
-  mrs_lib::SubscribeHandlerOptions shopts;
-  shopts.nh         = nh_;
+  mrs_lib::SubscribeHandlerOptions shopts(nh_);
   shopts.node_name  = "FeatureExtractor";
-  _sub_laser_cloud = mrs_lib::SubscribeHandler<sensor_msgs::PointCloud2>(shopts, "laser_cloud_in", mrs_lib::no_timeout, &FeatureExtractor::callbackLaserCloud, this);
+  shopts.no_message_timeout  = ros::Duration(5.0);
+  _sub_laser_cloud = mrs_lib::SubscribeHandler<sensor_msgs::PointCloud2>(shopts, "laser_cloud_in", std::bind(&FeatureExtractor::callbackLaserCloud, this, std::placeholders::_1));
 
   /* ROS_INFO_STREAM("[AloamFeatureExtractor]: Listening to laser cloud at topic: " << _sub_laser_cloud.topicName()); */
 }
@@ -64,6 +64,9 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
   } else {
     parseRowsFromCloudMsg(laserCloudMsg, laser_cloud, rows_start_idxs, rows_end_idxs, processing_time);
   }
+
+  /* if (!isfinite(*laser_cloud)) */
+  /*   std::cerr << "                                                                [FeatureExtractor::callbackLaserCloud]: laser_cloud are not finite!!" << "\n"; */
 
   TicToc             t_whole;
   std::vector<float> cloudCurvature;
