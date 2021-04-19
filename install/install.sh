@@ -33,8 +33,10 @@ sudo apt-get -y install \
 
 # Build with march native?
 if $BUILD_WITH_MARCH_NATIVE; then
+  echo "Building ceres optimizer with -march=native"
   CMAKE_MARCH_NATIVE="-march=native"
 else
+  echo "Building ceres optimizer without -march=native"
   CMAKE_MARCH_NATIVE=""
 fi
 
