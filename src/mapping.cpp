@@ -15,7 +15,7 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
       _t_w_curr(_parameters + 4) {
 
   ros::NodeHandle nh_(parent_nh);
-  
+
   ros::Time::waitForValid();
 
   param_loader.loadParam("mapping_line_resolution", _resolution_line, 0.2f);
@@ -63,8 +63,8 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
 /*//}*/
 
 /*//{ setData() */
-void AloamMapping::setData(ros::Time time_of_data, tf::Transform aloam_odometry, pcl::PointCloud<PointType>::Ptr features_corners_last,
-                           pcl::PointCloud<PointType>::Ptr features_surfs_last, pcl::PointCloud<PointType>::Ptr cloud_full_res) {
+void AloamMapping::setData(const ros::Time &time_of_data, const tf::Transform &aloam_odometry, const PC_ptr &features_corners_last,
+                           const PC_ptr &features_surfs_last, const PC_ptr &cloud_full_res) {
 
   mrs_lib::Routine profiler_routine = _profiler->createRoutine("aloamMappingSetData");
 
@@ -80,7 +80,8 @@ void AloamMapping::setData(ros::Time time_of_data, tf::Transform aloam_odometry,
   _cv_odometry_data.notify_all();
 
   /* if (!isfinite(*_features_corners_last)) */
-  /*   std::cerr << "                                                                [AloamMapping::setData]: _features_corners_last are not finite!!" << "\n"; */
+  /*   std::cerr << "                                                                [AloamMapping::setData]: _features_corners_last are not finite!!" << "\n";
+   */
   /* if (!isfinite(*_features_surfs_last)) */
   /*   std::cerr << "                                                                [AloamMapping::setData]: _features_surfs_last are not finite!!" << "\n"; */
   /* if (!isfinite(*_cloud_full_res)) */
@@ -89,25 +90,23 @@ void AloamMapping::setData(ros::Time time_of_data, tf::Transform aloam_odometry,
 /*//}*/
 
 /*//{ timerMapping() */
-void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event)
-{
-  while (ros::ok())
-  {
+void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
+  while (ros::ok()) {
     if (!is_initialized) {
       ros::Rate(_mapping_frequency).sleep();
       continue;
     }
 
     /*//{ Load latest odometry data (blocks for _cv_odometry_data and timeouts if blocking takes longer than 1.0/_mapping_frequency) */
-    ros::Time                       time_aloam_odometry;
-    tf::Transform                   aloam_odometry;
-    pcl::PointCloud<PointType>::Ptr features_corners_last;
-    pcl::PointCloud<PointType>::Ptr features_surfs_last;
-    pcl::PointCloud<PointType>::Ptr cloud_full_res;
+    ros::Time     time_aloam_odometry;
+    tf::Transform aloam_odometry;
+    PC_ptr        features_corners_last;
+    PC_ptr        features_surfs_last;
+    PC_ptr        cloud_full_res;
     {
-      std::unique_lock lock(_mutex_odometry_data);
-      bool has_new_data;
-      std::chrono::duration<float> timeout(1.0/_mapping_frequency);
+      std::unique_lock             lock(_mutex_odometry_data);
+      bool                         has_new_data;
+      std::chrono::duration<float> timeout(1.0 / _mapping_frequency);
       if (_cv_odometry_data.wait_for(lock, timeout) == std::cv_status::no_timeout)
         has_new_data = _has_new_data;
       else
@@ -115,7 +114,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event)
 
       if (!has_new_data)
         continue;
-      
+
       _has_new_data         = false;
       time_aloam_odometry   = _time_aloam_odometry;
       aloam_odometry        = _aloam_odometry;
@@ -130,8 +129,8 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event)
     tf::vectorTFToEigen(aloam_odometry.getOrigin(), _t_wodom_curr);
     tf::quaternionTFToEigen(aloam_odometry.getRotation(), _q_wodom_curr);
 
-    pcl::PointCloud<PointType>::Ptr map_features_corners = boost::make_shared<pcl::PointCloud<PointType>>();
-    pcl::PointCloud<PointType>::Ptr map_features_surfs   = boost::make_shared<pcl::PointCloud<PointType>>();
+    PC_ptr map_features_corners = boost::make_shared<pcl::PointCloud<PointType>>();
+    PC_ptr map_features_surfs   = boost::make_shared<pcl::PointCloud<PointType>>();
 
     std::vector<int> cloud_valid_indices;
 
@@ -166,9 +165,9 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event)
       while (center_cube_I < 3) {
         for (int j = 0; j < _cloud_height; j++) {
           for (int k = 0; k < _cloud_depth; k++) {
-            int                             i             = _cloud_width - 1;
-            pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-            pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+            int    i             = _cloud_width - 1;
+            PC_ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+            PC_ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
             for (; i >= 1; i--) {
               _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
                   _cloud_corners.at(i - 1 + _cloud_width * j + _cloud_width * _cloud_height * k);
@@ -189,9 +188,9 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event)
       while (center_cube_I >= _cloud_width - 3) {
         for (int j = 0; j < _cloud_height; j++) {
           for (int k = 0; k < _cloud_depth; k++) {
-            int                             i             = 0;
-            pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-            pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+            int    i             = 0;
+            PC_ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+            PC_ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
             for (; i < _cloud_width - 1; i++) {
               _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
                   _cloud_corners.at(i + 1 + _cloud_width * j + _cloud_width * _cloud_height * k);
@@ -212,9 +211,9 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event)
       while (center_cube_J < 3) {
         for (int i = 0; i < _cloud_width; i++) {
           for (int k = 0; k < _cloud_depth; k++) {
-            int                             j             = _cloud_height - 1;
-            pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-            pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+            int    j             = _cloud_height - 1;
+            PC_ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+            PC_ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
             for (; j >= 1; j--) {
               _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
                   _cloud_corners.at(i + _cloud_width * (j - 1) + _cloud_width * _cloud_height * k);
@@ -235,9 +234,9 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event)
       while (center_cube_J >= _cloud_height - 3) {
         for (int i = 0; i < _cloud_width; i++) {
           for (int k = 0; k < _cloud_depth; k++) {
-            int                             j             = 0;
-            pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-            pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+            int    j             = 0;
+            PC_ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+            PC_ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
             for (; j < _cloud_height - 1; j++) {
               _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
                   _cloud_corners.at(i + _cloud_width * (j + 1) + _cloud_width * _cloud_height * k);
@@ -258,9 +257,9 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event)
       while (center_cube_K < 3) {
         for (int i = 0; i < _cloud_width; i++) {
           for (int j = 0; j < _cloud_height; j++) {
-            int                             k             = _cloud_depth - 1;
-            pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-            pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+            int    k             = _cloud_depth - 1;
+            PC_ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+            PC_ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
             for (; k >= 1; k--) {
               _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
                   _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * (k - 1));
@@ -281,9 +280,9 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event)
       while (center_cube_K >= _cloud_depth - 3) {
         for (int i = 0; i < _cloud_width; i++) {
           for (int j = 0; j < _cloud_height; j++) {
-            int                             k             = 0;
-            pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-            pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+            int    k             = 0;
+            PC_ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+            PC_ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
             for (; k < _cloud_depth - 1; k++) {
               _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
                   _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * (k + 1));
@@ -324,11 +323,11 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event)
     filter_downsize_surfs.setLeafSize(_resolution_plane, _resolution_plane, _resolution_plane);
 
     /*//{*/
-    pcl::PointCloud<PointType>::Ptr features_corners_stack = boost::make_shared<pcl::PointCloud<PointType>>();
+    PC_ptr features_corners_stack = boost::make_shared<pcl::PointCloud<PointType>>();
     filter_downsize_corners.setInputCloud(features_corners_last);
     filter_downsize_corners.filter(*features_corners_stack);
 
-    pcl::PointCloud<PointType>::Ptr features_surfs_stack = boost::make_shared<pcl::PointCloud<PointType>>();
+    PC_ptr features_surfs_stack = boost::make_shared<pcl::PointCloud<PointType>>();
     filter_downsize_surfs.setInputCloud(features_surfs_last);
     filter_downsize_surfs.filter(*features_surfs_stack);
 
@@ -577,12 +576,12 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event)
       for (unsigned int i = 0; i < cloud_valid_indices.size(); i++) {
         const int ind = cloud_valid_indices.at(i);
 
-        pcl::PointCloud<PointType>::Ptr tmpCorner = boost::make_shared<pcl::PointCloud<PointType>>();
+        PC_ptr tmpCorner = boost::make_shared<pcl::PointCloud<PointType>>();
         filter_downsize_corners.setInputCloud(_cloud_corners.at(ind));
         filter_downsize_corners.filter(*tmpCorner);
         _cloud_corners.at(ind) = tmpCorner;
 
-        pcl::PointCloud<PointType>::Ptr tmpSurf = boost::make_shared<pcl::PointCloud<PointType>>();
+        PC_ptr tmpSurf = boost::make_shared<pcl::PointCloud<PointType>>();
         filter_downsize_surfs.setInputCloud(_cloud_surfs.at(ind));
         filter_downsize_surfs.filter(*tmpSurf);
         _cloud_surfs.at(ind) = tmpSurf;
@@ -608,9 +607,9 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event)
     tf_msg.header.stamp    = time_aloam_odometry;
     tf_msg.header.frame_id = _frame_fcu;
     if (_remap_tf) {
-      tf_msg.child_frame_id  = _frame_map + "_orig";
+      tf_msg.child_frame_id = _frame_map + "_orig";
     } else {
-      tf_msg.child_frame_id  = _frame_map;
+      tf_msg.child_frame_id = _frame_map;
     }
     tf::transformTFToMsg(tf_fcu.inverse(), tf_msg.transform);
 
@@ -771,8 +770,7 @@ bool AloamMapping::callbackResetMapping([[maybe_unused]] std_srvs::Trigger::Requ
 
 /* setTransform() //{ */
 
-void AloamMapping::setTransform(const Eigen::Vector3d& t, const Eigen::Quaterniond& q, const ros::Time& stamp)
-{
+void AloamMapping::setTransform(const Eigen::Vector3d &t, const Eigen::Quaterniond &q, const ros::Time &stamp) {
   _q_wodom_curr = q;
   _t_wodom_curr = t;
 
@@ -793,9 +791,9 @@ void AloamMapping::setTransform(const Eigen::Vector3d& t, const Eigen::Quaternio
   tf_msg.header.stamp    = stamp;
   tf_msg.header.frame_id = _frame_fcu;
   if (_remap_tf) {
-    tf_msg.child_frame_id  = _frame_map + "_orig";
+    tf_msg.child_frame_id = _frame_map + "_orig";
   } else {
-    tf_msg.child_frame_id  = _frame_map;
+    tf_msg.child_frame_id = _frame_map;
   }
   tf::transformTFToMsg(tf_fcu.inverse(), tf_msg.transform);
 

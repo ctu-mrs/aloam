@@ -40,7 +40,8 @@
 
 #include <pcl/point_types.h>
 
-typedef pcl::PointXYZI            PointType;
+typedef pcl::PointXYZI                  PointType;
+typedef pcl::PointCloud<PointType>::Ptr PC_ptr;
 
 inline double rad2deg(double radians) {
   return radians * 180.0 / M_PI;

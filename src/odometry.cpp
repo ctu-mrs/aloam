@@ -65,11 +65,11 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     return;
   }
 
-  pcl::PointCloud<PointType>::Ptr corner_points_sharp;
-  pcl::PointCloud<PointType>::Ptr corner_points_less_sharp;
-  pcl::PointCloud<PointType>::Ptr surf_points_flat;
-  pcl::PointCloud<PointType>::Ptr surf_points_less_flat;
-  pcl::PointCloud<PointType>::Ptr laser_cloud_full_res;
+  PC_ptr corner_points_sharp;
+  PC_ptr corner_points_less_sharp;
+  PC_ptr surf_points_flat;
+  PC_ptr surf_points_less_flat;
+  PC_ptr laser_cloud_full_res;
   {
     std::scoped_lock lock(_mutex_extracted_features);
     _has_new_data            = false;
@@ -81,8 +81,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   }
   /*//}*/
 
-  if (laser_cloud_full_res->empty())
-  {
+  if (laser_cloud_full_res->empty()) {
     ROS_WARN_THROTTLE(1.0, "[AloamOdometry]: Received an empty input cloud, skipping!");
     return;
   }
@@ -349,10 +348,10 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
 
   /*//{ Save odometry data to AloamMapping */
   {
-    std::scoped_lock                lock(_mutex_odometry_process);
-    pcl::PointCloud<PointType>::Ptr laserCloudTemp = corner_points_less_sharp;
-    corner_points_less_sharp                       = _features_corners_last;
-    _features_corners_last                         = laserCloudTemp;
+    std::scoped_lock lock(_mutex_odometry_process);
+    PC_ptr           laserCloudTemp = corner_points_less_sharp;
+    corner_points_less_sharp        = _features_corners_last;
+    _features_corners_last          = laserCloudTemp;
 
     laserCloudTemp        = surf_points_less_flat;
     surf_points_less_flat = _features_surfs_last;
@@ -413,7 +412,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   _frame_count++;
 
   // Print diagnostics
-  float time_whole = t_whole.toc();
+  const float time_whole = t_whole.toc();
   ROS_INFO_THROTTLE(1.0, "[AloamOdometry] Run time: %0.1f ms (%0.1f Hz)", time_whole, std::min(1.0f / _scan_period_sec, 1000.0f / time_whole));
   ROS_DEBUG_THROTTLE(1.0,
                      "[AloamOdometry] feature registration: %0.1f ms; solver time: %0.1f ms; double optimization time: %0.1f ms; publishing time: %0.1f ms",
@@ -423,9 +422,8 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
 /*//}*/
 
 /*//{ setData() */
-void AloamOdometry::setData(pcl::PointCloud<PointType>::Ptr corner_points_sharp, pcl::PointCloud<PointType>::Ptr corner_points_less_sharp,
-                            pcl::PointCloud<PointType>::Ptr surf_points_flat, pcl::PointCloud<PointType>::Ptr surf_points_less_flat,
-                            pcl::PointCloud<PointType>::Ptr laser_cloud_full_res) {
+void AloamOdometry::setData(const PC_ptr &corner_points_sharp, const PC_ptr &corner_points_less_sharp, const PC_ptr &surf_points_flat,
+                            const PC_ptr &surf_points_less_flat, const PC_ptr &laser_cloud_full_res) {
 
   mrs_lib::Routine profiler_routine = _profiler->createRoutine("aloamOdometrySetData");
 
@@ -438,13 +436,16 @@ void AloamOdometry::setData(pcl::PointCloud<PointType>::Ptr corner_points_sharp,
   _cloud_full_ress          = laser_cloud_full_res;
 
   /* if (!isfinite(*_corner_points_sharp)) */
-  /*   std::cerr << "                                                                [AloamOdometry::setData]: _corner_points_sharp are not finite!!" << "\n"; */
+  /*   std::cerr << "                                                                [AloamOdometry::setData]: _corner_points_sharp are not finite!!" << "\n";
+   */
   /* if (!isfinite(*_corner_points_less_sharp)) */
-  /*   std::cerr << "                                                                [AloamOdometry::setData]: _corner_points_less_sharp are not finite!!" << "\n"; */
+  /*   std::cerr << "                                                                [AloamOdometry::setData]: _corner_points_less_sharp are not finite!!" <<
+   * "\n"; */
   /* if (!isfinite(*_surf_points_flat)) */
   /*   std::cerr << "                                                                [AloamOdometry::setData]: _surf_points_flat are not finite!!" << "\n"; */
   /* if (!isfinite(*_surf_points_less_flat)) */
-  /*   std::cerr << "                                                                [AloamOdometry::setData]: _surf_points_less_flat are not finite!!" << "\n"; */
+  /*   std::cerr << "                                                                [AloamOdometry::setData]: _surf_points_less_flat are not finite!!" << "\n";
+   */
   /* if (!isfinite(*_cloud_full_ress)) */
   /*   std::cerr << "                                                                [AloamOdometry::setData]: _cloud_full_ress are not finite!!" << "\n"; */
 }
@@ -452,8 +453,7 @@ void AloamOdometry::setData(pcl::PointCloud<PointType>::Ptr corner_points_sharp,
 
 /* setTransform() //{ */
 
-void AloamOdometry::setTransform(const Eigen::Vector3d& t, const Eigen::Quaterniond& q, const ros::Time& stamp)
-{
+void AloamOdometry::setTransform(const Eigen::Vector3d &t, const Eigen::Quaterniond &q, const ros::Time &stamp) {
   _q_w_curr = q;
   _t_w_curr = t;
 
@@ -503,7 +503,6 @@ void AloamOdometry::setTransform(const Eigen::Vector3d& t, const Eigen::Quaterni
   }
 
   /*//}*/
-
 }
 
 //}

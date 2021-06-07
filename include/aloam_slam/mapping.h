@@ -1,5 +1,4 @@
-#ifndef ALOAM_MAPPING_H
-#define ALOAM_MAPPING_H
+#pragma once
 
 /* includes //{ */
 
@@ -56,20 +55,20 @@
 #include "aloam_slam/common.h"
 #include "aloam_slam/tic_toc.h"
 #include "aloam_slam/lidarFactor.hpp"
+#include "aloam_slam/feature_extractor_impl.hpp"
 
 //}
 
 namespace aloam_slam
 {
 
-  template <typename pc_t>
-  inline bool isfinite(const pc_t& pc)
-  {
-    for (const auto& pt : pc.points)
-      if (!pcl::isFinite(pt))
-        return false;
-    return true;
-  }
+template <typename pc_t>
+inline bool isfinite(const pc_t &pc) {
+  for (const auto &pt : pc.points)
+    if (!pcl::isFinite(pt))
+      return false;
+  return true;
+}
 
 class AloamMapping {
 
@@ -79,10 +78,10 @@ public:
 
   std::atomic<bool> is_initialized = false;
 
-  void setData(ros::Time time_of_data, tf::Transform aloam_odometry, pcl::PointCloud<PointType>::Ptr laserCloudCornerLast,
-               pcl::PointCloud<PointType>::Ptr laserCloudSurfLast, pcl::PointCloud<PointType>::Ptr laserCloudFullRes);
+  void setData(const ros::Time &time_of_data, const tf::Transform &aloam_odometry, const PC_ptr &features_corners_last, const PC_ptr &features_surfs_last,
+               const PC_ptr &cloud_full_res);
 
-  void setTransform(const Eigen::Vector3d& t, const Eigen::Quaterniond& q, const ros::Time& stamp);
+  void setTransform(const Eigen::Vector3d &t, const Eigen::Quaterniond &q, const ros::Time &stamp);
 
 private:
   // member objects
@@ -92,19 +91,19 @@ private:
   ros::Timer _timer_mapping_loop;
   ros::Time  _time_last_map_publish;
 
-  std::mutex                                   _mutex_cloud_features;
-  std::vector<pcl::PointCloud<PointType>::Ptr> _cloud_corners;
-  std::vector<pcl::PointCloud<PointType>::Ptr> _cloud_surfs;
+  std::mutex          _mutex_cloud_features;
+  std::vector<PC_ptr> _cloud_corners;
+  std::vector<PC_ptr> _cloud_surfs;
 
   // Feature extractor newest data
-  std::mutex                      _mutex_odometry_data;
-  std::condition_variable         _cv_odometry_data;
-  bool                            _has_new_data = false;
-  ros::Time                       _time_aloam_odometry;
-  tf::Transform                   _aloam_odometry;
-  pcl::PointCloud<PointType>::Ptr _features_corners_last;
-  pcl::PointCloud<PointType>::Ptr _features_surfs_last;
-  pcl::PointCloud<PointType>::Ptr _cloud_full_res;
+  std::mutex              _mutex_odometry_data;
+  std::condition_variable _cv_odometry_data;
+  bool                    _has_new_data = false;
+  ros::Time               _time_aloam_odometry;
+  tf::Transform           _aloam_odometry;
+  PC_ptr                  _features_corners_last;
+  PC_ptr                  _features_surfs_last;
+  PC_ptr                  _cloud_full_res;
 
   // publishers and subscribers
   ros::Publisher _pub_laser_cloud_map;
@@ -127,7 +126,7 @@ private:
   float _scan_frequency;
   float _mapping_frequency;
   float _map_publish_period;
-  bool _remap_tf;
+  bool  _remap_tf;
 
   tf::Transform _tf_lidar_to_fcu;
 
@@ -165,4 +164,3 @@ private:
   void pointAssociateToMap(PointType const *const pi, PointType *const po);
 };
 }  // namespace aloam_slam
-#endif

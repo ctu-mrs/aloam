@@ -23,16 +23,17 @@ FeatureExtractor::FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::Pa
   /* _sub_laser_cloud = nh_.subscribe("laser_cloud_in", 1, &FeatureExtractor::callbackLaserCloud, this, ros::TransportHints().tcpNoDelay()); */
 
   mrs_lib::SubscribeHandlerOptions shopts(nh_);
-  shopts.node_name  = "FeatureExtractor";
-  shopts.no_message_timeout  = ros::Duration(5.0);
-  _sub_laser_cloud = mrs_lib::SubscribeHandler<sensor_msgs::PointCloud2>(shopts, "laser_cloud_in", std::bind(&FeatureExtractor::callbackLaserCloud, this, std::placeholders::_1));
+  shopts.node_name          = "FeatureExtractor";
+  shopts.no_message_timeout = ros::Duration(5.0);
+  _sub_laser_cloud          = mrs_lib::SubscribeHandler<sensor_msgs::PointCloud2>(shopts, "laser_cloud_in",
+                                                                         std::bind(&FeatureExtractor::callbackLaserCloud, this, std::placeholders::_1));
 
   /* ROS_INFO_STREAM("[AloamFeatureExtractor]: Listening to laser cloud at topic: " << _sub_laser_cloud.topicName()); */
 }
 /*//}*/
 
 /*//{ laserCloudHandler */
-void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs::PointCloud2>& sub) {
+void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs::PointCloud2> &sub) {
   if (!is_initialized || !sub.hasMsg())
     return;
 
@@ -55,10 +56,10 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
   }
 
   // Process input data per row
-  std::vector<int>                rows_start_idxs(_number_of_rings, 0);
-  std::vector<int>                rows_end_idxs(_number_of_rings, 0);
-  float                           processing_time;
-  pcl::PointCloud<PointType>::Ptr laser_cloud = boost::make_shared<pcl::PointCloud<PointType>>();
+  std::vector<int> rows_start_idxs(_number_of_rings, 0);
+  std::vector<int> rows_end_idxs(_number_of_rings, 0);
+  float            processing_time;
+  PC_ptr           laser_cloud = boost::make_shared<pcl::PointCloud<PointType>>();
   if (_data_have_ring_field) {
     parseRowsFromOS1CloudMsg(laserCloudMsg, laser_cloud, rows_start_idxs, rows_end_idxs, processing_time);
   } else {
@@ -66,157 +67,16 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
   }
 
   /* if (!isfinite(*laser_cloud)) */
-  /*   std::cerr << "                                                                [FeatureExtractor::callbackLaserCloud]: laser_cloud are not finite!!" << "\n"; */
+  /*   std::cerr << "                                                                [FeatureExtractor::callbackLaserCloud]: laser_cloud are not finite!!" <<
+   * "\n"; */
 
-  TicToc             t_whole;
-  std::vector<float> cloudCurvature;
-  std::vector<int>   cloudSortInd;
-  std::vector<int>   cloudNeighborPicked;
-  std::vector<int>   cloudLabel;
+  TicToc t_whole;
 
-  const unsigned int cloud_size = laser_cloud->points.size();
-  cloudCurvature.resize(cloud_size);
-  cloudSortInd.resize(cloud_size);
-  cloudNeighborPicked.resize(cloud_size, 0);
-  cloudLabel.resize(cloud_size, 0);
+  float time_pts    = 0.0f;
+  float time_q_sort = 0.0f;
 
-  for (unsigned int i = 5; i < cloud_size - 5; i++) {
-    const float diffX = laser_cloud->points.at(i - 5).x + laser_cloud->points.at(i - 4).x + laser_cloud->points.at(i - 3).x + laser_cloud->points.at(i - 2).x +
-                        laser_cloud->points.at(i - 1).x - 10 * laser_cloud->points.at(i).x + laser_cloud->points.at(i + 1).x + laser_cloud->points.at(i + 2).x +
-                        laser_cloud->points.at(i + 3).x + laser_cloud->points.at(i + 4).x + laser_cloud->points.at(i + 5).x;
-    const float diffY = laser_cloud->points.at(i - 5).y + laser_cloud->points.at(i - 4).y + laser_cloud->points.at(i - 3).y + laser_cloud->points.at(i - 2).y +
-                        laser_cloud->points.at(i - 1).y - 10 * laser_cloud->points.at(i).y + laser_cloud->points.at(i + 1).y + laser_cloud->points.at(i + 2).y +
-                        laser_cloud->points.at(i + 3).y + laser_cloud->points.at(i + 4).y + laser_cloud->points.at(i + 5).y;
-    const float diffZ = laser_cloud->points.at(i - 5).z + laser_cloud->points.at(i - 4).z + laser_cloud->points.at(i - 3).z + laser_cloud->points.at(i - 2).z +
-                        laser_cloud->points.at(i - 1).z - 10 * laser_cloud->points.at(i).z + laser_cloud->points.at(i + 1).z + laser_cloud->points.at(i + 2).z +
-                        laser_cloud->points.at(i + 3).z + laser_cloud->points.at(i + 4).z + laser_cloud->points.at(i + 5).z;
-
-    cloudCurvature.at(i) = diffX * diffX + diffY * diffY + diffZ * diffZ;
-    cloudSortInd.at(i)   = i;
-  }
-
-  TicToc t_pts;
-
-  pcl::PointCloud<PointType>::Ptr corner_points_sharp      = boost::make_shared<pcl::PointCloud<PointType>>();
-  pcl::PointCloud<PointType>::Ptr corner_points_less_sharp = boost::make_shared<pcl::PointCloud<PointType>>();
-  pcl::PointCloud<PointType>::Ptr surf_points_flat         = boost::make_shared<pcl::PointCloud<PointType>>();
-  pcl::PointCloud<PointType>::Ptr surf_points_less_flat    = boost::make_shared<pcl::PointCloud<PointType>>();
-
-  /*//{ Compute features (planes and edges) in two resolutions */
-  float time_q_sort = 0;
-  for (int i = 0; i < _number_of_rings; i++) {
-    if (rows_end_idxs.at(i) - rows_start_idxs.at(i) < 6) {
-      continue;
-    }
-    pcl::PointCloud<PointType>::Ptr surfPointsLessFlatScan = boost::make_shared<pcl::PointCloud<PointType>>();
-    for (int j = 0; j < 6; j++) {
-      const int sp = rows_start_idxs.at(i) + (rows_end_idxs.at(i) - rows_start_idxs.at(i)) * j / 6;
-      const int ep = rows_start_idxs.at(i) + (rows_end_idxs.at(i) - rows_start_idxs.at(i)) * (j + 1) / 6 - 1;
-
-      TicToc t_tmp;
-      std::sort(cloudSortInd.begin() + sp, cloudSortInd.begin() + ep + 1,
-                [&cloudCurvature](int i, int j) { return cloudCurvature.at(i) < cloudCurvature.at(j); });
-      time_q_sort += t_tmp.toc();
-
-      int largestPickedNum = 0;
-      for (int k = ep; k >= sp; k--) {
-        const int ind = cloudSortInd.at(k);
-
-        if (cloudNeighborPicked.at(ind) == 0 && cloudCurvature.at(ind) > 0.1) {
-
-          largestPickedNum++;
-          if (largestPickedNum <= 2) {
-            cloudLabel.at(ind) = 2;
-            corner_points_sharp->push_back(laser_cloud->points.at(ind));
-            corner_points_less_sharp->push_back(laser_cloud->points.at(ind));
-          } else if (largestPickedNum <= 20) {
-            cloudLabel.at(ind) = 1;
-            corner_points_less_sharp->push_back(laser_cloud->points.at(ind));
-          } else {
-            break;
-          }
-
-          cloudNeighborPicked.at(ind) = 1;
-
-          for (int l = 1; l <= 5; l++) {
-            const float diffX = laser_cloud->points.at(ind + l).x - laser_cloud->points.at(ind + l - 1).x;
-            const float diffY = laser_cloud->points.at(ind + l).y - laser_cloud->points.at(ind + l - 1).y;
-            const float diffZ = laser_cloud->points.at(ind + l).z - laser_cloud->points.at(ind + l - 1).z;
-            if (diffX * diffX + diffY * diffY + diffZ * diffZ > 0.05) {
-              break;
-            }
-
-            cloudNeighborPicked.at(ind + l) = 1;
-          }
-          for (int l = -1; l >= -5; l--) {
-            const float diffX = laser_cloud->points.at(ind + l).x - laser_cloud->points.at(ind + l + 1).x;
-            const float diffY = laser_cloud->points.at(ind + l).y - laser_cloud->points.at(ind + l + 1).y;
-            const float diffZ = laser_cloud->points.at(ind + l).z - laser_cloud->points.at(ind + l + 1).z;
-            if (diffX * diffX + diffY * diffY + diffZ * diffZ > 0.05) {
-              break;
-            }
-
-            cloudNeighborPicked.at(ind + l) = 1;
-          }
-        }
-      }
-
-      int smallestPickedNum = 0;
-      for (int k = sp; k <= ep; k++) {
-        const int ind = cloudSortInd.at(k);
-
-        if (cloudNeighborPicked.at(ind) == 0 && cloudCurvature.at(ind) < 0.1) {
-
-          cloudLabel.at(ind) = -1;
-          surf_points_flat->push_back(laser_cloud->points.at(ind));
-
-          smallestPickedNum++;
-          if (smallestPickedNum >= 4) {
-            break;
-          }
-
-          cloudNeighborPicked.at(ind) = 1;
-          for (int l = 1; l <= 5; l++) {
-            const float diffX = laser_cloud->points.at(ind + l).x - laser_cloud->points.at(ind + l - 1).x;
-            const float diffY = laser_cloud->points.at(ind + l).y - laser_cloud->points.at(ind + l - 1).y;
-            const float diffZ = laser_cloud->points.at(ind + l).z - laser_cloud->points.at(ind + l - 1).z;
-            if (diffX * diffX + diffY * diffY + diffZ * diffZ > 0.05) {
-              break;
-            }
-
-            cloudNeighborPicked.at(ind + l) = 1;
-          }
-          for (int l = -1; l >= -5; l--) {
-            const float diffX = laser_cloud->points.at(ind + l).x - laser_cloud->points.at(ind + l + 1).x;
-            const float diffY = laser_cloud->points.at(ind + l).y - laser_cloud->points.at(ind + l + 1).y;
-            const float diffZ = laser_cloud->points.at(ind + l).z - laser_cloud->points.at(ind + l + 1).z;
-            if (diffX * diffX + diffY * diffY + diffZ * diffZ > 0.05) {
-              break;
-            }
-
-            cloudNeighborPicked.at(ind + l) = 1;
-          }
-        }
-      }
-
-      for (int k = sp; k <= ep; k++) {
-        if (cloudLabel.at(k) <= 0) {
-          surfPointsLessFlatScan->push_back(laser_cloud->points.at(k));
-        }
-      }
-    }
-
-    pcl::PointCloud<PointType> surfPointsLessFlatScanDS;
-    pcl::VoxelGrid<PointType>  downSizeFilter;
-    downSizeFilter.setInputCloud(surfPointsLessFlatScan);
-    downSizeFilter.setLeafSize(0.2, 0.2, 0.2);
-    downSizeFilter.filter(surfPointsLessFlatScanDS);
-
-    *surf_points_less_flat += surfPointsLessFlatScanDS;
-  }
-  /*//}*/
-
-  const float time_pts = t_pts.toc();
+  const auto [corner_points_sharp, corner_points_less_sharp, surf_points_flat, surf_points_less_flat] =
+      extractFeatures(laser_cloud, rows_start_idxs, rows_end_idxs, time_pts, time_q_sort);
 
   laser_cloud->header.frame_id              = _frame_map;
   corner_points_sharp->header.frame_id      = _frame_map;
@@ -237,15 +97,15 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
   const float time_whole = t_whole.toc() + processing_time;
 
   ROS_INFO_THROTTLE(1.0, "[AloamFeatureExtractor] Run time: %0.1f ms (%0.1f Hz)", time_whole, std::min(1.0f / _scan_period_sec, 1000.0f / time_whole));
-  ROS_DEBUG_THROTTLE(1.0, "[AloamFeatureExtractor] points: %d; preparing data: %0.1f ms; q-sorting data: %0.1f ms; computing features: %0.1f ms", cloud_size,
-                     processing_time, time_q_sort, time_pts);
+  ROS_DEBUG_THROTTLE(1.0, "[AloamFeatureExtractor] points: %ld; preparing data: %0.1f ms; q-sorting data: %0.1f ms; computing features: %0.1f ms",
+                     laser_cloud->points.size(), processing_time, time_q_sort, time_pts);
   ROS_WARN_COND(time_whole > _scan_period_sec * 1000.0f, "[AloamFeatureExtractor] Feature extraction took over %0.2f ms", _scan_period_sec * 1000.0f);
 }
 /*//}*/
 
 /*//{ parseRowsFromCloudMsg() */
-void FeatureExtractor::parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr &cloud_processed,
-                                             std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices, float &processing_time) {
+void FeatureExtractor::parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, PC_ptr &cloud_processed, std::vector<int> &rows_start_indices,
+                                             std::vector<int> &rows_end_indices, float &processing_time) {
   TicToc t_prepare;
 
   pcl::PointCloud<PointType> cloud_pcl;
@@ -341,8 +201,8 @@ void FeatureExtractor::parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::Con
 /*//}*/
 
 /*//{ parseRowsFromOS1CloudMsg() */
-void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr &cloud_processed,
-                                                std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices, float &processing_time) {
+void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, PC_ptr &cloud_processed, std::vector<int> &rows_start_indices,
+                                                std::vector<int> &rows_end_indices, float &processing_time) {
   TicToc t_prepare;
 
   // Create PointOS1 pointcloud {x, y, z, intensity, t, reflectivity, ring, noise, range}
@@ -444,7 +304,6 @@ void FeatureExtractor::removeNaNFromPointCloud(const pcl::PointCloud<ouster_ros:
   }
 }
 /*//}*/
-
 
 /*//{ hasField() */
 bool FeatureExtractor::hasField(const std::string field, const sensor_msgs::PointCloud2::ConstPtr &msg) {

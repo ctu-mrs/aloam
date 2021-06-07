@@ -8,16 +8,16 @@ namespace aloam_slam
 class AloamOdometry {
 
 public:
-  AloamOdometry(const ros::NodeHandle &parent_nh, std::string uav_name, std::shared_ptr<mrs_lib::Profiler> profiler, std::shared_ptr<AloamMapping> aloam_mapping,
-                std::string frame_fcu, std::string frame_lidar, std::string frame_odom, float scan_period_sec, tf::Transform tf_lidar_to_fcu);
+  AloamOdometry(const ros::NodeHandle &parent_nh, std::string uav_name, std::shared_ptr<mrs_lib::Profiler> profiler,
+                std::shared_ptr<AloamMapping> aloam_mapping, std::string frame_fcu, std::string frame_lidar, std::string frame_odom, float scan_period_sec,
+                tf::Transform tf_lidar_to_fcu);
 
   std::atomic<bool> is_initialized = false;
 
-  void setData(pcl::PointCloud<PointType>::Ptr corner_points_sharp, pcl::PointCloud<PointType>::Ptr corner_points_less_sharp,
-               pcl::PointCloud<PointType>::Ptr surf_points_flat, pcl::PointCloud<PointType>::Ptr surf_points_less_flat,
-               pcl::PointCloud<PointType>::Ptr laser_cloud_full_res);
+  void setData(const PC_ptr &corner_points_sharp, const PC_ptr &corner_points_less_sharp, const PC_ptr &surf_points_flat, const PC_ptr &surf_points_less_flat,
+               const PC_ptr &laser_cloud_full_res);
 
-  void setTransform(const Eigen::Vector3d& t, const Eigen::Quaterniond& q, const ros::Time& stamp);
+  void setTransform(const Eigen::Vector3d &t, const Eigen::Quaterniond &q, const ros::Time &stamp);
 
 private:
   // member objects
@@ -26,24 +26,24 @@ private:
   std::shared_ptr<tf2_ros::TransformBroadcaster> _tf_broadcaster;
   ros::Timer                                     _timer_odometry_loop;
 
-  std::shared_ptr<mrs_lib::Transformer>         _transformer;
+  std::shared_ptr<mrs_lib::Transformer> _transformer;
   /* mrs_lib::SubscribeHandler<nav_msgs::Odometry> _sub_handler_orientation; */
 
-  std::mutex                      _mutex_odometry_process;
-  pcl::PointCloud<PointType>::Ptr _features_corners_last;
-  pcl::PointCloud<PointType>::Ptr _features_surfs_last;
+  std::mutex _mutex_odometry_process;
+  PC_ptr     _features_corners_last;
+  PC_ptr     _features_surfs_last;
 
   Eigen::Quaterniond _q_w_curr;
   Eigen::Vector3d    _t_w_curr;
 
   // Feature extractor newest data
-  std::mutex                      _mutex_extracted_features;
-  bool                            _has_new_data = false;
-  pcl::PointCloud<PointType>::Ptr _corner_points_sharp;
-  pcl::PointCloud<PointType>::Ptr _corner_points_less_sharp;
-  pcl::PointCloud<PointType>::Ptr _surf_points_flat;
-  pcl::PointCloud<PointType>::Ptr _surf_points_less_flat;
-  pcl::PointCloud<PointType>::Ptr _cloud_full_ress;
+  std::mutex _mutex_extracted_features;
+  bool       _has_new_data = false;
+  PC_ptr     _corner_points_sharp;
+  PC_ptr     _corner_points_less_sharp;
+  PC_ptr     _surf_points_flat;
+  PC_ptr     _surf_points_less_flat;
+  PC_ptr     _cloud_full_ress;
 
   // publishers and subscribers
   ros::Publisher _pub_odometry_local;
