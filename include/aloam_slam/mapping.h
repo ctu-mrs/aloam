@@ -52,10 +52,13 @@
 #include <mrs_lib/attitude_converter.h>
 #include <mrs_msgs/Float64ArrayStamped.h>
 
+#include <mrs_pcl_tools/support.h>
+
 #include "aloam_slam/common.h"
-#include "aloam_slam/tic_toc.h"
+/* #include "aloam_slam/tic_toc.h" */
 #include "aloam_slam/lidarFactor.hpp"
-#include "aloam_slam/feature_extractor_impl.hpp"
+#include "aloam_slam/feature_extractor_impl.h"
+
 
 //}
 
@@ -86,6 +89,7 @@ public:
 private:
   // member objects
   std::shared_ptr<mrs_lib::Profiler>             _profiler;
+  std::shared_ptr<mrs_lib::Transformer>          _transformer;
   std::shared_ptr<tf2_ros::TransformBroadcaster> _tf_broadcaster;
 
   ros::Timer _timer_mapping_loop;
@@ -128,6 +132,10 @@ private:
   float _map_publish_period;
   bool  _remap_tf;
 
+  bool        _load_pcd_map;
+  std::string _pcd_map_path;
+  std::string _pcd_map_frame;
+
   tf::Transform _tf_lidar_to_fcu;
 
   double                         _parameters[7] = {0, 0, 0, 1, 0, 0, 0};
@@ -162,5 +170,6 @@ private:
   void transformAssociateToMap();
   void transformUpdate();
   void pointAssociateToMap(PointType const *const pi, PointType *const po);
+  void loadFeaturesFromPcd(const std::string &pcd, const std::string &frame);
 };
 }  // namespace aloam_slam

@@ -37,6 +37,7 @@
   <depend>pcl_conversions</depend>
   <depend>pcl_msgs</depend>
   <depend>ouster_ros</depend>
+  <depend>mrs_pcl_tools</depend>
 
   <export>
     <nodelet plugin="${prefix}/plugins.xml" />

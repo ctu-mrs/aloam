@@ -1,7 +1,11 @@
+#pragma once
+
+namespace aloam_slam
+{
 
 /* extractFeatures() //{ */
-std::tuple<PC_ptr, PC_ptr, PC_ptr, PC_ptr> extractFeatures(const PC_ptr &laser_cloud, const std::vector<int> &rows_start_idxs,
-                                                           const std::vector<int> &rows_end_idxs, float &time_pts, float &time_q_sort) {
+static std::tuple<PC_ptr, PC_ptr, PC_ptr, PC_ptr> extractFeatures(const PC_ptr &laser_cloud, const std::vector<int> &rows_start_idxs,
+                                                                  const std::vector<int> &rows_end_idxs, float &time_pts, float &time_q_sort) {
   std::vector<float> cloudCurvature;
   std::vector<int>   cloudSortInd;
   std::vector<int>   cloudNeighborPicked;
@@ -30,16 +34,18 @@ std::tuple<PC_ptr, PC_ptr, PC_ptr, PC_ptr> extractFeatures(const PC_ptr &laser_c
 
   TicToc t_pts;
 
-  PC_ptr corner_points_sharp      = boost::make_shared<pcl::PointCloud<PointType>>();
-  PC_ptr corner_points_less_sharp = boost::make_shared<pcl::PointCloud<PointType>>();
-  PC_ptr surf_points_flat         = boost::make_shared<pcl::PointCloud<PointType>>();
-  PC_ptr surf_points_less_flat    = boost::make_shared<pcl::PointCloud<PointType>>();
+  time_q_sort = 0.0f;
+
+  const PC_ptr corner_points_sharp      = boost::make_shared<pcl::PointCloud<PointType>>();
+  const PC_ptr corner_points_less_sharp = boost::make_shared<pcl::PointCloud<PointType>>();
+  const PC_ptr surf_points_flat         = boost::make_shared<pcl::PointCloud<PointType>>();
+  const PC_ptr surf_points_less_flat    = boost::make_shared<pcl::PointCloud<PointType>>();
 
   for (int i = 0; i < rows_start_idxs.size(); i++) {
     if (rows_end_idxs.at(i) - rows_start_idxs.at(i) < 6) {
       continue;
     }
-    PC_ptr surfPointsLessFlatScan = boost::make_shared<pcl::PointCloud<PointType>>();
+    const PC_ptr surfPointsLessFlatScan = boost::make_shared<pcl::PointCloud<PointType>>();
     for (int j = 0; j < 6; j++) {
       const int sp = rows_start_idxs.at(i) + (rows_end_idxs.at(i) - rows_start_idxs.at(i)) * j / 6;
       const int ep = rows_start_idxs.at(i) + (rows_end_idxs.at(i) - rows_start_idxs.at(i)) * (j + 1) / 6 - 1;
@@ -152,3 +158,6 @@ std::tuple<PC_ptr, PC_ptr, PC_ptr, PC_ptr> extractFeatures(const PC_ptr &laser_c
 }
 
 //}
+
+}  // namespace aloam_slam
+

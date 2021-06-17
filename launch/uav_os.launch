@@ -21,6 +21,8 @@
   <arg name="map_publish_rate" default="0.5" />
   <arg name="mapping_line_resolution" default="0.4" />
   <arg name="mapping_plane_resolution" default="0.8" />
+  <arg name="pcd_map/path" default="" />
+  <arg name="pcd_map/frame" default="$(arg UAV_NAME)/global_origin" />
 
   <!-- LAUNCH PARAMETERS -->
   <arg name="verbose" default="false" />
