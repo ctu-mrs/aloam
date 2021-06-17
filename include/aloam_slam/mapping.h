@@ -135,6 +135,7 @@ private:
   bool        _load_pcd_map;
   std::string _pcd_map_path;
   std::string _pcd_map_frame;
+  float       _pcd_map_slice_height;
 
   tf::Transform _tf_lidar_to_fcu;
 
@@ -167,9 +168,10 @@ private:
   void timerMapping([[maybe_unused]] const ros::TimerEvent &event);
   bool callbackResetMapping(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res);
 
-  void transformAssociateToMap();
-  void transformUpdate();
-  void pointAssociateToMap(PointType const *const pi, PointType *const po);
-  void loadFeaturesFromPcd(const std::string &pcd, const std::string &frame);
+  void                       transformAssociateToMap();
+  void                       transformUpdate();
+  void                       pointAssociateToMap(PointType const *const pi, PointType *const po);
+  void                       loadFeaturesFromPcd(const std::string &pcd, const std::string &frame);
+  std::tuple<PC_ptr, PC_ptr> pcdCloudToFeatures(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud_xyz, const float slice_height);
 };
 }  // namespace aloam_slam

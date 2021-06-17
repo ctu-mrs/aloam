@@ -1,4 +1,6 @@
 #include "aloam_slam/mapping.h"
+#include "tf/LinearMath/Transform.h"
+#include <pcl/common/transforms.h>
 
 namespace aloam_slam
 {
@@ -47,6 +49,7 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
   // Load apriori map
   param_loader.loadParam("pcd_map/path", _pcd_map_path, std::string(""));
   param_loader.loadParam("pcd_map/frame", _pcd_map_frame, std::string(""));
+  param_loader.loadParam("pcd_map/slice/height", _pcd_map_slice_height, 0.2f);
   _load_pcd_map = _pcd_map_path.size() > 0;
   if (_load_pcd_map)
     _transformer = std::make_shared<mrs_lib::Transformer>("AloamMapping");
@@ -865,13 +868,70 @@ void AloamMapping::loadFeaturesFromPcd(const std::string &pcd, const std::string
   if (!cloud_ret)
     return;
 
-  const auto &          cloud_xyz = cloud_ret.value();
-  const Eigen::Affine3d tf_mat    = tf_ret.value().getTransformEigen();
+  // Slice given PCD file to rows
+  const auto &cloud_xyz       = cloud_ret.value();
+  const auto [corners, surfs] = pcdCloudToFeatures(cloud_xyz, _pcd_map_slice_height);
 
-  // TODO: Parse cloud to rows and sort cloud per row
-  std::vector<int> rows_start_idxs;
-  std::vector<int> rows_end_idxs;
-  PC_ptr           cloud;
+  // TODO: Transform features from frame to frame_map
+  /* const Eigen::Affine3d tf_mat = tf_ret.value().getTransformEigen(); */
+  /* tf::Transform         transform; */
+  /* const PC_ptr          corners_transformed = boost::make_shared<pcl::PointCloud<PointType>>(); */
+  /* const PC_ptr          surfs_transformed   = boost::make_shared<pcl::PointCloud<PointType>>(); */
+  /* pcl::transformPointCloud(corners, corners_transformed, transform); */
+  /* pcl::transformPointCloud(surfs, surfs_transformed, transform); */
+
+  // TODO: Store features in map
+}
+//}
+
+/* pcdCloudToFeatures() //{ */
+std::tuple<PC_ptr, PC_ptr> AloamMapping::pcdCloudToFeatures(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud_xyz, const float slice_height) {
+
+  // Get min/max values of z axis
+  pcl::PointXYZ min_xyz;
+  pcl::PointXYZ max_xyz;
+  pcl::getMinMax3D(*cloud_xyz, min_xyz, max_xyz);
+  const float min_z = min_xyz.z;
+  const float max_z = max_xyz.z;
+
+
+  // Slice input cloud per discrete slices
+  const int                           cloud_size     = cloud_xyz->size();
+  const int                           number_of_rows = std::ceil((max_z - min_z) / slice_height);
+  std::vector<std::vector<PointType>> rows(number_of_rows);
+  for (int ind = 0; ind < cloud_size; ind++) {
+    const auto &point_xyz = cloud_xyz->at(ind);
+
+    PointType point;
+    point.x         = point_xyz.x;
+    point.y         = point_xyz.y;
+    point.z         = point_xyz.z;
+    point.intensity = 0.0f;
+
+    const int row = std::floor((point.z - min_z) / slice_height);
+    rows.at(row).push_back(point);
+  }
+
+  // Copy rows to new cloud to fix indices ordering
+  PC_ptr           cloud = boost::make_shared<pcl::PointCloud<PointType>>();
+  std::vector<int> rows_start_idxs(number_of_rows);
+  std::vector<int> rows_end_idxs(number_of_rows);
+  int              ind       = 0;
+  int              start_idx = 0;
+  int              end_idx   = 0;
+
+  cloud->resize(cloud_size);
+
+  for (int row = 0; row < number_of_rows; row++) {
+
+    const int row_size      = rows.at(row).size();
+    rows_start_idxs.at(row) = start_idx;
+    rows_end_idxs.at(row)   = start_idx + row_size - 1;
+    start_idx += row_size;
+
+    for (const auto &point : rows.at(row))
+      cloud->at(ind++) = point;
+  }
 
   // Extract features
   float time_pts    = 0.0f;
@@ -879,11 +939,21 @@ void AloamMapping::loadFeaturesFromPcd(const std::string &pcd, const std::string
   const auto [corner_points_sharp, corner_points_less_sharp, surf_points_flat, surf_points_less_flat] =
       extractFeatures(cloud, rows_start_idxs, rows_end_idxs, time_pts, time_q_sort);
 
-  // TODO: Downsample features
+  // Downsample features
+  pcl::VoxelGrid<PointType> filter_downsize_corners;
+  pcl::VoxelGrid<PointType> filter_downsize_surfs;
+  filter_downsize_corners.setLeafSize(_resolution_line, _resolution_line, _resolution_line);
+  filter_downsize_surfs.setLeafSize(_resolution_plane, _resolution_plane, _resolution_plane);
 
-  // TODO: Transform features from frame to frame_map
+  PC_ptr features_corners = boost::make_shared<pcl::PointCloud<PointType>>();
+  filter_downsize_corners.setInputCloud(corner_points_sharp);
+  filter_downsize_corners.filter(*features_corners);
 
-  // TODO: Store features in map
+  PC_ptr features_surfs = boost::make_shared<pcl::PointCloud<PointType>>();
+  filter_downsize_surfs.setInputCloud(surf_points_flat);
+  filter_downsize_surfs.filter(*features_surfs);
+
+  return std::make_tuple(features_corners, features_surfs);
 }
 //}
 

@@ -23,6 +23,7 @@
   <arg name="mapping_plane_resolution" default="0.8" />
   <arg name="pcd_map/path" default="" />
   <arg name="pcd_map/frame" default="$(arg UAV_NAME)/global_origin" />
+  <arg name="pcd_map/slice/height" default="0.2" />
 
   <!-- LAUNCH PARAMETERS -->
   <arg name="verbose" default="false" />
