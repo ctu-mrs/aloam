@@ -1,6 +1,4 @@
 #include "aloam_slam/mapping.h"
-#include "tf/LinearMath/Transform.h"
-#include <pcl/common/transforms.h>
 
 namespace aloam_slam
 {
@@ -856,6 +854,10 @@ void AloamMapping::loadFeaturesFromPcd(const std::string &pcd, const std::string
     ROS_INFO("[AloamMapping] No PCD file specified for loading features.");
     _load_pcd_map = false;
     return;
+  } else if (frame.size() == 0) {
+    ROS_ERROR("[AloamMapping] Frame for given PCD file is empty. Will not load the PCD file!");
+    _load_pcd_map = false;
+    return;
   }
 
   // Find transform to this frame
@@ -864,21 +866,20 @@ void AloamMapping::loadFeaturesFromPcd(const std::string &pcd, const std::string
     return;
 
   // Load cloud as XYZ points
-  auto cloud_ret = mrs_pcl_tools::loadPcXYZ(pcd);
+  const auto cloud_ret = mrs_pcl_tools::loadPcXYZ(pcd);
   if (!cloud_ret)
     return;
 
   // Slice given PCD file to rows
-  const auto &cloud_xyz       = cloud_ret.value();
-  const auto [corners, surfs] = pcdCloudToFeatures(cloud_xyz, _pcd_map_slice_height);
+  const auto &cloud_xyz        = cloud_ret.value();
+  const auto &[corners, surfs] = pcdCloudToFeatures(cloud_xyz, _pcd_map_slice_height);
 
-  // TODO: Transform features from frame to frame_map
-  /* const Eigen::Affine3d tf_mat = tf_ret.value().getTransformEigen(); */
-  /* tf::Transform         transform; */
-  /* const PC_ptr          corners_transformed = boost::make_shared<pcl::PointCloud<PointType>>(); */
-  /* const PC_ptr          surfs_transformed   = boost::make_shared<pcl::PointCloud<PointType>>(); */
-  /* pcl::transformPointCloud(corners, corners_transformed, transform); */
-  /* pcl::transformPointCloud(surfs, surfs_transformed, transform); */
+  // Transform features from given frame to the slam map frame
+  const Eigen::Affine3d tf_mat              = tf_ret.value().getTransformEigen();
+  const PC_ptr          corners_transformed = boost::make_shared<pcl::PointCloud<PointType>>();
+  const PC_ptr          surfs_transformed   = boost::make_shared<pcl::PointCloud<PointType>>();
+  pcl::transformPointCloud(*corners, *corners_transformed, tf_mat);
+  pcl::transformPointCloud(*surfs, *surfs_transformed, tf_mat);
 
   // TODO: Store features in map
 }
@@ -887,15 +888,14 @@ void AloamMapping::loadFeaturesFromPcd(const std::string &pcd, const std::string
 /* pcdCloudToFeatures() //{ */
 std::tuple<PC_ptr, PC_ptr> AloamMapping::pcdCloudToFeatures(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud_xyz, const float slice_height) {
 
-  // Get min/max values of z axis
+  // Get min/max values of z-axis
   pcl::PointXYZ min_xyz;
   pcl::PointXYZ max_xyz;
   pcl::getMinMax3D(*cloud_xyz, min_xyz, max_xyz);
   const float min_z = min_xyz.z;
   const float max_z = max_xyz.z;
 
-
-  // Slice input cloud per discrete slices
+  // Slice input cloud per discrete slices in the z-axis
   const int                           cloud_size     = cloud_xyz->size();
   const int                           number_of_rows = std::ceil((max_z - min_z) / slice_height);
   std::vector<std::vector<PointType>> rows(number_of_rows);
@@ -906,7 +906,7 @@ std::tuple<PC_ptr, PC_ptr> AloamMapping::pcdCloudToFeatures(const pcl::PointClou
     point.x         = point_xyz.x;
     point.y         = point_xyz.y;
     point.z         = point_xyz.z;
-    point.intensity = 0.0f;
+    point.intensity = 0.0f;  // TODO: If the intensities used for global matching, this might be unfeasible.
 
     const int row = std::floor((point.z - min_z) / slice_height);
     rows.at(row).push_back(point);
@@ -945,11 +945,11 @@ std::tuple<PC_ptr, PC_ptr> AloamMapping::pcdCloudToFeatures(const pcl::PointClou
   filter_downsize_corners.setLeafSize(_resolution_line, _resolution_line, _resolution_line);
   filter_downsize_surfs.setLeafSize(_resolution_plane, _resolution_plane, _resolution_plane);
 
-  PC_ptr features_corners = boost::make_shared<pcl::PointCloud<PointType>>();
+  const PC_ptr features_corners = boost::make_shared<pcl::PointCloud<PointType>>();
   filter_downsize_corners.setInputCloud(corner_points_sharp);
   filter_downsize_corners.filter(*features_corners);
 
-  PC_ptr features_surfs = boost::make_shared<pcl::PointCloud<PointType>>();
+  const PC_ptr features_surfs = boost::make_shared<pcl::PointCloud<PointType>>();
   filter_downsize_surfs.setInputCloud(surf_points_flat);
   filter_downsize_surfs.filter(*features_surfs);
 
