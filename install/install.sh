@@ -62,6 +62,10 @@ BUILD_FLAGS_GENERAL=(
               -DCMAKE_BUILD_TYPE=$PROFILE
               -DCMAKE_CXX_FLAGS="-std=c++$CMAKE_STANDARD $CMAKE_MARCH_NATIVE" 
               -DCMAKE_C_FLAGS="$CMAKE_MARCH_NATIVE"
+              -DBUILD_TESTING=OFF
+              -DBUILD_DOCUMENTATION=OFF
+              -DBUILD_EXAMPLES=OFF
+              -DSCHUR_SPECIALIZATIONS=OFF
             )
 
 # download ceres solver
@@ -83,3 +87,6 @@ cd build
 cmake "${BUILD_FLAGS_GENERAL[@]}" "${BUILD_FLAGS_PROFILE[@]}" ../
 make -j$[$(nproc) - 1]
 sudo make install
+
+# remove the ceres solver source and build files
+rm -rf $CERES_PATH
