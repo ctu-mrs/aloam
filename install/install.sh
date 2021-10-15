@@ -1,7 +1,9 @@
 #!/bin/bash
 
-# get path to script
-SCRIPT_PATH="$( cd "$(dirname "$0")" ; pwd -P )"
+# get the path to this script
+MY_PATH=`dirname "$0"`
+MY_PATH=`( cd "$MY_PATH" && pwd )`
+cd "$MY_PATH"
 
 distro=`lsb_release -r | awk '{ print $2 }'`
 [ "$distro" = "18.04" ] && ROS_DISTRO="melodic"
@@ -64,6 +66,7 @@ BUILD_FLAGS_GENERAL=(
             )
 
 # download ceres solver
+echo "Downloading cerese soler"
 [ ! -d $CERES_PATH ] && mkdir -p $CERES_PATH
 cd $CERES_PATH
 
@@ -76,9 +79,12 @@ then
 fi
 
 # install ceres solver
+echo "Compiling ceres solver"
 cd $CERES_PATH/ceres-solver-$CERES_VERSION
 [ ! -d "build" ] && mkdir build
 cd build
 cmake "${BUILD_FLAGS_GENERAL[@]}" "${BUILD_FLAGS_PROFILE[@]}" ../
 make -j$[$(nproc) - 1]
 sudo make install
+
+echo "Done installing prerequisities for A-LOAM"
