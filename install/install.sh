@@ -7,7 +7,6 @@ distro=`lsb_release -r | awk '{ print $2 }'`
 [ "$distro" = "18.04" ] && ROS_DISTRO="melodic"
 [ "$distro" = "20.04" ] && ROS_DISTRO="noetic"
 
-SCRIPT_PATH="$( cd "$(dirname "$0")" ; pwd -P )"
 CERES_PATH=$SCRIPT_PATH/../lib
 CERES_VERSION=1.14.0
 
@@ -20,7 +19,7 @@ fi
 CMAKE_STANDARD=17
 
 # install dependencies
-sudo apt update
+sudo apt-get -y update
 sudo apt-get -y install \
   cmake \
   libgoogle-glog-dev \
