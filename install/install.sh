@@ -14,7 +14,7 @@ distro=`lsb_release -r | awk '{ print $2 }'`
 [ "$distro" = "18.04" ] && ROS_DISTRO="melodic"
 [ "$distro" = "20.04" ] && ROS_DISTRO="noetic"
 
-CERES_PATH=$SCRIPT_PATH/../lib
+CERES_PATH=$MY_PATH/../lib
 CERES_VERSION=1.14.0
 
 # IMPORTANT: These variables should match the settings of your catkin workspace
@@ -71,14 +71,14 @@ BUILD_FLAGS_GENERAL=(
             )
 
 # download ceres solver
-echo "Downloading cerese soler"
+echo "Downloading ceres solver"
 [ ! -d $CERES_PATH ] && mkdir -p $CERES_PATH
 cd $CERES_PATH
 
 if [ ! -d $CERES_PATH/ceres-solver-$CERES_VERSION ]
 then
   # unpack source files
-  wget -O $CERES_PATH/ceres-solver-$CERES_VERSION.tar.gz http://ceres-solver.org/ceres-solver-$CERES_VERSION.tar.gz
+  wget -O "$CERES_PATH/ceres-solver-$CERES_VERSION.tar.gz" http://ceres-solver.org/ceres-solver-$CERES_VERSION.tar.gz
   tar zxf ceres-solver-$CERES_VERSION.tar.gz
   rm -f ceres-solver-$CERES_VERSION.tar.gz
 fi
