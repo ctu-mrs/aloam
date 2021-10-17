@@ -89,7 +89,11 @@ cd $CERES_PATH/ceres-solver-$CERES_VERSION
 [ ! -d "build" ] && mkdir build
 cd build
 cmake "${BUILD_FLAGS_GENERAL[@]}" "${BUILD_FLAGS_PROFILE[@]}" ../
-make -j$[$(nproc) - 1]
+
+[ ! -z "$GITHUB_CI" ] && N_PROC="-j2"
+[ -z "$GITHUB_CI" ] && N_PROC="-j$[$(nproc) / 2]"
+
+make ${N_PROC}
 sudo make install
 
 echo "Done installing prerequisities for A-LOAM"
