@@ -1,0 +1,12 @@
+verbose: true
+
+# number of ringes
+scan_line: 16 # [-]
+
+vertical_fov: 33.2 # [deg]
+sensor_frequency: 10.0 # [Hz]
+
+initialize_from_odom: false
+
+mapping_rate: 10.0 # [Hz]
+mapping_publish_rate: 0.5 # [Hz]

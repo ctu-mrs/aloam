@@ -1,0 +1,67 @@
+<launch>
+
+  <arg name="points_topic" default="" />
+
+    <!-- ENV VARS -->
+  <arg name="UAV_NAME" default="$(env UAV_NAME)" />
+  <arg name="RUN_TYPE" default="$(env RUN_TYPE)" />
+  <arg name="ENABLE_PROFILER" default="$(optenv PROFILER false)" />
+
+  <arg name="standalone" default="false" />
+  <arg name="debug" default="false" />
+  <arg name="custom_config" default="" />
+
+    <!-- DEFAULT PARAMETERS AND FRAMES -->
+  <arg name="fcu_frame" default="$(arg UAV_NAME)/fcu" />
+  <arg name="lidar_frame" default="$(arg UAV_NAME)/os_sensor" />
+  <arg name="odom_frame" default="$(arg UAV_NAME)/slam_odom_origin" />
+  <arg name="map_frame" default="$(arg UAV_NAME)/slam_origin" />
+  <arg name="init_frame" default="$(arg UAV_NAME)/gps_origin" />
+
+  <arg     if="$(arg debug)" name="launch_prefix" value="debug_roslaunch" />
+  <arg unless="$(arg debug)" name="launch_prefix" value="" />
+
+  <arg name="nodelet_manager_name" default="" />
+  <arg     if="$(eval arg('standalone') or arg('debug'))" name="nodelet" value="standalone" />
+  <arg unless="$(eval arg('standalone') or arg('debug'))" name="nodelet" value="load" />
+  <arg     if="$(eval arg('standalone') or arg('debug'))" name="nodelet_manager" value="" />
+  <arg unless="$(eval arg('standalone') or arg('debug'))" name="nodelet_manager" value="$(arg nodelet_manager_name)" />
+
+  <group ns="$(arg UAV_NAME)">
+
+    <node pkg="nodelet" type="nodelet" name="aloam" args="$(arg nodelet) aloam_slam/AloamSlam $(arg nodelet_manager)" output="screen" launch-prefix="$(arg launch_prefix)" respawn="true">
+
+      <rosparam file="$(find aloam)/config/aloam.yaml" command="load" />
+      <rosparam if="$(eval not arg('custom_config') == '')" file="$(arg custom_config)" command="load" />
+
+      <param name="enable_profiler" type="bool" value="$(arg ENABLE_PROFILER)" />
+
+      <param name="uav_name" type="string" value="$(arg UAV_NAME)" />
+      <param name="fcu_frame" type="string" value="$(arg fcu_frame)" />
+      <param name="odom_frame" type="string" value="$(arg odom_frame)" />
+      <param name="map_frame" type="string" value="$(arg map_frame)" />
+      <param name="lidar_frame" type="string" value="$(arg lidar_frame)" />
+      <param name="init_frame" type="string" value="$(arg init_frame)" />
+
+      <!-- Subscribers -->
+      <remap from="~laser_cloud_in" to="$(arg points_topic)" />
+      <remap from="~orientation_in" to="odometry/orientation" />
+      <remap from="~init_odom_in" to="odometry/odom_main" />
+
+      <!-- Publishers -->
+      <remap from="~path_out" to="slam/path"/>
+      <remap from="~map_out" to="slam/map"/>
+      <remap from="~scan_registered_out" to="slam/scan_registered"/>
+      <remap from="~eigenvalues" to="slam/eigenvalues"/>
+
+      <remap from="~odom_local_out" to="slam/odom_local" />
+      <remap from="~odom_global_out" to="slam/odom" />
+
+      <!-- Service servers -->
+      <remap from="~srv_reset_mapping_in" to="~reset_mapping" />
+
+    </node>
+
+  </group>
+
+</launch>
