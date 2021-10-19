@@ -65,7 +65,7 @@ BUILD_FLAGS_GENERAL=(
               -DBUILD_TESTING=OFF
               -DBUILD_DOCUMENTATION=ON
               -DBUILD_EXAMPLES=OFF
-              -DSCHUR_SPECIALIZATIONS=OFF
+              -DSCHUR_SPECIALIZATIONS=ON
             )
 
 # download ceres solver
