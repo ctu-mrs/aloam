@@ -90,21 +90,10 @@
   </group>
   
   <!-- LAUNCH DATA PROCESSING -->
-  <include file="$(find mrs_pcl_tools)/launch/uav_os_filtration.launch">
+  <include file="$(find mrs_pcl_tools)/launch/pcl_filter.launch">
     <arg name="nodelet" value="$(arg nodelet)" />
     <arg name="nodelet_manager" value="$(arg nodelet_manager)" />
     <arg name="launch_prefix" value="$(arg launch_prefix)" />
-
-    <arg name="lidar3d/republish" value="true" />
-    <arg name="lidar3d/range_clip/use" value="true" />
-    <arg name="lidar3d/range_clip/min" value="$(arg min_range)" />
-    <arg name="lidar3d/range_clip/max" value="$(arg max_range)" />
-
-    <arg if="$(eval arg('RUN_TYPE') == 'simulation')" name="lidar3d/filter_intensity_en" value="false" />
-    <arg unless="$(eval arg('RUN_TYPE') == 'simulation')" name="lidar3d/filter_intensity_en" value="$(arg filter/intensity)" />
-    <arg name="lidar3d/filter_intensity_thrd" value="$(arg filter/intensity/value)" />
-    <arg name="lidar3d/filter_intensity_range" value="$(arg filter/intensity/range)" />
-
   </include>
 
 </launch>
