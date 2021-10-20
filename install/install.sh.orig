@@ -70,7 +70,6 @@ BUILD_FLAGS_GENERAL=(
               -DCMAKE_C_FLAGS="$CMAKE_MARCH_NATIVE"
               -DBUILD_TESTING=OFF
               -DBUILD_DOCUMENTATION=ON
-              -DBUILD_BENCHMARKS=OFF
               -DBUILD_EXAMPLES=OFF
               -DSCHUR_SPECIALIZATIONS=ON
             )
@@ -101,7 +100,9 @@ cmake "${BUILD_FLAGS_GENERAL[@]}" "${BUILD_FLAGS_PROFILE[@]}" ../
 make ${N_PROC}
 sudo make install
 
+<<<<<<< HEAD
 echo "Done installing prerequisities for A-LOAM"
-
+=======
 # remove the ceres solver source and build files
 rm -rf $CERES_PATH
+>>>>>>> gitlab/master
