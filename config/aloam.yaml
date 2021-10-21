@@ -1,6 +1,6 @@
 verbose: true
 
-# number of ringes
+# number of rings
 scan_line: 16 # [-]
 
 vertical_fov: 33.2 # [deg]
