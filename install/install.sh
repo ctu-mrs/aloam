@@ -104,4 +104,4 @@ sudo make install
 echo "Done installing prerequisities for A-LOAM"
 
 # remove the ceres solver source and build files
-rm -rf $CERES_PATH
+rm -rf $CERES_PATH/build
