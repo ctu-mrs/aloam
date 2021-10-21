@@ -62,11 +62,11 @@ else
 fi
 
 # Defaults taken from mrs_workspace building flags
-BUILD_FLAGS_GENERAL=( 
-              -DCMAKE_EXPORT_COMPILE_COMMANDS=ON 
-              -DCMAKE_CXX_STANDARD=$CMAKE_STANDARD 
+BUILD_FLAGS_GENERAL=(
+              -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+              -DCMAKE_CXX_STANDARD=$CMAKE_STANDARD
               -DCMAKE_BUILD_TYPE=$PROFILE
-              -DCMAKE_CXX_FLAGS="-std=c++$CMAKE_STANDARD $CMAKE_MARCH_NATIVE" 
+              -DCMAKE_CXX_FLAGS="-std=c++$CMAKE_STANDARD $CMAKE_MARCH_NATIVE"
               -DCMAKE_C_FLAGS="$CMAKE_MARCH_NATIVE"
               -DBUILD_TESTING=OFF
               -DBUILD_DOCUMENTATION=OFF
@@ -95,8 +95,10 @@ cd $CERES_PATH/ceres-solver-$CERES_VERSION
 cd build
 cmake "${BUILD_FLAGS_GENERAL[@]}" "${BUILD_FLAGS_PROFILE[@]}" ../
 
-[ ! -z "$GITHUB_CI" ] && N_PROC="-j2"
-[ -z "$GITHUB_CI" ] && N_PROC="-j$[$(nproc) / 2]"
+[ -z "$GITHUB_CI" ] && N_PROC="-j$[$(nproc) - 1]"
+[ ! -z "$GITHUB_CI" ] && N_PROC="-j$[$(nproc) / 2]"
+
+echo "building with $N_PROC processes"
 
 make ${N_PROC}
 sudo make install
@@ -104,4 +106,4 @@ sudo make install
 echo "Done installing prerequisities for A-LOAM"
 
 # remove the ceres solver source and build files
-rm -rf $CERES_PATH/build
+rm -rf $CERES_PATH/ceres-solver-$CERES_VERSION/build
