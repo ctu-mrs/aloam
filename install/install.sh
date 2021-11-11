@@ -20,7 +20,7 @@ CERES_VERSION=1.14.0
 # IMPORTANT: These variables should match the settings of your catkin workspace
 PROFILE="RelWithDebInfo" # RelWithDebInfo, Release, Debug
 BUILD_WITH_MARCH_NATIVE=false
-if [ ! -z "$PCL_CROSS_COMPILATION" ] && [ "$PCL_CROSS_COMPILATION" == "true" ]; then
+if [ ! -z "$PCL_CROSS_COMPILATION" ]; then
   BUILD_WITH_MARCH_NATIVE=$PCL_CROSS_COMPILATION
 fi
 CMAKE_STANDARD=17
