@@ -5,9 +5,10 @@ namespace aloam_slam
 {
 
 /* //{ AloamOdometry() */
-AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::string uav_name, std::shared_ptr<mrs_lib::Profiler> profiler,
-                             std::shared_ptr<AloamMapping> aloam_mapping, std::string frame_fcu, std::string frame_lidar, std::string frame_odom,
-                             float scan_period_sec, tf::Transform tf_lidar_to_fcu)
+AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, const std::string uav_name, const std::shared_ptr<mrs_lib::Profiler> profiler,
+                             const std::shared_ptr<AloamMapping> aloam_mapping, const std::string &frame_fcu, const std::string &frame_lidar,
+                             const std::string &frame_odom, const float scan_period_sec, const tf::Transform &tf_lidar_to_fcu, const bool enable_scope_timer,
+                             const std::shared_ptr<mrs_lib::ScopeTimerLogger> scope_timer_logger)
     : _profiler(profiler),
       _aloam_mapping(aloam_mapping),
       _frame_fcu(frame_fcu),
@@ -16,7 +17,9 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, std::string uav_n
       _scan_period_sec(scan_period_sec),
       _tf_lidar_to_fcu(tf_lidar_to_fcu),
       _q_last_curr(_para_q),
-      _t_last_curr(_para_t) {
+      _t_last_curr(_para_t),
+      _scope_timer_logger(scope_timer_logger),
+      _enable_scope_timer(enable_scope_timer) {
 
   ros::NodeHandle nh_(parent_nh);
 
@@ -65,6 +68,8 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     return;
   }
 
+  mrs_lib::ScopeTimer timer = mrs_lib::ScopeTimer("ALOAM::FeatureExtraction::timerOdometry", _scope_timer_logger, _enable_scope_timer);
+
   pcl::PointCloud<PointType>::Ptr corner_points_sharp;
   pcl::PointCloud<PointType>::Ptr corner_points_less_sharp;
   pcl::PointCloud<PointType>::Ptr surf_points_flat;
@@ -81,24 +86,19 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   }
   /*//}*/
 
-  if (laser_cloud_full_res->empty())
-  {
+  if (laser_cloud_full_res->empty()) {
     ROS_WARN_THROTTLE(1.0, "[AloamOdometry]: Received an empty input cloud, skipping!");
     return;
   }
+
+  timer.checkpoint("loaded data");
 
   mrs_lib::Routine profiler_routine = _profiler->createRoutine("timerOdometry", 1.0f / _scan_period_sec, 0.05, event);
 
   ros::Time stamp;
   pcl_conversions::fromPCL(laser_cloud_full_res->header.stamp, stamp);
 
-  TicToc t_whole;
-
   /*//{ Find features correspondences and compute local odometry */
-
-  float time_data_association = 0.0f;
-  float time_solver           = 0.0f;
-  float time_opt              = 0.0f;
 
   if (_frame_count > 0) {
     std::scoped_lock lock(_mutex_odometry_process);
@@ -112,7 +112,6 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     _kdtree_corners_last.setInputCloud(_features_corners_last);
     _kdtree_surfs_last.setInputCloud(_features_surfs_last);
 
-    TicToc t_opt;
     for (size_t opti_counter = 0; opti_counter < 2; ++opti_counter) {
       int corner_correspondence = 0;
       int plane_correspondence  = 0;
@@ -129,8 +128,6 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
       pcl::PointXYZI     pointSel;
       std::vector<int>   pointSearchInd;
       std::vector<float> pointSearchSqDis;
-
-      TicToc t_data;
 
       // find correspondence for corner features
       for (int i = 0; i < cornerPointsSharpNum; ++i) {
@@ -282,14 +279,10 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
         }
       }
 
-      // printf("coner_correspondance %d, plane_correspondence %d \n", corner_correspondence, plane_correspondence);
-      time_data_association = t_data.toc();
-
       if ((corner_correspondence + plane_correspondence) < 10) {
         ROS_WARN_STREAM("[AloamOdometry] low number of correspondence!");
       }
 
-      TicToc                 t_solver;
       ceres::Solver::Options options;
       options.linear_solver_type           = ceres::DENSE_QR;
       options.max_num_iterations           = 4;
@@ -297,10 +290,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
       ceres::Solver::Summary summary;
       ceres::Solve(options, &problem, &summary);
       /* printf("solver time %f ms \n", t_solver.toc()); */
-      time_solver = t_solver.toc();
     }
-    /* printf("optimization twice time %f \n", t_opt.toc()); */
-    time_opt = t_opt.toc();
 
     _t_w_curr = _t_w_curr + _q_w_curr * _t_last_curr;
     _q_w_curr = _q_w_curr * _q_last_curr;
@@ -308,7 +298,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
 
   /*//}*/
 
-  TicToc t_pub;
+  timer.checkpoint("computing local odometry");
 
   geometry_msgs::Quaternion ori;
   tf::quaternionEigenToMsg(_q_w_curr, ori);
@@ -392,7 +382,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     // Publish nav_msgs::Odometry msg in odom frame
     if (_pub_odometry_local.getNumSubscribers() > 0) {
       // Publish nav_msgs::Odometry msg
-      nav_msgs::Odometry::Ptr laser_odometry_msg = boost::make_shared<nav_msgs::Odometry>();
+      const nav_msgs::Odometry::Ptr laser_odometry_msg = boost::make_shared<nav_msgs::Odometry>();
       laser_odometry_msg->header.stamp           = stamp;
       laser_odometry_msg->header.frame_id        = _frame_odom;
       laser_odometry_msg->child_frame_id         = _frame_fcu;
@@ -413,12 +403,11 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   _frame_count++;
 
   // Print diagnostics
-  float time_whole = t_whole.toc();
-  ROS_INFO_THROTTLE(1.0, "[AloamOdometry] Run time: %0.1f ms (%0.1f Hz)", time_whole, std::min(1.0f / _scan_period_sec, 1000.0f / time_whole));
-  ROS_DEBUG_THROTTLE(1.0,
-                     "[AloamOdometry] feature registration: %0.1f ms; solver time: %0.1f ms; double optimization time: %0.1f ms; publishing time: %0.1f ms",
-                     time_data_association, time_solver, time_opt, t_pub.toc());
-  ROS_WARN_COND(time_whole > _scan_period_sec * 1000.0f, "[AloamOdometry] Odometry process took over %0.2f ms", _scan_period_sec * 1000.0f);
+  /* ROS_INFO_THROTTLE(1.0, "[AloamOdometry] Run time: %0.1f ms (%0.1f Hz)", time_whole, std::min(1.0f / _scan_period_sec, 1000.0f / time_whole)); */
+  /* ROS_DEBUG_THROTTLE(1.0, */
+  /*                    "[AloamOdometry] feature registration: %0.1f ms; solver time: %0.1f ms; double optimization time: %0.1f ms; publishing time: %0.1f ms", */
+  /*                    time_data_association, time_solver, time_opt, t_pub.toc()); */
+  /* ROS_WARN_COND(time_whole > _scan_period_sec * 1000.0f, "[AloamOdometry] Odometry process took over %0.2f ms", _scan_period_sec * 1000.0f); */
 }
 /*//}*/
 
@@ -438,13 +427,16 @@ void AloamOdometry::setData(pcl::PointCloud<PointType>::Ptr corner_points_sharp,
   _cloud_full_ress          = laser_cloud_full_res;
 
   /* if (!isfinite(*_corner_points_sharp)) */
-  /*   std::cerr << "                                                                [AloamOdometry::setData]: _corner_points_sharp are not finite!!" << "\n"; */
+  /*   std::cerr << "                                                                [AloamOdometry::setData]: _corner_points_sharp are not finite!!" << "\n";
+   */
   /* if (!isfinite(*_corner_points_less_sharp)) */
-  /*   std::cerr << "                                                                [AloamOdometry::setData]: _corner_points_less_sharp are not finite!!" << "\n"; */
+  /*   std::cerr << "                                                                [AloamOdometry::setData]: _corner_points_less_sharp are not finite!!" <<
+   * "\n"; */
   /* if (!isfinite(*_surf_points_flat)) */
   /*   std::cerr << "                                                                [AloamOdometry::setData]: _surf_points_flat are not finite!!" << "\n"; */
   /* if (!isfinite(*_surf_points_less_flat)) */
-  /*   std::cerr << "                                                                [AloamOdometry::setData]: _surf_points_less_flat are not finite!!" << "\n"; */
+  /*   std::cerr << "                                                                [AloamOdometry::setData]: _surf_points_less_flat are not finite!!" << "\n";
+   */
   /* if (!isfinite(*_cloud_full_ress)) */
   /*   std::cerr << "                                                                [AloamOdometry::setData]: _cloud_full_ress are not finite!!" << "\n"; */
 }
@@ -452,8 +444,7 @@ void AloamOdometry::setData(pcl::PointCloud<PointType>::Ptr corner_points_sharp,
 
 /* setTransform() //{ */
 
-void AloamOdometry::setTransform(const Eigen::Vector3d& t, const Eigen::Quaterniond& q, const ros::Time& stamp)
-{
+void AloamOdometry::setTransform(const Eigen::Vector3d &t, const Eigen::Quaterniond &q, const ros::Time &stamp) {
   _q_w_curr = q;
   _t_w_curr = t;
 
@@ -503,7 +494,6 @@ void AloamOdometry::setTransform(const Eigen::Vector3d& t, const Eigen::Quaterni
   }
 
   /*//}*/
-
 }
 
 //}

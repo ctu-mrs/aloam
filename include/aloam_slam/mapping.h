@@ -51,6 +51,7 @@
 #include <mrs_lib/mutex.h>
 #include <mrs_lib/transformer.h>
 #include <mrs_lib/attitude_converter.h>
+#include <mrs_lib/scope_timer.h>
 #include <mrs_msgs/Float64ArrayStamped.h>
 
 #include "aloam_slam/common.h"
@@ -62,32 +63,35 @@
 namespace aloam_slam
 {
 
-  template <typename pc_t>
-  inline bool isfinite(const pc_t& pc)
-  {
-    for (const auto& pt : pc.points)
-      if (!pcl::isFinite(pt))
-        return false;
-    return true;
-  }
+template <typename pc_t>
+inline bool isfinite(const pc_t &pc) {
+  for (const auto &pt : pc.points)
+    if (!pcl::isFinite(pt))
+      return false;
+  return true;
+}
 
 class AloamMapping {
 
 public:
-  AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, std::shared_ptr<mrs_lib::Profiler> profiler, std::string frame_fcu,
-               std::string frame_map, float scan_frequency, tf::Transform tf_lidar_to_fcu);
+  AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, const std::shared_ptr<mrs_lib::Profiler> profiler,
+               const std::string &frame_fcu, const std::string &frame_map, const float scan_frequency, const tf::Transform &tf_lidar_to_fcu,
+               const bool enable_scope_timer, const std::shared_ptr<mrs_lib::ScopeTimerLogger> scope_timer_logger);
 
   std::atomic<bool> is_initialized = false;
 
   void setData(ros::Time time_of_data, tf::Transform aloam_odometry, pcl::PointCloud<PointType>::Ptr laserCloudCornerLast,
                pcl::PointCloud<PointType>::Ptr laserCloudSurfLast, pcl::PointCloud<PointType>::Ptr laserCloudFullRes);
 
-  void setTransform(const Eigen::Vector3d& t, const Eigen::Quaterniond& q, const ros::Time& stamp);
+  void setTransform(const Eigen::Vector3d &t, const Eigen::Quaterniond &q, const ros::Time &stamp);
 
 private:
+  bool _enable_scope_timer;
+
   // member objects
   std::shared_ptr<mrs_lib::Profiler>             _profiler;
   std::shared_ptr<tf2_ros::TransformBroadcaster> _tf_broadcaster;
+  std::shared_ptr<mrs_lib::ScopeTimerLogger>     _scope_timer_logger;
 
   ros::Timer _timer_mapping_loop;
   ros::Time  _time_last_map_publish;
@@ -127,7 +131,7 @@ private:
   float _scan_frequency;
   float _mapping_frequency;
   float _map_publish_period;
-  bool _remap_tf;
+  bool  _remap_tf;
 
   tf::Transform _tf_lidar_to_fcu;
 

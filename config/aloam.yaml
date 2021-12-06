@@ -1,5 +1,9 @@
 verbose: true
 
+scope_timer:
+  enable: true
+  log_filename: ""
+
 # number of ringes
 scan_line: 16 # [-]
 

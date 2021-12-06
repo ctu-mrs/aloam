@@ -5,8 +5,14 @@ namespace aloam_slam
 
 /*//{ FeatureExtractor() */
 FeatureExtractor::FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, std::shared_ptr<mrs_lib::Profiler> profiler,
-                                   std::shared_ptr<AloamOdometry> odometry, std::string map_frame, float scan_period_sec)
-    : _profiler(profiler), _odometry(odometry), _frame_map(map_frame), _scan_period_sec(scan_period_sec) {
+                                   const std::shared_ptr<AloamOdometry> odometry, const std::string &map_frame, const float scan_period_sec,
+                                   const bool enable_scope_timer, const std::shared_ptr<mrs_lib::ScopeTimerLogger> scope_timer_logger)
+    : _profiler(profiler),
+      _odometry(odometry),
+      _frame_map(map_frame),
+      _scan_period_sec(scan_period_sec),
+      _scope_timer_logger(scope_timer_logger),
+      _enable_scope_timer(enable_scope_timer) {
 
   ros::NodeHandle nh_(parent_nh);
 
@@ -23,16 +29,16 @@ FeatureExtractor::FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::Pa
   /* _sub_laser_cloud = nh_.subscribe("laser_cloud_in", 1, &FeatureExtractor::callbackLaserCloud, this, ros::TransportHints().tcpNoDelay()); */
 
   mrs_lib::SubscribeHandlerOptions shopts(nh_);
-  shopts.node_name  = "FeatureExtractor";
-  shopts.no_message_timeout  = ros::Duration(5.0);
-  _sub_laser_cloud = mrs_lib::SubscribeHandler<sensor_msgs::PointCloud2>(shopts, "laser_cloud_in", std::bind(&FeatureExtractor::callbackLaserCloud, this, std::placeholders::_1));
-
+  shopts.node_name          = "FeatureExtractor";
+  shopts.no_message_timeout = ros::Duration(5.0);
+  _sub_laser_cloud          = mrs_lib::SubscribeHandler<sensor_msgs::PointCloud2>(shopts, "laser_cloud_in",
+                                                                         std::bind(&FeatureExtractor::callbackLaserCloud, this, std::placeholders::_1));
   /* ROS_INFO_STREAM("[AloamFeatureExtractor]: Listening to laser cloud at topic: " << _sub_laser_cloud.topicName()); */
 }
 /*//}*/
 
 /*//{ laserCloudHandler */
-void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs::PointCloud2>& sub) {
+void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs::PointCloud2> &sub) {
   if (!is_initialized || !sub.hasMsg())
     return;
 
@@ -41,8 +47,8 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
     ROS_WARN("[AloamFeatureExtractor]: Received empty laser cloud msg. Skipping frame.");
     return;
   }
-
-  mrs_lib::Routine profiler_routine = _profiler->createRoutine("callbackLaserCloud");
+  mrs_lib::ScopeTimer timer            = mrs_lib::ScopeTimer("ALOAM::FeatureExtraction::callbackLaserCloud", _scope_timer_logger, _enable_scope_timer);
+  mrs_lib::Routine    profiler_routine = _profiler->createRoutine("callbackLaserCloud");
 
   // Skip 1s of data
   ROS_INFO_ONCE("[AloamFeatureExtractor]: Received first laser cloud msg.");
@@ -57,18 +63,18 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
   // Process input data per row
   std::vector<int>                rows_start_idxs(_number_of_rings, 0);
   std::vector<int>                rows_end_idxs(_number_of_rings, 0);
-  float                           processing_time;
   pcl::PointCloud<PointType>::Ptr laser_cloud = boost::make_shared<pcl::PointCloud<PointType>>();
   if (_data_have_ring_field) {
-    parseRowsFromOS1CloudMsg(laserCloudMsg, laser_cloud, rows_start_idxs, rows_end_idxs, processing_time);
+    parseRowsFromOusterMsg(laserCloudMsg, laser_cloud, rows_start_idxs, rows_end_idxs);
   } else {
-    parseRowsFromCloudMsg(laserCloudMsg, laser_cloud, rows_start_idxs, rows_end_idxs, processing_time);
+    parseRowsFromCloudMsg(laserCloudMsg, laser_cloud, rows_start_idxs, rows_end_idxs);
   }
+  timer.checkpoint("parsing lidar data");
 
   /* if (!isfinite(*laser_cloud)) */
-  /*   std::cerr << "                                                                [FeatureExtractor::callbackLaserCloud]: laser_cloud are not finite!!" << "\n"; */
+  /*   std::cerr << "                                                                [FeatureExtractor::callbackLaserCloud]: laser_cloud are not finite!!" <<
+   * "\n"; */
 
-  TicToc             t_whole;
   std::vector<float> cloudCurvature;
   std::vector<int>   cloudSortInd;
   std::vector<int>   cloudNeighborPicked;
@@ -95,15 +101,12 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
     cloudSortInd.at(i)   = i;
   }
 
-  TicToc t_pts;
-
   pcl::PointCloud<PointType>::Ptr corner_points_sharp      = boost::make_shared<pcl::PointCloud<PointType>>();
   pcl::PointCloud<PointType>::Ptr corner_points_less_sharp = boost::make_shared<pcl::PointCloud<PointType>>();
   pcl::PointCloud<PointType>::Ptr surf_points_flat         = boost::make_shared<pcl::PointCloud<PointType>>();
   pcl::PointCloud<PointType>::Ptr surf_points_less_flat    = boost::make_shared<pcl::PointCloud<PointType>>();
 
   /*//{ Compute features (planes and edges) in two resolutions */
-  float time_q_sort = 0;
   for (int i = 0; i < _number_of_rings; i++) {
     if (rows_end_idxs.at(i) - rows_start_idxs.at(i) < 6) {
       continue;
@@ -113,10 +116,8 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
       const int sp = rows_start_idxs.at(i) + (rows_end_idxs.at(i) - rows_start_idxs.at(i)) * j / 6;
       const int ep = rows_start_idxs.at(i) + (rows_end_idxs.at(i) - rows_start_idxs.at(i)) * (j + 1) / 6 - 1;
 
-      TicToc t_tmp;
       std::sort(cloudSortInd.begin() + sp, cloudSortInd.begin() + ep + 1,
                 [&cloudCurvature](int i, int j) { return cloudCurvature.at(i) < cloudCurvature.at(j); });
-      time_q_sort += t_tmp.toc();
 
       int largestPickedNum = 0;
       for (int k = ep; k >= sp; k--) {
@@ -216,7 +217,7 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
   }
   /*//}*/
 
-  const float time_pts = t_pts.toc();
+  timer.checkpoint("parsing features");
 
   laser_cloud->header.frame_id              = _frame_map;
   corner_points_sharp->header.frame_id      = _frame_map;
@@ -234,19 +235,17 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
 
   _odometry->setData(corner_points_sharp, corner_points_less_sharp, surf_points_flat, surf_points_less_flat, laser_cloud);
 
-  const float time_whole = t_whole.toc() + processing_time;
-
-  ROS_INFO_THROTTLE(1.0, "[AloamFeatureExtractor] Run time: %0.1f ms (%0.1f Hz)", time_whole, std::min(1.0f / _scan_period_sec, 1000.0f / time_whole));
-  ROS_DEBUG_THROTTLE(1.0, "[AloamFeatureExtractor] points: %d; preparing data: %0.1f ms; q-sorting data: %0.1f ms; computing features: %0.1f ms", cloud_size,
-                     processing_time, time_q_sort, time_pts);
-  ROS_WARN_COND(time_whole > _scan_period_sec * 1000.0f, "[AloamFeatureExtractor] Feature extraction took over %0.2f ms", _scan_period_sec * 1000.0f);
+  /* ROS_INFO_THROTTLE(1.0, "[AloamFeatureExtractor] Run time: %0.1f ms (%0.1f Hz)", time_whole, std::min(1.0f / _scan_period_sec, 1000.0f / time_whole)); */
+  /* ROS_DEBUG_THROTTLE(1.0, "[AloamFeatureExtractor] points: %d; preparing data: %0.1f ms; q-sorting data: %0.1f ms; computing features: %0.1f ms", cloud_size,
+   */
+  /*                    processing_time, time_q_sort, time_pts); */
+  /* ROS_WARN_COND(time_whole > _scan_period_sec * 1000.0f, "[AloamFeatureExtractor] Feature extraction took over %0.2f ms", _scan_period_sec * 1000.0f); */
 }
 /*//}*/
 
 /*//{ parseRowsFromCloudMsg() */
-void FeatureExtractor::parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr &cloud_processed,
-                                             std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices, float &processing_time) {
-  TicToc t_prepare;
+void FeatureExtractor::parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, const pcl::PointCloud<PointType>::Ptr &cloud_processed,
+                                             std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices) {
 
   pcl::PointCloud<PointType> cloud_pcl;
   pcl::fromROSMsg(*cloud, cloud_pcl);
@@ -335,15 +334,12 @@ void FeatureExtractor::parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::Con
     *cloud_processed += laser_cloud_rows.at(i);
     rows_end_indices.at(i) = cloud_processed->size() - 6;
   }
-
-  processing_time = t_prepare.toc();
 }
 /*//}*/
 
-/*//{ parseRowsFromOS1CloudMsg() */
-void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr &cloud_processed,
-                                                std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices, float &processing_time) {
-  TicToc t_prepare;
+/*//{ parseRowsFromOusterMsg() */
+void FeatureExtractor::parseRowsFromOusterMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, const pcl::PointCloud<PointType>::Ptr &cloud_processed,
+                                              std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices) {
 
   // Create PointOS1 pointcloud {x, y, z, intensity, t, reflectivity, ring, noise, range}
   pcl::PointCloud<ouster_ros::Point>::Ptr        cloud_raw = boost::make_shared<pcl::PointCloud<ouster_ros::Point>>();
@@ -408,8 +404,6 @@ void FeatureExtractor::parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::
     *cloud_processed += laser_cloud_rows.at(i);
     rows_end_indices.at(i) = cloud_processed->size() - 6;
   }
-
-  processing_time = t_prepare.toc();
 }
 /*//}*/
 
@@ -444,7 +438,6 @@ void FeatureExtractor::removeNaNFromPointCloud(const pcl::PointCloud<ouster_ros:
   }
 }
 /*//}*/
-
 
 /*//{ hasField() */
 bool FeatureExtractor::hasField(const std::string field, const sensor_msgs::PointCloud2::ConstPtr &msg) {
