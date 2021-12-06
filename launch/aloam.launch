@@ -31,7 +31,7 @@
 
     <node pkg="nodelet" type="nodelet" name="aloam" args="$(arg nodelet) aloam_slam/AloamSlam $(arg nodelet_manager)" output="screen" launch-prefix="$(arg launch_prefix)" respawn="true">
 
-      <rosparam file="$(find aloam)/config/aloam.yaml" command="load" />
+      <rosparam file="$(find aloam_slam)/config/aloam.yaml" command="load" />
       <rosparam if="$(eval not arg('custom_config') == '')" file="$(arg custom_config)" command="load" />
 
       <param name="enable_profiler" type="bool" value="$(arg ENABLE_PROFILER)" />

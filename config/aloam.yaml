@@ -2,9 +2,9 @@ verbose: true
 
 scope_timer:
   enable: true
-  log_filename: ""
+  log_filename: "" # used, if not empty
 
-# number of ringes
+# number of rings
 scan_line: 16 # [-]
 
 vertical_fov: 33.2 # [deg]
