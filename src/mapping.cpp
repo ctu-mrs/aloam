@@ -21,11 +21,11 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
 
   ros::Time::waitForValid();
 
-  param_loader.loadParam("mapping_line_resolution", _resolution_line, 0.2f);
-  param_loader.loadParam("mapping_plane_resolution", _resolution_plane, 0.4f);
-  param_loader.loadParam("mapping_rate", _mapping_frequency, 5.0f);
-  param_loader.loadParam("map_publish_rate", _map_publish_period, 0.5f);
-  param_loader.loadParam("remap_tf", _remap_tf, false);
+  param_loader.loadParam("mapping/remap_tf", _remap_tf, false);
+  param_loader.loadParam("mapping/line_resolution", _resolution_line, 0.2f);
+  param_loader.loadParam("mapping/plane_resolution", _resolution_plane, 0.4f);
+  param_loader.loadParam("mapping/rate", _mapping_frequency, 5.0f);
+  param_loader.loadParam("mapping/publish_rate", _map_publish_period, 0.5f);
 
   /* _mapping_frequency = std::min(scan_frequency, _mapping_frequency);  // cannot be higher than scan frequency */
 

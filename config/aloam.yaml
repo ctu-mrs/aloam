@@ -12,5 +12,9 @@ sensor_frequency: 10.0 # [Hz]
 
 initialize_from_odom: false
 
-mapping_rate: 10.0 # [Hz]
-mapping_publish_rate: 0.5 # [Hz]
+mapping:
+  remap_tf: false
+  rate: 10.0 # [Hz]
+  publish_rate: 0.5 # [Hz]
+  line_resolution: 0.2
+  plane_resolution: 0.4
