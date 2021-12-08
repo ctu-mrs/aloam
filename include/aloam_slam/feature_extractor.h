@@ -13,16 +13,20 @@ class FeatureExtractor {
 
 public:
   FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, std::shared_ptr<mrs_lib::Profiler> profiler,
-                   std::shared_ptr<AloamOdometry> odometry, std::string map_frame, float scan_period_sec);
+                   const std::shared_ptr<AloamOdometry> odometry, const std::string &map_frame, const float scan_period_sec, const bool enable_scope_timer,
+                   const std::shared_ptr<mrs_lib::ScopeTimerLogger> scope_timer_logger);
 
   std::atomic<bool> is_initialized = false;
 
 private:
+  bool _enable_scope_timer;
+
   // member objects
-  std::shared_ptr<mrs_lib::Profiler> _profiler;
+  std::shared_ptr<mrs_lib::Profiler>                  _profiler;
   mrs_lib::SubscribeHandler<sensor_msgs::PointCloud2> _sub_laser_cloud;
 
-  std::shared_ptr<AloamOdometry> _odometry;
+  std::shared_ptr<AloamOdometry>             _odometry;
+  std::shared_ptr<mrs_lib::ScopeTimerLogger> _scope_timer_logger;
 
   // member variables
   std::string _frame_map;
@@ -39,10 +43,10 @@ private:
 
   bool _data_have_ring_field;
 
-  void parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr &cloud_processed,
-                             std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices, float &processing_time);
-  void parseRowsFromOS1CloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, pcl::PointCloud<PointType>::Ptr &cloud_processed,
-                                std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices, float &processing_time);
+  void parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, const pcl::PointCloud<PointType>::Ptr &cloud_processed,
+                             std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices);
+  void parseRowsFromOusterMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, const pcl::PointCloud<PointType>::Ptr &cloud_processed,
+                              std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices);
 
   void removeNaNFromPointCloud(const pcl::PointCloud<ouster_ros::Point>::Ptr &cloud_in, pcl::PointCloud<ouster_ros::Point>::Ptr &cloud_out,
                                std::unordered_map<unsigned int, unsigned int> &indices);
@@ -50,7 +54,7 @@ private:
   bool hasField(const std::string field, const sensor_msgs::PointCloud2::ConstPtr &msg);
 
   // callbacks
-  void callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs::PointCloud2>& laserCloudMsg);
+  void callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs::PointCloud2> &laserCloudMsg);
 };
 }  // namespace aloam_slam
 #endif
