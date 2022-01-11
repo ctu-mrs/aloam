@@ -18,15 +18,20 @@ FeatureExtractor::FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::Pa
 
   ros::Time::waitForValid();
 
-  param_loader.loadParam("vertical_fov", _vertical_fov_half);
-  param_loader.loadParam("scan_line", _number_of_rings);
+  param_loader.loadParam("vertical_fov", _vertical_fov_half, -1.0f);
+  param_loader.loadParam("scan_line", _number_of_rings, -1);
 
-  _ray_vert_delta = _vertical_fov_half / float(_number_of_rings - 1);  // vertical resolution
-  _vertical_fov_half /= 2.0;                                           // get half fov
+  _has_required_parameters = scan_period_sec > 0.0f && _vertical_fov_half > 0.0f && _number_of_rings > 0;
 
-  _initialization_frames_delay = int(1.0 / scan_period_sec);
+  if (_has_required_parameters) {
+    _ray_vert_delta = _vertical_fov_half / float(_number_of_rings - 1);  // vertical resolution
+    _vertical_fov_half /= 2.0;                                           // get half fov
 
-  /* _sub_laser_cloud = nh_.subscribe("laser_cloud_in", 1, &FeatureExtractor::callbackLaserCloud, this, ros::TransportHints().tcpNoDelay()); */
+    _initialization_frames_delay = int(1.0 / scan_period_sec);
+  } else {
+    _sub_input_data_processing_diag =
+        nh_.subscribe("input_proc_diag_in", 1, &FeatureExtractor::callbackInputDataProcDiag, this, ros::TransportHints().tcpNoDelay());
+  }
 
   mrs_lib::SubscribeHandlerOptions shopts(nh_);
   shopts.node_name          = "FeatureExtractor";
@@ -37,10 +42,16 @@ FeatureExtractor::FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::Pa
 }
 /*//}*/
 
-/*//{ laserCloudHandler */
+/*//{ callbackLaserCloud() */
 void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs::PointCloud2> &sub) {
-  if (!is_initialized || !sub.hasMsg())
+  if (!is_initialized || !sub.hasMsg()) {
     return;
+  }
+  if (!_has_required_parameters) {
+    ROS_WARN("[AloamFeatureExtractor] Not all parameters loaded from config. Waiting for msg on topic (%s) to read them.",
+             _sub_input_data_processing_diag.getTopic().c_str());
+    return;
+  }
 
   const auto laserCloudMsg = sub.getMsg();
   if (laserCloudMsg->data.size() == 0) {
@@ -61,9 +72,9 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
   }
 
   // Process input data per row
-  std::vector<int>                rows_start_idxs(_number_of_rings, 0);
-  std::vector<int>                rows_end_idxs(_number_of_rings, 0);
-  pcl::PointCloud<PointType>::Ptr laser_cloud = boost::make_shared<pcl::PointCloud<PointType>>();
+  std::vector<int>                      rows_start_idxs(_number_of_rings, 0);
+  std::vector<int>                      rows_end_idxs(_number_of_rings, 0);
+  const pcl::PointCloud<PointType>::Ptr laser_cloud = boost::make_shared<pcl::PointCloud<PointType>>();
   if (_data_have_ring_field) {
     parseRowsFromOusterMsg(laserCloudMsg, laser_cloud, rows_start_idxs, rows_end_idxs);
   } else {
@@ -101,10 +112,10 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
     cloudSortInd.at(i)   = i;
   }
 
-  pcl::PointCloud<PointType>::Ptr corner_points_sharp      = boost::make_shared<pcl::PointCloud<PointType>>();
-  pcl::PointCloud<PointType>::Ptr corner_points_less_sharp = boost::make_shared<pcl::PointCloud<PointType>>();
-  pcl::PointCloud<PointType>::Ptr surf_points_flat         = boost::make_shared<pcl::PointCloud<PointType>>();
-  pcl::PointCloud<PointType>::Ptr surf_points_less_flat    = boost::make_shared<pcl::PointCloud<PointType>>();
+  const pcl::PointCloud<PointType>::Ptr corner_points_sharp      = boost::make_shared<pcl::PointCloud<PointType>>();
+  const pcl::PointCloud<PointType>::Ptr corner_points_less_sharp = boost::make_shared<pcl::PointCloud<PointType>>();
+  const pcl::PointCloud<PointType>::Ptr surf_points_flat         = boost::make_shared<pcl::PointCloud<PointType>>();
+  const pcl::PointCloud<PointType>::Ptr surf_points_less_flat    = boost::make_shared<pcl::PointCloud<PointType>>();
 
   /*//{ Compute features (planes and edges) in two resolutions */
   for (int i = 0; i < _number_of_rings; i++) {
@@ -240,6 +251,29 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
    */
   /*                    processing_time, time_q_sort, time_pts); */
   /* ROS_WARN_COND(time_whole > _scan_period_sec * 1000.0f, "[AloamFeatureExtractor] Feature extraction took over %0.2f ms", _scan_period_sec * 1000.0f); */
+}
+/*//}*/
+
+/*//{ callbackInputDataProcDiag */
+void FeatureExtractor::callbackInputDataProcDiag(const mrs_msgs::PclToolsDiagnosticsConstPtr &msg) {
+
+  if (_has_required_parameters) {
+    _sub_input_data_processing_diag.shutdown();
+    return;
+  } else if (msg->sensor_type != mrs_msgs::PclToolsDiagnostics::SENSOR_TYPE_LIDAR_3D) {
+    return;
+  }
+
+  _vertical_fov_half = msg->vfov / 2.0f;
+  _number_of_rings   = msg->rows_after;
+  _scan_period_sec   = 1.0f / msg->frequency;
+
+  _ray_vert_delta = _vertical_fov_half / float(_number_of_rings - 1);  // vertical resolution
+  _vertical_fov_half /= 2.0;                                           // get half fov
+
+  _initialization_frames_delay = int(msg->frequency);  // 1 second delay
+
+  _has_required_parameters = _scan_period_sec > 0.0f && _vertical_fov_half > 0.0f && _number_of_rings > 0;
 }
 /*//}*/
 

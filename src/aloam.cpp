@@ -65,7 +65,7 @@ void AloamSlam::onInit() {
   param_loader.loadParam("odom_frame", frame_odom);
   param_loader.loadParam("map_frame", frame_map);
   param_loader.loadParam("init_frame", frame_init, {});
-  param_loader.loadParam("sensor_frequency", frequency);
+  param_loader.loadParam("sensor_frequency", frequency, -1.0f);
   param_loader.loadParam("verbose", verbose, false);
   param_loader.loadParam("enable_profiler", enable_profiler, false);
   param_loader.loadParam("scope_timer/enable", enable_scope_timer, false);
@@ -87,7 +87,7 @@ void AloamSlam::onInit() {
 
   // | ----------------------- SLAM handlers  ------------------- |
 
-  aloam_mapping  = std::make_shared<AloamMapping>(nh_, param_loader, profiler, frame_fcu, frame_map, frequency, tf_lidar_in_fcu_frame, enable_scope_timer,
+  aloam_mapping  = std::make_shared<AloamMapping>(nh_, param_loader, profiler, frame_fcu, frame_map, tf_lidar_in_fcu_frame, enable_scope_timer,
                                                  scope_timer_logger);
   aloam_odometry = std::make_shared<AloamOdometry>(nh_, uav_name, profiler, aloam_mapping, frame_fcu, frame_lidar, frame_odom, 1.0f / frequency,
                                                    tf_lidar_in_fcu_frame, enable_scope_timer, scope_timer_logger);

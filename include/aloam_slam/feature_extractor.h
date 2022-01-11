@@ -20,6 +20,10 @@ public:
 
 private:
   bool _enable_scope_timer;
+  bool _has_required_parameters = false;
+
+  ros::Subscriber _sub_input_data_processing_diag;
+  void            callbackInputDataProcDiag(const mrs_msgs::PclToolsDiagnosticsConstPtr &msg);
 
   // member objects
   std::shared_ptr<mrs_lib::Profiler>                  _profiler;

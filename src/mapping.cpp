@@ -5,12 +5,11 @@ namespace aloam_slam
 
 /*//{ AloamMapping() */
 AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, const std::shared_ptr<mrs_lib::Profiler> profiler,
-                           const std::string &frame_fcu, const std::string &frame_map, const float scan_frequency, const tf::Transform &tf_lidar_to_fcu,
+                           const std::string &frame_fcu, const std::string &frame_map, const tf::Transform &tf_lidar_to_fcu,
                            const bool enable_scope_timer, const std::shared_ptr<mrs_lib::ScopeTimerLogger> scope_timer_logger)
     : _profiler(profiler),
       _frame_fcu(frame_fcu),
       _frame_map(frame_map),
-      _scan_frequency(scan_frequency),
       _tf_lidar_to_fcu(tf_lidar_to_fcu),
       _q_w_curr(_parameters),
       _t_w_curr(_parameters + 4),
@@ -26,8 +25,6 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
   param_loader.loadParam("mapping/plane_resolution", _resolution_plane, 0.4f);
   param_loader.loadParam("mapping/rate", _mapping_frequency, 5.0f);
   param_loader.loadParam("mapping/publish_rate", _map_publish_period, 0.5f);
-
-  /* _mapping_frequency = std::min(scan_frequency, _mapping_frequency);  // cannot be higher than scan frequency */
 
   _map_publish_period = 1.0f / _map_publish_period;
 

@@ -53,6 +53,7 @@
 #include <mrs_lib/attitude_converter.h>
 #include <mrs_lib/scope_timer.h>
 #include <mrs_msgs/Float64ArrayStamped.h>
+#include <mrs_msgs/PclToolsDiagnostics.h>
 
 #include "aloam_slam/common.h"
 #include "aloam_slam/tic_toc.h"
@@ -75,7 +76,7 @@ class AloamMapping {
 
 public:
   AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, const std::shared_ptr<mrs_lib::Profiler> profiler,
-               const std::string &frame_fcu, const std::string &frame_map, const float scan_frequency, const tf::Transform &tf_lidar_to_fcu,
+               const std::string &frame_fcu, const std::string &frame_map, const tf::Transform &tf_lidar_to_fcu,
                const bool enable_scope_timer, const std::shared_ptr<mrs_lib::ScopeTimerLogger> scope_timer_logger);
 
   std::atomic<bool> is_initialized = false;
@@ -128,7 +129,6 @@ private:
   std::string _frame_fcu;
   std::string _frame_map;
 
-  float _scan_frequency;
   float _mapping_frequency;
   float _map_publish_period;
   bool  _remap_tf;
