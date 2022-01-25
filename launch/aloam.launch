@@ -1,7 +1,7 @@
 <launch>
 
   <arg name="points_topic" default="" />
-  <arg name="points_proc_diag_topic" default="" />
+  <arg name="points_proc_diag_topic" default="placeholder" />
 
     <!-- ENV VARS -->
   <arg name="UAV_NAME" default="$(env UAV_NAME)" />
