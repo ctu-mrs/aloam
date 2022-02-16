@@ -40,7 +40,7 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_conversions
   pcl_msgs
   ouster_ros
-)
+  )
 
 find_package(PCL REQUIRED)
 find_package(OpenCV REQUIRED)
@@ -50,13 +50,18 @@ find_package(Eigen3 REQUIRED)
 set(Eigen_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIRS})
 set(Eigen_LIBRARIES ${Eigen_LIBRARIES})
 
+set(LIBRARIES
+  AloamSlam
+  )
+
 catkin_package(
   CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs mrs_lib mrs_msgs eigen_conversions tf_conversions pcl_ros pcl_conversions pcl_msgs
-)
+  LIBRARIES ${LIBRARIES}
+  )
 
 include_directories(
   include
-  ${catkin_INCLUDE_DIRS} 
+  ${catkin_INCLUDE_DIRS}
   ${PCL_INCLUDE_DIRS}
   ${CERES_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
@@ -65,12 +70,18 @@ include_directories(
 
 link_directories(
   ${PCL_LIBRARY_DIRS}
-)
+  )
+
 add_definitions(
   ${PCL_DEFINITIONS}
-)
+  )
 
-add_library(AloamSlam src/aloam.cpp src/odometry.cpp src/mapping.cpp src/feature_extractor.cpp)
+add_library(AloamSlam
+  src/aloam.cpp
+  src/odometry.cpp
+  src/mapping.cpp
+  src/feature_extractor.cpp
+  )
 
 add_dependencies(AloamSlam
   ${${PROJECT_NAME}_EXPORTED_TARGETS}
@@ -82,4 +93,23 @@ target_link_libraries(AloamSlam
   ${PCL_LIBRARIES}
   ${Eigen_LIBRARIES}
   ${CERES_LIBRARIES}
+  )
+
+## --------------------------------------------------------------
+## |                           Install                          |
+## --------------------------------------------------------------
+
+install(TARGETS ${LIBRARIES}
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION}
+  )
+
+install(DIRECTORY launch config
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+  )
+
+install(DIRECTORY ./
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+  FILES_MATCHING PATTERN "*.xml"
   )
