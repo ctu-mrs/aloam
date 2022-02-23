@@ -274,6 +274,9 @@ void FeatureExtractor::callbackInputDataProcDiag(const mrs_msgs::PclToolsDiagnos
   _initialization_frames_delay = int(msg->frequency);  // 1 second delay
 
   _has_required_parameters = _scan_period_sec > 0.0f && _vertical_fov_half > 0.0f && _number_of_rings > 0;
+
+  ROS_INFO("[AloamFeatureExtractor] Received input data diagnostics: VFoV (%.1f deg), rings count (%d), frequency (%.1f Hz)", msg->vfov, msg->rows_after,
+           msg->frequency);
 }
 /*//}*/
 
