@@ -1,7 +1,7 @@
 verbose: true
 
 scope_timer:
-  enable: true
+  enable: false
   log_filename: "" # used, if not empty
 
 # number of rings
