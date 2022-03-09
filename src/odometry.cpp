@@ -37,7 +37,8 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, const std::string
   _q_w_curr = Eigen::Quaterniond::Identity();  // eigen has qw, qx, qy, qz notation
   _t_w_curr = Eigen::Vector3d(0, 0, 0);
 
-  _transformer = std::make_shared<mrs_lib::Transformer>("AloamOdometry", uav_name);
+  _transformer = std::make_shared<mrs_lib::Transformer>("AloamOdometry");
+  _transformer->setDefaultPrefix(uav_name);
 
   /* mrs_lib::SubscribeHandlerOptions shopts(nh_); */
   /* shopts.node_name  = "AloamOdometry"; */
@@ -383,9 +384,9 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     if (_pub_odometry_local.getNumSubscribers() > 0) {
       // Publish nav_msgs::Odometry msg
       const nav_msgs::Odometry::Ptr laser_odometry_msg = boost::make_shared<nav_msgs::Odometry>();
-      laser_odometry_msg->header.stamp           = stamp;
-      laser_odometry_msg->header.frame_id        = _frame_odom;
-      laser_odometry_msg->child_frame_id         = _frame_fcu;
+      laser_odometry_msg->header.stamp                 = stamp;
+      laser_odometry_msg->header.frame_id              = _frame_odom;
+      laser_odometry_msg->child_frame_id               = _frame_fcu;
       tf::pointTFToMsg(tf_fcu.getOrigin(), laser_odometry_msg->pose.pose.position);
       tf::quaternionTFToMsg(tf_fcu.getRotation(), laser_odometry_msg->pose.pose.orientation);
 
@@ -405,7 +406,8 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   // Print diagnostics
   /* ROS_INFO_THROTTLE(1.0, "[AloamOdometry] Run time: %0.1f ms (%0.1f Hz)", time_whole, std::min(1.0f / _scan_period_sec, 1000.0f / time_whole)); */
   /* ROS_DEBUG_THROTTLE(1.0, */
-  /*                    "[AloamOdometry] feature registration: %0.1f ms; solver time: %0.1f ms; double optimization time: %0.1f ms; publishing time: %0.1f ms", */
+  /*                    "[AloamOdometry] feature registration: %0.1f ms; solver time: %0.1f ms; double optimization time: %0.1f ms; publishing time: %0.1f ms",
+   */
   /*                    time_data_association, time_solver, time_opt, t_pub.toc()); */
   /* ROS_WARN_COND(time_whole > _scan_period_sec * 1000.0f, "[AloamOdometry] Odometry process took over %0.2f ms", _scan_period_sec * 1000.0f); */
 }

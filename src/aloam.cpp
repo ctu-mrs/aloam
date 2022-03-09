@@ -4,6 +4,8 @@
 #include "aloam_slam/odometry.h"
 #include "aloam_slam/mapping.h"
 
+#include <tf2_eigen/tf2_eigen.h>
+
 //}
 
 namespace aloam_slam
@@ -127,7 +129,7 @@ tf::Transform AloamSlam::getStaticTf(std::string frame_from, std::string frame_t
   }
   ROS_INFO("[Aloam]: Successfully found transformation from %s to %s.", frame_from.c_str(), frame_to.c_str());
 
-  tf::transformMsgToTF(tf_lidar_fcu->getTransform().transform, tf_ret);
+  tf::transformMsgToTF(tf_lidar_fcu->transform, tf_ret);
   return tf_ret;
 }
 /*//}*/
@@ -142,15 +144,15 @@ void AloamSlam::initOdom() {
   while (!got_tf && ros::ok()) {
     const auto tf_opt = transformer.getTransform(frame_lidar, frame_init, ros::Time(0));
     if (tf_opt.has_value()) {
-      const auto mrs_tf = tf_opt.value();
-      const auto tf     = mrs_tf.getTransformEigen();
+
+      const auto tf = tf2::transformToEigen(tf_opt->transform);
 
       /* Eigen::Isometry3d init_T = tf2::transformToEigen(tf.transform); */
       Eigen::Vector3d    t(tf.translation());
       Eigen::Quaterniond q(tf.rotation());
 
-      aloam_odometry->setTransform(t, q, mrs_tf.stamp());
-      aloam_mapping->setTransform(t, q, mrs_tf.stamp());
+      aloam_odometry->setTransform(t, q, tf_opt->header.stamp);
+      aloam_mapping->setTransform(t, q, tf_opt->header.stamp);
 
       feature_extractor->is_initialized = true;
       aloam_odometry->is_initialized    = true;
