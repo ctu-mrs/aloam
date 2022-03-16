@@ -4,11 +4,12 @@ scope_timer:
   enable: false
   log_filename: "" # used, if not empty
 
-# number of rings
-scan_line: 16 # [-]
-
-vertical_fov: 33.2 # [deg]
-sensor_frequency: 10.0 # [Hz]
+# LiDAR scan parameters
+# by default, these obtained by subscribing to the
+# MRS PCL Filter diagnostics
+scan_line: -1 # [-]
+vertical_fov: -1 # [deg]
+sensor_frequency: -1 # [Hz]
 
 initialize_from_odom: false
 
