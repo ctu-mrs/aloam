@@ -40,6 +40,7 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_conversions
   pcl_msgs
   ouster_ros
+  feature_selection
   )
 
 find_package(PCL REQUIRED)
@@ -55,7 +56,7 @@ set(LIBRARIES
   )
 
 catkin_package(
-  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs mrs_lib mrs_msgs eigen_conversions tf_conversions pcl_ros pcl_conversions pcl_msgs
+  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs mrs_lib mrs_msgs eigen_conversions tf_conversions pcl_ros pcl_conversions pcl_msgs feature_selection
   LIBRARIES ${LIBRARIES}
   )
 
