@@ -45,15 +45,8 @@ private:
 
   int _number_of_rings;
 
-  bool _data_have_ring_field;
-
-  void parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, const pcl::PointCloud<PointType>::Ptr &cloud_processed,
-                             std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices);
-  void parseRowsFromOusterMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, const pcl::PointCloud<PointType>::Ptr &cloud_processed,
+  bool parseRowsFromOusterMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, const pcl::PointCloud<PointType>::Ptr &cloud_processed,
                               std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices);
-
-  void removeNaNFromPointCloud(const pcl::PointCloud<ouster_ros::Point>::Ptr &cloud_in, pcl::PointCloud<ouster_ros::Point>::Ptr &cloud_out,
-                               std::unordered_map<unsigned int, unsigned int> &indices);
 
   bool hasField(const std::string field, const sensor_msgs::PointCloud2::ConstPtr &msg);
 
