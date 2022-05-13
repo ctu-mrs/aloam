@@ -189,7 +189,7 @@ void AloamSlam::onInit() {
   }
 
   if (offline_run) {
-    _timer_offline_proc = nh_.createTimer(ros::Rate(50), &AloamSlam::callbackOfflineProcessing, this, false, true);
+    _timer_offline_proc = nh_.createTimer(ros::Rate(100), &AloamSlam::callbackOfflineProcessing, this, false, true);
 
     _offline_points_view    = std::make_unique<rosbag::View>(_bag, rosbag::TopicQuery(offline_points_topic));
     _offline_points_view_it = _offline_points_view->begin();
@@ -284,6 +284,8 @@ void AloamSlam::callbackOfflineProcessing([[maybe_unused]] const ros::TimerEvent
 
     _timer_offline_proc.stop();
     _bag.close();
+    ros::shutdown();
+
     return;
   }
 
