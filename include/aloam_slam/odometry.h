@@ -3,6 +3,8 @@
 
 #include "aloam_slam/mapping.h"
 
+#include <feature_selection/feature_selection.h>
+
 namespace aloam_slam
 {
 class AloamOdometry {
