@@ -7,9 +7,9 @@ scope_timer:
 # LiDAR scan parameters
 # by default, these obtained by subscribing to the
 # MRS PCL Filter diagnostics
-scan_line: -1 # [-]
-vertical_fov: -1 # [deg]
-sensor_frequency: -1 # [Hz]
+scan_line: 128 # [-]
+vertical_fov: 90 # [deg]
+sensor_frequency: 10 # [Hz]
 
 initialize_from_odom: false
 
@@ -22,6 +22,6 @@ mapping:
 
 # Parameters for offline processing (data read from rosbag)
 offline:
-  run: false
-  rosbag: ""
+  run: true
+  rosbag: "/home/pavel/bag_files/subt_finals/44/44.bag"
   timeout: 0.2
