@@ -3,7 +3,7 @@
   <arg name="points_topic" default="" />
   <arg name="points_proc_diag_topic" default="placeholder" />
 
-    <!-- ENV VARS -->
+  <!-- ENV VARS -->
   <arg name="UAV_NAME" default="$(env UAV_NAME)" />
   <arg name="ENABLE_PROFILER" default="$(optenv PROFILER false)" />
 
@@ -11,7 +11,7 @@
   <arg name="debug" default="false" />
   <arg name="custom_config" default="" />
 
-    <!-- DEFAULT PARAMETERS AND FRAMES -->
+  <!-- DEFAULT PARAMETERS AND FRAMES -->
   <arg name="fcu_frame" default="$(arg UAV_NAME)/fcu" />
   <arg name="lidar_frame" default="$(arg UAV_NAME)/os_sensor" />
   <arg name="odom_frame" default="$(arg UAV_NAME)/slam_odom_origin" />
@@ -43,6 +43,8 @@
       <param name="map_frame" type="string" value="$(arg map_frame)" />
       <param name="lidar_frame" type="string" value="$(arg lidar_frame)" />
       <param name="init_frame" type="string" value="$(arg init_frame)" />
+
+      <param name="offline/points_topic" type="string" value="$(arg points_topic)" />
 
       <!-- Subscribers -->
       <remap from="~laser_cloud_in" to="$(arg points_topic)" />

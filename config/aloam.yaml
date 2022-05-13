@@ -19,3 +19,9 @@ mapping:
   publish_rate: 0.5 # [Hz]
   line_resolution: 0.2
   plane_resolution: 0.4
+
+# Parameters for offline processing (data read from rosbag)
+offline:
+  run: false
+  rosbag: ""
+  timeout: 0.2
