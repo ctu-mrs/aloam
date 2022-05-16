@@ -5,8 +5,8 @@ namespace aloam_slam
 
 /*//{ AloamMapping() */
 AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, const std::shared_ptr<mrs_lib::Profiler> profiler,
-                           const std::string &frame_fcu, const std::string &frame_map, const tf::Transform &tf_lidar_to_fcu,
-                           const bool enable_scope_timer, const std::shared_ptr<mrs_lib::ScopeTimerLogger> scope_timer_logger)
+                           const std::string &frame_fcu, const std::string &frame_map, const tf::Transform &tf_lidar_to_fcu, const bool enable_scope_timer,
+                           const std::shared_ptr<mrs_lib::ScopeTimerLogger> scope_timer_logger)
     : _profiler(profiler),
       _frame_fcu(frame_fcu),
       _frame_map(frame_map),
@@ -63,29 +63,17 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
 /*//}*/
 
 /*//{ setData() */
-void AloamMapping::setData(ros::Time time_of_data, tf::Transform aloam_odometry, pcl::PointCloud<PointType>::Ptr features_corners_last,
-                           pcl::PointCloud<PointType>::Ptr features_surfs_last, pcl::PointCloud<PointType>::Ptr cloud_full_res) {
+void AloamMapping::setData(const std::shared_ptr<MappingData> data) {
 
   mrs_lib::Routine profiler_routine = _profiler->createRoutine("aloamMappingSetData");
 
   {
-    std::lock_guard lock(_mutex_odometry_data);
-    _has_new_data          = true;
-    _time_aloam_odometry   = time_of_data;
-    _aloam_odometry        = aloam_odometry;
-    _features_corners_last = features_corners_last;
-    _features_surfs_last   = features_surfs_last;
-    _cloud_full_res        = cloud_full_res;
+    std::lock_guard lock(_mutex_mapping_data);
+    _has_new_data = true;
+    _mapping_data = data;
   }
-  _cv_odometry_data.notify_all();
 
-  /* if (!isfinite(*_features_corners_last)) */
-  /*   std::cerr << "                                                                [AloamMapping::setData]: _features_corners_last are not finite!!" << "\n";
-   */
-  /* if (!isfinite(*_features_surfs_last)) */
-  /*   std::cerr << "                                                                [AloamMapping::setData]: _features_surfs_last are not finite!!" << "\n"; */
-  /* if (!isfinite(*_cloud_full_res)) */
-  /*   std::cerr << "                                                                [AloamMapping::setData]: _cloud_full_res are not finite!!" << "\n"; */
+  _cv_mapping_data.notify_all();
 }
 /*//}*/
 
@@ -99,30 +87,32 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
     mrs_lib::ScopeTimer timer = mrs_lib::ScopeTimer("ALOAM::FeatureExtraction::timerMapping", _scope_timer_logger, _enable_scope_timer);
 
-    /*//{ Load latest odometry data (blocks for _cv_odometry_data and timeouts if blocking takes longer than 1.0/_mapping_frequency) */
+    /*//{ Load latest odometry data (blocks for _cv_mapping_data and timeouts if blocking takes longer than 1.0/_mapping_frequency) */
     ros::Time                       time_aloam_odometry;
     tf::Transform                   aloam_odometry;
     pcl::PointCloud<PointType>::Ptr features_corners_last;
     pcl::PointCloud<PointType>::Ptr features_surfs_last;
     pcl::PointCloud<PointType>::Ptr cloud_full_res;
     {
-      std::unique_lock             lock(_mutex_odometry_data);
-      bool                         has_new_data;
-      std::chrono::duration<float> timeout(1.0 / _mapping_frequency);
-      if (_cv_odometry_data.wait_for(lock, timeout) == std::cv_status::no_timeout)
-        has_new_data = _has_new_data;
-      else
-        continue;
+      std::unique_lock lock(_mutex_mapping_data);
 
-      if (!has_new_data)
+      const std::chrono::duration<float> timeout(1.0 / _mapping_frequency);
+      bool                               has_new_data = false;
+
+      if (_cv_mapping_data.wait_for(lock, timeout) == std::cv_status::no_timeout) {
+        has_new_data = _has_new_data;
+      }
+
+      if (!has_new_data) {
         continue;
+      }
 
       _has_new_data         = false;
-      time_aloam_odometry   = _time_aloam_odometry;
-      aloam_odometry        = _aloam_odometry;
-      features_corners_last = _features_corners_last;
-      features_surfs_last   = _features_surfs_last;
-      cloud_full_res        = _cloud_full_res;
+      time_aloam_odometry   = _mapping_data->stamp;
+      aloam_odometry        = _mapping_data->odometry;
+      features_corners_last = _mapping_data->cloud_corners_last;
+      features_surfs_last   = _mapping_data->cloud_surfs_last;
+      cloud_full_res        = _mapping_data->cloud_full_res;
     }
     /*//}*/
 
@@ -140,9 +130,9 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
     /*//{ Associate odometry features to map features */
 
-    int    center_cube_I = int((_t_w_curr.x() + 25.0) / 50.0) + _cloud_center_width;
-    int    center_cube_J = int((_t_w_curr.y() + 25.0) / 50.0) + _cloud_center_height;
-    int    center_cube_K = int((_t_w_curr.z() + 25.0) / 50.0) + _cloud_center_depth;
+    int center_cube_I = int((_t_w_curr.x() + 25.0) / 50.0) + _cloud_center_width;
+    int center_cube_J = int((_t_w_curr.y() + 25.0) / 50.0) + _cloud_center_height;
+    int center_cube_K = int((_t_w_curr.z() + 25.0) / 50.0) + _cloud_center_depth;
 
     if (_t_w_curr.x() + 25.0 < 0) {
       center_cube_I--;
@@ -602,8 +592,8 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
     // Create nav_msgs::Odometry msg
     const nav_msgs::Odometry::Ptr fcu_odom_msg = boost::make_shared<nav_msgs::Odometry>();
-    fcu_odom_msg->header.frame_id        = _frame_map;
-    fcu_odom_msg->header.stamp           = time_aloam_odometry;
+    fcu_odom_msg->header.frame_id              = _frame_map;
+    fcu_odom_msg->header.stamp                 = time_aloam_odometry;
     tf::pointTFToMsg(tf_fcu.getOrigin(), fcu_odom_msg->pose.pose.position);
     tf::quaternionTFToMsg(tf_fcu.getRotation(), fcu_odom_msg->pose.pose.orientation);
 

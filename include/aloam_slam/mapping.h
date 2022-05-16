@@ -72,17 +72,25 @@ inline bool isfinite(const pc_t &pc) {
   return true;
 }
 
+struct MappingData
+{
+  ros::Time                       stamp;
+  tf::Transform                   odometry;
+  pcl::PointCloud<PointType>::Ptr cloud_corners_last;
+  pcl::PointCloud<PointType>::Ptr cloud_surfs_last;
+  pcl::PointCloud<PointType>::Ptr cloud_full_res;
+};
+
 class AloamMapping {
 
 public:
   AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, const std::shared_ptr<mrs_lib::Profiler> profiler,
-               const std::string &frame_fcu, const std::string &frame_map, const tf::Transform &tf_lidar_to_fcu,
-               const bool enable_scope_timer, const std::shared_ptr<mrs_lib::ScopeTimerLogger> scope_timer_logger);
+               const std::string &frame_fcu, const std::string &frame_map, const tf::Transform &tf_lidar_to_fcu, const bool enable_scope_timer,
+               const std::shared_ptr<mrs_lib::ScopeTimerLogger> scope_timer_logger);
 
   std::atomic<bool> is_initialized = false;
 
-  void setData(ros::Time time_of_data, tf::Transform aloam_odometry, pcl::PointCloud<PointType>::Ptr laserCloudCornerLast,
-               pcl::PointCloud<PointType>::Ptr laserCloudSurfLast, pcl::PointCloud<PointType>::Ptr laserCloudFullRes);
+  void setData(const std::shared_ptr<MappingData> data);
 
   void setTransform(const Eigen::Vector3d &t, const Eigen::Quaterniond &q, const ros::Time &stamp);
 
@@ -102,14 +110,10 @@ private:
   std::vector<pcl::PointCloud<PointType>::Ptr> _cloud_surfs;
 
   // Feature extractor newest data
-  std::mutex                      _mutex_odometry_data;
-  std::condition_variable         _cv_odometry_data;
-  bool                            _has_new_data = false;
-  ros::Time                       _time_aloam_odometry;
-  tf::Transform                   _aloam_odometry;
-  pcl::PointCloud<PointType>::Ptr _features_corners_last;
-  pcl::PointCloud<PointType>::Ptr _features_surfs_last;
-  pcl::PointCloud<PointType>::Ptr _cloud_full_res;
+  std::condition_variable      _cv_mapping_data;
+  std::mutex                   _mutex_mapping_data;
+  bool                         _has_new_data = false;
+  std::shared_ptr<MappingData> _mapping_data = nullptr;
 
   // publishers and subscribers
   ros::Publisher _pub_laser_cloud_map;

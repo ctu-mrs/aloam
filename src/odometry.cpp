@@ -61,7 +61,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   /*//{ Load latest features */
   bool has_new_data;
   {
-    std::scoped_lock lock(_mutex_extracted_features);
+    std::scoped_lock lock(_mutex_odometry_data);
     has_new_data = _has_new_data;
   }
 
@@ -77,13 +77,14 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   pcl::PointCloud<PointType>::Ptr surf_points_less_flat;
   pcl::PointCloud<PointType>::Ptr laser_cloud_full_res;
   {
-    std::scoped_lock lock(_mutex_extracted_features);
-    _has_new_data            = false;
-    corner_points_sharp      = _corner_points_sharp;
-    corner_points_less_sharp = _corner_points_less_sharp;
-    surf_points_flat         = _surf_points_flat;
-    surf_points_less_flat    = _surf_points_less_flat;
-    laser_cloud_full_res     = _cloud_full_ress;
+    std::scoped_lock lock(_mutex_odometry_data);
+    _has_new_data = false;
+
+    corner_points_sharp      = _odometry_data->cloud_corners_sharp;
+    corner_points_less_sharp = _odometry_data->cloud_corners_less_sharp;
+    surf_points_flat         = _odometry_data->cloud_surfs_flat;
+    surf_points_less_flat    = _odometry_data->cloud_surfs_less_flat;
+    laser_cloud_full_res     = _odometry_data->cloud_full_res;
   }
   /*//}*/
 
@@ -357,7 +358,15 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     _features_surfs_last->header.frame_id   = _frame_lidar;
     laser_cloud_full_res->header.frame_id   = _frame_lidar;
 
-    _aloam_mapping->setData(stamp, tf_lidar, _features_corners_last, _features_surfs_last, laser_cloud_full_res);
+    const std::shared_ptr<MappingData> mapping_data = std::make_shared<MappingData>();
+
+    mapping_data->stamp              = stamp;
+    mapping_data->odometry           = tf_lidar;
+    mapping_data->cloud_corners_last = _features_corners_last;
+    mapping_data->cloud_surfs_last   = _features_surfs_last;
+    mapping_data->cloud_full_res     = laser_cloud_full_res;
+
+    _aloam_mapping->setData(mapping_data);
   }
   /*//}*/
 
@@ -414,33 +423,14 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
 /*//}*/
 
 /*//{ setData() */
-void AloamOdometry::setData(pcl::PointCloud<PointType>::Ptr corner_points_sharp, pcl::PointCloud<PointType>::Ptr corner_points_less_sharp,
-                            pcl::PointCloud<PointType>::Ptr surf_points_flat, pcl::PointCloud<PointType>::Ptr surf_points_less_flat,
-                            pcl::PointCloud<PointType>::Ptr laser_cloud_full_res) {
+void AloamOdometry::setData(const std::shared_ptr<OdometryData> data) {
 
   mrs_lib::Routine profiler_routine = _profiler->createRoutine("aloamOdometrySetData");
 
-  std::scoped_lock lock(_mutex_extracted_features);
-  _has_new_data             = true;
-  _corner_points_sharp      = corner_points_sharp;
-  _corner_points_less_sharp = corner_points_less_sharp;
-  _surf_points_flat         = surf_points_flat;
-  _surf_points_less_flat    = surf_points_less_flat;
-  _cloud_full_ress          = laser_cloud_full_res;
+  std::scoped_lock lock(_mutex_odometry_data);
+  _has_new_data  = true;
+  _odometry_data = data;
 
-  /* if (!isfinite(*_corner_points_sharp)) */
-  /*   std::cerr << "                                                                [AloamOdometry::setData]: _corner_points_sharp are not finite!!" << "\n";
-   */
-  /* if (!isfinite(*_corner_points_less_sharp)) */
-  /*   std::cerr << "                                                                [AloamOdometry::setData]: _corner_points_less_sharp are not finite!!" <<
-   * "\n"; */
-  /* if (!isfinite(*_surf_points_flat)) */
-  /*   std::cerr << "                                                                [AloamOdometry::setData]: _surf_points_flat are not finite!!" << "\n"; */
-  /* if (!isfinite(*_surf_points_less_flat)) */
-  /*   std::cerr << "                                                                [AloamOdometry::setData]: _surf_points_less_flat are not finite!!" << "\n";
-   */
-  /* if (!isfinite(*_cloud_full_ress)) */
-  /*   std::cerr << "                                                                [AloamOdometry::setData]: _cloud_full_ress are not finite!!" << "\n"; */
 }
 /*//}*/
 

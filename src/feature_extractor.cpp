@@ -304,7 +304,15 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
   feature_selection::Indices_t feature_indices_in_raw;
   fs_data.setCloud(cloud_raw, feature_indices_in_raw);
 
-  _odometry->setData(corner_points_sharp, corner_points_less_sharp, surf_points_flat, surf_points_less_flat, cloud_wo_nans);
+  const std::shared_ptr<OdometryData> odometry_data = std::make_shared<OdometryData>();
+
+  odometry_data->cloud_corners_sharp      = corner_points_sharp;
+  odometry_data->cloud_corners_less_sharp = corner_points_less_sharp;
+  odometry_data->cloud_surfs_flat         = surf_points_flat;
+  odometry_data->cloud_surfs_less_flat    = surf_points_less_flat;
+  odometry_data->cloud_full_res           = cloud_wo_nans;
+
+  _odometry->setData(odometry_data);
 
   /* ROS_INFO_THROTTLE(1.0, "[AloamFeatureExtractor] Run time: %0.1f ms (%0.1f Hz)", time_whole, std::min(1.0f / _scan_period_sec, 1000.0f / time_whole)); */
   /* ROS_DEBUG_THROTTLE(1.0, "[AloamFeatureExtractor] points: %d; preparing data: %0.1f ms; q-sorting data: %0.1f ms; computing features: %0.1f ms",
@@ -388,13 +396,13 @@ bool FeatureExtractor::parseRowsFromOusterMsg(const sensor_msgs::PointCloud2::Co
       const auto &point_os = cloud_os->at(c, r);
 
       // TODO: remove after testing
-      /* if (point_os.range < 450) { */
-      /*   continue; */
-      /* } */
+      if (point_os.range < 450) {
+        continue;
+      }
 
-      auto &point = cloud_raw->at(c, r);
+      if (pcl::isXYZFinite(point_os) && point_os.range > 0) {
 
-      if (std::isfinite(point_os.x) && std::isfinite(point_os.y) && std::isfinite(point_os.z) && point_os.range > 0) {
+        auto &point = cloud_raw->at(c, r);
 
         point.x = point_os.x;
         point.y = point_os.y;
@@ -416,7 +424,7 @@ bool FeatureExtractor::parseRowsFromOusterMsg(const sensor_msgs::PointCloud2::Co
         fs_idx.col = c;
         fs_idx.row = r;
 
-        indices_proc_in_raw.at(index++) = fs_idx;
+        indices_proc_in_raw.insert({index++, fs_idx});
       }
     }
 
