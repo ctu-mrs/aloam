@@ -49,6 +49,9 @@ private:
                               const pcl::PointCloud<PointType>::Ptr cloud_processed, std::vector<int> &rows_start_index, std::vector<int> &rows_end_index,
                               std::unordered_map<int, feature_selection::IndexPair> &indices_map_proc_in_raw);
 
+  void appendVoxelizedIndices(const IndicesPtr &indices_to_be_appended, const pcl::PointCloud<PointType>::Ptr &cloud_in,
+                              const feature_selection::Indices_t &indices_in_cloud, const float resolution);
+
   bool hasField(const std::string field, const sensor_msgs::PointCloud2::ConstPtr &msg);
 
   // callbacks

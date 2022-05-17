@@ -1,7 +1,7 @@
 verbose: true
 
 scope_timer:
-  enable: false
+  enable: true
   log_filename: "" # used, if not empty
 
 # LiDAR scan parameters

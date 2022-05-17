@@ -63,6 +63,8 @@
 
 //}
 
+using IndicesPtr = std::shared_ptr<feature_selection::Indices_t>;
+
 namespace aloam_slam
 {
 
@@ -84,7 +86,7 @@ public:
     _indices         = nullptr;
   }
 
-  CloudManager(const pcl::PointCloud<PointType>::Ptr cloud, const std::shared_ptr<feature_selection::Indices_t> feature_indices) {
+  CloudManager(const pcl::PointCloud<PointType>::Ptr cloud, const IndicesPtr feature_indices) {
     std::scoped_lock lock(_mutex_cloud);
     _cloud_ordered = cloud;
     _indices       = feature_indices;
@@ -125,7 +127,7 @@ public:
 
 private:
   std::mutex                                    _mutex_cloud;
-  std::shared_ptr<feature_selection::Indices_t> _indices         = nullptr;
+  IndicesPtr _indices         = nullptr;
   pcl::PointCloud<PointType>::Ptr               _cloud_ordered   = nullptr;
   pcl::PointCloud<PointType>::Ptr               _cloud_unordered = nullptr;
 };
