@@ -93,6 +93,9 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     pcl::PointCloud<PointType>::Ptr features_corners_last;
     pcl::PointCloud<PointType>::Ptr features_surfs_last;
     pcl::PointCloud<PointType>::Ptr cloud_full_res;
+
+    std::chrono::milliseconds::rep time_feature_extraction;
+    std::chrono::milliseconds::rep time_odometry;
     {
       std::unique_lock lock(_mutex_mapping_data);
 
@@ -108,11 +111,14 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
       }
 
       _has_new_data         = false;
-      time_aloam_odometry   = _mapping_data->stamp;
+      time_aloam_odometry   = _mapping_data->stamp_ros;
       aloam_odometry        = _mapping_data->odometry;
       features_corners_last = _mapping_data->cloud_corners_last;
       features_surfs_last   = _mapping_data->cloud_surfs_last;
       cloud_full_res        = _mapping_data->cloud_full_res;
+
+      time_feature_extraction = _mapping_data->time_feature_extraction;
+      time_odometry           = _mapping_data->time_odometry;
     }
     /*//}*/
 
@@ -123,8 +129,8 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     tf::vectorTFToEigen(aloam_odometry.getOrigin(), _t_wodom_curr);
     tf::quaternionTFToEigen(aloam_odometry.getRotation(), _q_wodom_curr);
 
-    pcl::PointCloud<PointType>::Ptr map_features_corners = boost::make_shared<pcl::PointCloud<PointType>>();
-    pcl::PointCloud<PointType>::Ptr map_features_surfs   = boost::make_shared<pcl::PointCloud<PointType>>();
+    const pcl::PointCloud<PointType>::Ptr map_features_corners = boost::make_shared<pcl::PointCloud<PointType>>();
+    const pcl::PointCloud<PointType>::Ptr map_features_surfs   = boost::make_shared<pcl::PointCloud<PointType>>();
 
     std::vector<int> cloud_valid_indices;
 
@@ -485,7 +491,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
         // Publish eigenvalues
         _pub_eigenvalue.publish(msg_eigenvalue);
 
-        float time_eigenvalues = t_eigenvalues.toc();
+        /* float time_eigenvalues = t_eigenvalues.toc(); */
         /* ROS_INFO("[AloamMapping] Eigenvalue calculation took %.3f ms.", time_eigenvalues); */
         /*//}*/
         ceres::Solve(options, &problem, &summary);
@@ -680,6 +686,9 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     /*//}*/
 
     _frame_count++;
+
+    const auto& time_mapping = timer.getLifetime();
+    ROS_INFO("[Aloam] Run time: %ld ms (FE: %ld | O: %ld | M: %ld)", time_feature_extraction + time_odometry + time_mapping, time_feature_extraction, time_odometry, time_mapping);
   }
 }
 /*//}*/

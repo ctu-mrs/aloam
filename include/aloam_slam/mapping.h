@@ -59,6 +59,8 @@
 #include "aloam_slam/tic_toc.h"
 #include "aloam_slam/lidarFactor.hpp"
 
+#include <feature_selection/feature_selection.h>
+
 //}
 
 namespace aloam_slam
@@ -72,9 +74,71 @@ inline bool isfinite(const pc_t &pc) {
   return true;
 }
 
+/*//{ class CloudManager */
+class CloudManager {
+
+public:
+  CloudManager(const pcl::PointCloud<PointType>::Ptr cloud) {
+    std::scoped_lock lock(_mutex_cloud);
+    _cloud_unordered = cloud;
+    _indices         = nullptr;
+  }
+
+  CloudManager(const pcl::PointCloud<PointType>::Ptr cloud, const std::shared_ptr<feature_selection::Indices_t> feature_indices) {
+    std::scoped_lock lock(_mutex_cloud);
+    _cloud_ordered = cloud;
+    _indices       = feature_indices;
+  }
+
+  pcl::PointCloud<PointType>::Ptr getUnorderedCloudPtr() {
+
+    std::scoped_lock lock(_mutex_cloud);
+
+    if (!_cloud_unordered && _indices) {
+
+      _cloud_unordered           = boost::make_shared<pcl::PointCloud<PointType>>();
+      _cloud_unordered->header   = _cloud_ordered->header;
+      _cloud_unordered->height   = 1;
+      _cloud_unordered->width    = _indices->size();
+      _cloud_unordered->is_dense = true;
+
+      _cloud_unordered->reserve(_cloud_unordered->width);
+      for (const auto &idx : *_indices) {
+        _cloud_unordered->push_back(_cloud_ordered->at(idx.col, idx.row));
+      }
+    }
+
+    return _cloud_unordered;
+  }
+
+  std::size_t getSize() {
+    if (_indices) {
+      return _indices->size();
+    }
+
+    if (_cloud_unordered) {
+      return _cloud_unordered->size();
+    }
+
+    return 0;
+  }
+
+private:
+  std::mutex                                    _mutex_cloud;
+  std::shared_ptr<feature_selection::Indices_t> _indices         = nullptr;
+  pcl::PointCloud<PointType>::Ptr               _cloud_ordered   = nullptr;
+  pcl::PointCloud<PointType>::Ptr               _cloud_unordered = nullptr;
+};
+using CloudManagerPtr = std::shared_ptr<CloudManager>;
+/*//}*/
+
 struct MappingData
 {
-  ros::Time                       stamp;
+
+  std::chrono::milliseconds::rep time_feature_extraction;
+  std::chrono::milliseconds::rep time_odometry;
+
+  ros::Time                       stamp_ros;
   tf::Transform                   odometry;
   pcl::PointCloud<PointType>::Ptr cloud_corners_last;
   pcl::PointCloud<PointType>::Ptr cloud_surfs_last;

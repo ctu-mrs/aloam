@@ -80,12 +80,12 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
   const pcl::PointCloud<PointType>::Ptr                 cloud_wo_nans = boost::make_shared<pcl::PointCloud<PointType>>();
   std::vector<int>                                      rows_start_index;
   std::vector<int>                                      rows_end_index;
-  std::unordered_map<int, feature_selection::IndexPair> indices_proc_in_raw;
+  std::unordered_map<int, feature_selection::IndexPair> indices_map_proc_in_raw;
 
   rows_start_index.resize(_number_of_rings, 0);
   rows_end_index.resize(_number_of_rings, 0);
 
-  if (!parseRowsFromOusterMsg(laserCloudMsg, cloud_raw, cloud_wo_nans, rows_start_index, rows_end_index, indices_proc_in_raw)) {
+  if (!parseRowsFromOusterMsg(laserCloudMsg, cloud_raw, cloud_wo_nans, rows_start_index, rows_end_index, indices_map_proc_in_raw)) {
     return;
   }
 
@@ -116,20 +116,17 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
     cloudSortInd.at(i)   = i;
   }
 
-  feature_selection::Indices_t indices_corners_sharp;
-  feature_selection::Indices_t indices_corners_less_sharp;
-  feature_selection::Indices_t indices_surfs_flat;
-  feature_selection::Indices_t indices_surfs_less_flat;
+  const std::shared_ptr<feature_selection::Indices_t> indices_corners_sharp      = std::make_shared<feature_selection::Indices_t>();
+  const std::shared_ptr<feature_selection::Indices_t> indices_corners_less_sharp = std::make_shared<feature_selection::Indices_t>();
+  const std::shared_ptr<feature_selection::Indices_t> indices_surfs_flat         = std::make_shared<feature_selection::Indices_t>();
+  const std::shared_ptr<feature_selection::Indices_t> indices_surfs_less_flat    = std::make_shared<feature_selection::Indices_t>();
 
-  indices_corners_sharp.reserve(cloud_size);
-  indices_corners_less_sharp.reserve(cloud_size);
-  indices_surfs_flat.reserve(cloud_size);
-  indices_surfs_less_flat.reserve(cloud_size);
+  indices_corners_sharp->reserve(cloud_size);
+  indices_corners_less_sharp->reserve(cloud_size);
+  indices_surfs_flat->reserve(cloud_size);
+  indices_surfs_less_flat->reserve(cloud_size);
 
-  const pcl::PointCloud<PointType>::Ptr corner_points_sharp      = boost::make_shared<pcl::PointCloud<PointType>>();
-  const pcl::PointCloud<PointType>::Ptr corner_points_less_sharp = boost::make_shared<pcl::PointCloud<PointType>>();
-  const pcl::PointCloud<PointType>::Ptr surf_points_flat         = boost::make_shared<pcl::PointCloud<PointType>>();
-  const pcl::PointCloud<PointType>::Ptr surf_points_less_flat    = boost::make_shared<pcl::PointCloud<PointType>>();
+  const pcl::PointCloud<PointType>::Ptr surf_points_less_flat = boost::make_shared<pcl::PointCloud<PointType>>();
 
   const static double CURVATURE_THRD = 0.1;
 
@@ -162,10 +159,9 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
           largestPickedNum++;
           if (largestPickedNum <= 20) {
 
-            const auto &fs_idx = indices_proc_in_raw.at(ind);
+            const auto &fs_idx = indices_map_proc_in_raw.at(ind);
 
-            corner_points_less_sharp->push_back(points.at(ind));
-            indices_corners_less_sharp.push_back(fs_idx);
+            indices_corners_less_sharp->push_back(fs_idx);
 
             if (largestPickedNum > 2) {
 
@@ -175,8 +171,7 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
 
               cloudLabel.at(ind) = 2;
 
-              corner_points_sharp->push_back(points.at(ind));
-              indices_corners_sharp.push_back(fs_idx);
+              indices_corners_sharp->push_back(fs_idx);
             }
 
           } else {
@@ -217,12 +212,11 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
 
         if (cloudNeighborPicked.at(ind) == 0 && cloudCurvature.at(ind) < CURVATURE_THRD) {
 
-          const auto &fs_idx = indices_proc_in_raw.at(ind);
+          const auto &fs_idx = indices_map_proc_in_raw.at(ind);
 
           // Mark first few lowest-curvature points as sharp edges
           cloudLabel.at(ind) = -1;
-          surf_points_flat->push_back(points.at(ind));
-          indices_surfs_flat.push_back(fs_idx);
+          indices_surfs_flat->push_back(fs_idx);
 
           smallestPickedNum++;
           if (smallestPickedNum >= 4) {
@@ -260,7 +254,7 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
       for (int k = sp; k <= ep; k++) {
         if (cloudLabel.at(k) <= 0) {
 
-          const auto &fs_idx = indices_proc_in_raw.at(k);
+          const auto &fs_idx = indices_map_proc_in_raw.at(k);
 
           surfPointsLessFlatScan->push_back(points.at(k));
         }
@@ -285,19 +279,13 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
 
   timer.checkpoint("parsing features");
 
-  cloud_wo_nans->header.frame_id            = _frame_map;
-  corner_points_sharp->header.frame_id      = _frame_map;
-  corner_points_less_sharp->header.frame_id = _frame_map;
-  surf_points_flat->header.frame_id         = _frame_map;
-  surf_points_less_flat->header.frame_id    = _frame_map;
+  cloud_wo_nans->header.frame_id         = _frame_map;
+  surf_points_less_flat->header.frame_id = _frame_map;
 
-  std::uint64_t stamp;
-  pcl_conversions::toPCL(laserCloudMsg->header.stamp, stamp);
-  cloud_wo_nans->header.stamp            = stamp;
-  corner_points_sharp->header.stamp      = stamp;
-  corner_points_less_sharp->header.stamp = stamp;
-  surf_points_flat->header.stamp         = stamp;
-  surf_points_less_flat->header.stamp    = stamp;
+  std::uint64_t stamp_pcl;
+  pcl_conversions::toPCL(laserCloudMsg->header.stamp, stamp_pcl);
+  cloud_wo_nans->header.stamp         = stamp_pcl;
+  surf_points_less_flat->header.stamp = stamp_pcl;
 
   // TODO: FSData objects
   feature_selection::FSData    fs_data;
@@ -306,11 +294,17 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
 
   const std::shared_ptr<OdometryData> odometry_data = std::make_shared<OdometryData>();
 
-  odometry_data->cloud_corners_sharp      = corner_points_sharp;
-  odometry_data->cloud_corners_less_sharp = corner_points_less_sharp;
-  odometry_data->cloud_surfs_flat         = surf_points_flat;
-  odometry_data->cloud_surfs_less_flat    = surf_points_less_flat;
-  odometry_data->cloud_full_res           = cloud_wo_nans;
+  odometry_data->stamp_ros                  = laserCloudMsg->header.stamp;
+  odometry_data->stamp_pcl                  = stamp_pcl;
+  odometry_data->cloud_raw                  = cloud_raw;
+  odometry_data->manager_finite_points      = std::make_shared<CloudManager>(cloud_wo_nans);
+  odometry_data->manager_corners_sharp      = std::make_shared<CloudManager>(cloud_raw, indices_corners_sharp);
+  odometry_data->manager_corners_less_sharp = std::make_shared<CloudManager>(cloud_raw, indices_corners_less_sharp);
+  odometry_data->manager_surfs_flat         = std::make_shared<CloudManager>(cloud_raw, indices_surfs_flat);
+  /* odometry_data->manager_surfs_less_flat    = std::make_shared<CloudManager>(cloud_raw, indices_surfs_less_flat); */
+  // TODO: replace after custom voxel filter
+  odometry_data->manager_surfs_less_flat = std::make_shared<CloudManager>(surf_points_less_flat);
+  odometry_data->time_feature_extraction = timer.getLifetime();
 
   _odometry->setData(odometry_data);
 
@@ -352,7 +346,8 @@ void FeatureExtractor::callbackInputDataProcDiag(const mrs_msgs::PclToolsDiagnos
 /*//{ parseRowsFromOusterMsg() */
 bool FeatureExtractor::parseRowsFromOusterMsg(const sensor_msgs::PointCloud2::ConstPtr cloud, const pcl::PointCloud<PointType>::Ptr cloud_raw,
                                               const pcl::PointCloud<PointType>::Ptr cloud_processed, std::vector<int> &rows_start_index,
-                                              std::vector<int> &rows_end_index, std::unordered_map<int, feature_selection::IndexPair> &indices_proc_in_raw) {
+                                              std::vector<int> &                                     rows_end_index,
+                                              std::unordered_map<int, feature_selection::IndexPair> &indices_map_proc_in_raw) {
 
   // Convert ROS msg to OS cloud
   const pcl::PointCloud<ouster_ros::Point>::Ptr cloud_os = boost::make_shared<pcl::PointCloud<ouster_ros::Point>>();
@@ -377,7 +372,7 @@ bool FeatureExtractor::parseRowsFromOusterMsg(const sensor_msgs::PointCloud2::Co
   // Prepare outputs
   rows_start_index.resize(_number_of_rings, 0);
   rows_end_index.resize(_number_of_rings, 0);
-  indices_proc_in_raw.reserve(cloud_raw->size());
+  indices_map_proc_in_raw.reserve(cloud_raw->size());
 
   // Get start and end time of columns
   const uint32_t t_start    = cloud_os->at(0, 0).t;
@@ -424,7 +419,7 @@ bool FeatureExtractor::parseRowsFromOusterMsg(const sensor_msgs::PointCloud2::Co
         fs_idx.col = c;
         fs_idx.row = r;
 
-        indices_proc_in_raw.insert({index++, fs_idx});
+        indices_map_proc_in_raw.insert({index++, fs_idx});
       }
     }
 

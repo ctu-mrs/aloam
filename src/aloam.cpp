@@ -312,6 +312,23 @@ void AloamSlam::callbackOfflineProcessing([[maybe_unused]] const ros::TimerEvent
       ROS_INFO("[Aloam] Offline processing of frame: %ld/%d", _offline_frame_count + _offline_frame_invalid_count + 1, _offline_points_view->size());
     }
 
+    if (received) {
+      ROS_WARN("[Aloam] Frame received:");
+      ROS_WARN("         now: %.4f", now.toSec());
+      ROS_WARN("         sent at: %.4f", _offline_expected_stamp_rostime.toSec());
+      ROS_WARN("         received after: %.4f", (now - _offline_expected_stamp_rostime).toSec());
+      ROS_WARN("         expected stamp: %.4f", _offline_expected_stamp.toSec());
+      ROS_WARN("         latest stamp: %.4f", _global_odom_stamp.toSec());
+      ROS_WARN("         expected-latest: %.4f", (_offline_expected_stamp - _global_odom_stamp).toSec());
+    }
+
+    if (timeout) {
+      ROS_WARN("[Aloam] Frame timeouted:");
+      ROS_WARN("         now: %.4f", now.toSec());
+      ROS_WARN("         expected: %.4f", _offline_expected_stamp_rostime.toSec());
+      ROS_WARN("         now-expected: %.4f", (now - _offline_expected_stamp_rostime).toSec());
+    }
+
     // Deserialize to ROS msg
     const sensor_msgs::PointCloud2::Ptr cloud_msg = _offline_points_view_it->instantiate<sensor_msgs::PointCloud2>();
     if (!cloud_msg) {

@@ -3,18 +3,22 @@
 
 #include "aloam_slam/mapping.h"
 
-#include <feature_selection/feature_selection.h>
-
 namespace aloam_slam
 {
 
 struct OdometryData
 {
-  pcl::PointCloud<PointType>::Ptr cloud_corners_sharp;
-  pcl::PointCloud<PointType>::Ptr cloud_corners_less_sharp;
-  pcl::PointCloud<PointType>::Ptr cloud_surfs_flat;
-  pcl::PointCloud<PointType>::Ptr cloud_surfs_less_flat;
-  pcl::PointCloud<PointType>::Ptr cloud_full_res;
+  std::chrono::milliseconds::rep time_feature_extraction;
+
+  ros::Time     stamp_ros;
+  std::uint64_t stamp_pcl;
+
+  pcl::PointCloud<PointType>::Ptr cloud_raw;
+  CloudManagerPtr                 manager_finite_points;
+  CloudManagerPtr                 manager_corners_sharp;
+  CloudManagerPtr                 manager_corners_less_sharp;
+  CloudManagerPtr                 manager_surfs_flat;
+  CloudManagerPtr                 manager_surfs_less_flat;
 };
 
 class AloamOdometry {
