@@ -52,10 +52,15 @@ private:
   void appendVoxelizedIndices(const IndicesPtr &indices_to_be_appended, const pcl::PointCloud<PointType>::Ptr &cloud_in,
                               const feature_selection::Indices_t &indices_in_cloud, const float resolution);
 
+  void pseudoDownsampleIndices(const IndicesPtr &indices_to_be_appended, const pcl::PointCloud<PointType>::Ptr &cloud,
+                               const feature_selection::Indices_t &indices_in_cloud, const double resolution_sq);
+
   bool hasField(const std::string field, const sensor_msgs::PointCloud2::ConstPtr &msg);
 
   // callbacks
   void callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs::PointCloud2> &laserCloudMsg);
+
+  /* ros::Publisher _pub_dbg; */
 };
 }  // namespace aloam_slam
 #endif

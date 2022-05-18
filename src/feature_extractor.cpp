@@ -33,6 +33,8 @@ FeatureExtractor::FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::Pa
         nh_.subscribe("input_proc_diag_in", 1, &FeatureExtractor::callbackInputDataProcDiag, this, ros::TransportHints().tcpNoDelay());
   }
 
+  /* _pub_dbg = nh_.advertise<sensor_msgs::PointCloud2>("fe/dbg", 1); */
+
   mrs_lib::SubscribeHandlerOptions shopts(nh_);
   shopts.node_name          = "FeatureExtractor";
   shopts.no_message_timeout = ros::Duration(5.0);
@@ -126,6 +128,8 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
   indices_surfs_flat->reserve(cloud_size);
   indices_surfs_less_flat->reserve(cloud_size);
 
+  /* const pcl::PointCloud<PointType>::Ptr cloud_surfs_less_flat = boost::make_shared<pcl::PointCloud<PointType>>(); */
+
   const static double CURVATURE_THRD = 0.1;
 
   /*//{ Compute features (planes and edges) in two resolutions */
@@ -136,6 +140,9 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
     }
 
     feature_selection::Indices_t indices_surfs_less_flat_scan;
+    indices_surfs_less_flat_scan.reserve(rows_end_index.at(i) - rows_start_index.at(i));
+
+    /* pcl::PointCloud<PointType>::Ptr cloud_surfs_less_flat_scan = boost::make_shared<pcl::PointCloud<PointType>>(); */
 
     for (int j = 0; j < 6; j++) {
 
@@ -254,6 +261,8 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
 
           const auto &fs_idx = indices_map_proc_in_raw.at(k);
           indices_surfs_less_flat_scan.push_back(fs_idx);
+
+          /* cloud_surfs_less_flat_scan->push_back(points.at(k)); */
         }
       }
 
@@ -261,8 +270,15 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
     }
 
     // There is now many less-flat surf features: downsample
-    appendVoxelizedIndices(indices_surfs_less_flat, cloud_raw, indices_surfs_less_flat_scan, 0.2);
+    pseudoDownsampleIndices(indices_surfs_less_flat, cloud_raw, indices_surfs_less_flat_scan, 0.04);
+
+    /* pcl::VoxelGrid<PointType> vg; */
+    /* vg.setInputCloud(cloud_surfs_less_flat_scan); */
+    /* vg.setLeafSize(0.2, 0.2, 0.2); */
+    /* vg.filter(*cloud_surfs_less_flat_scan); */
+    /* *cloud_surfs_less_flat += *cloud_surfs_less_flat_scan; */
   }
+
   /*//}*/
 
   timer.checkpoint("parsing features");
@@ -291,6 +307,11 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
   odometry_data->time_feature_extraction    = timer.getLifetime();
 
   _odometry->setData(odometry_data);
+
+  // TODO: Publish debug visualization msg with extracted features
+  /* if (_pub_dbg.getNumSubscribers() > 0) { */
+  /*   _pub_dbg.publish(odometry_data->manager_surfs_less_flat->getUnorderedCloudPtr()); */
+  /* } */
 
   /* ROS_INFO_THROTTLE(1.0, "[AloamFeatureExtractor] Run time: %0.1f ms (%0.1f Hz)", time_whole, std::min(1.0f / _scan_period_sec, 1000.0f / time_whole)); */
   /* ROS_DEBUG_THROTTLE(1.0, "[AloamFeatureExtractor] points: %d; preparing data: %0.1f ms; q-sorting data: %0.1f ms; computing features: %0.1f ms",
@@ -420,6 +441,8 @@ bool FeatureExtractor::parseRowsFromOusterMsg(const sensor_msgs::PointCloud2::Co
 void FeatureExtractor::appendVoxelizedIndices(const IndicesPtr &indices_to_be_appended, const pcl::PointCloud<PointType>::Ptr &cloud_in,
                                               const feature_selection::Indices_t &indices_in_cloud, const float resolution) {
 
+  // IS SO SLOW
+
   // Has the input dataset been set already?
   if (!cloud_in) {
     ROS_WARN("[FeatureExtractor] No input dataset given!");
@@ -488,6 +511,27 @@ void FeatureExtractor::appendVoxelizedIndices(const IndicesPtr &indices_to_be_ap
   indices_to_be_appended->reserve(indices_to_be_appended->size() + indices_map.size());
   for (auto iter = std::begin(indices_map); iter != std::end(indices_map); iter++) {
     indices_to_be_appended->push_back(iter->second);
+  }
+}
+/*//}*/
+
+/*//{ pseudoDownsampleIndices() */
+void FeatureExtractor::pseudoDownsampleIndices(const IndicesPtr &indices_to_be_appended, const pcl::PointCloud<PointType>::Ptr &cloud,
+                                               const feature_selection::Indices_t &indices_in_cloud, const double resolution_sq) {
+
+  PointType &point_prev = cloud->at(indices_in_cloud.at(0).col, indices_in_cloud.at(0).row);
+
+  for (int i = 1; i < indices_in_cloud.size(); i++) {
+
+    const auto &idx   = indices_in_cloud.at(i);
+    const auto &point = cloud->at(idx.col, idx.row);
+
+    const double dist_sq = std::pow(point.x - point_prev.x, 2) + std::pow(point.y - point_prev.y, 2) + std::pow(point.z - point_prev.z, 2);
+
+    if (dist_sq > resolution_sq) {
+      point_prev = point;
+      indices_to_be_appended->push_back(idx);
+    }
   }
 }
 /*//}*/

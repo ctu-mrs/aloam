@@ -68,14 +68,6 @@ using IndicesPtr = std::shared_ptr<feature_selection::Indices_t>;
 namespace aloam_slam
 {
 
-template <typename pc_t>
-inline bool isfinite(const pc_t &pc) {
-  for (const auto &pt : pc.points)
-    if (!pcl::isFinite(pt))
-      return false;
-  return true;
-}
-
 /*//{ class CloudManager */
 class CloudManager {
 
@@ -126,10 +118,10 @@ public:
   }
 
 private:
-  std::mutex                                    _mutex_cloud;
-  IndicesPtr _indices         = nullptr;
-  pcl::PointCloud<PointType>::Ptr               _cloud_ordered   = nullptr;
-  pcl::PointCloud<PointType>::Ptr               _cloud_unordered = nullptr;
+  std::mutex                      _mutex_cloud;
+  IndicesPtr                      _indices         = nullptr;
+  pcl::PointCloud<PointType>::Ptr _cloud_ordered   = nullptr;
+  pcl::PointCloud<PointType>::Ptr _cloud_unordered = nullptr;
 };
 using CloudManagerPtr = std::shared_ptr<CloudManager>;
 /*//}*/

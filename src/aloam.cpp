@@ -5,6 +5,7 @@
 #include "aloam_slam/mapping.h"
 
 #include <tf2_eigen/tf2_eigen.h>
+#include <tf2_ros/static_transform_broadcaster.h>
 
 #include <rosbag/bag.h>
 #include <rosbag/view.h>
@@ -144,6 +145,9 @@ void AloamSlam::onInit() {
       if (tf_msg) {
         for (const auto &transform : tf_msg->transforms) {
           tf_buffer->setTransform(transform, "default_authority", true);
+
+          static tf2_ros::StaticTransformBroadcaster static_broadcaster;
+          static_broadcaster.sendTransform(transform);
         }
       }
     }
