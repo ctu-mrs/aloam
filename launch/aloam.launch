@@ -1,7 +1,7 @@
 <launch>
 
-  <arg name="points_topic" default="" />
-  <arg name="points_proc_diag_topic" default="placeholder" />
+  <arg name="points_topic" default="os_cloud_nodelet/points_processed" />
+  <arg name="points_proc_diag_topic" default="pcl_filter/diagnostics" />
 
   <!-- ENV VARS -->
   <arg name="UAV_NAME" default="$(env UAV_NAME)" />
