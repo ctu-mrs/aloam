@@ -650,6 +650,8 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
       }
     }
 
+    // TODO: Publish diagnostic message
+
     // Publish registered sensor data
     // REMOVED: use TFs to visualize
     /* if (_pub_laser_cloud_registered.getNumSubscribers() > 0) { */

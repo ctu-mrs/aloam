@@ -96,7 +96,8 @@ void AloamSlam::onInit() {
   handlers->param_loader->loadParam("odom_frame", handlers->frame_odom);
   handlers->param_loader->loadParam("map_frame", handlers->frame_map);
   handlers->param_loader->loadParam("init_frame", frame_init, {});
-  handlers->param_loader->loadParam("sensor_frequency", handlers->frequency, -1.0f);
+  handlers->param_loader->loadParam("sensor/lines", handlers->scan_lines);
+  handlers->param_loader->loadParam("sensor/frequency", handlers->frequency, -1.0f);
   handlers->param_loader->loadParam("verbose", verbose, false);
   handlers->param_loader->loadParam("enable_profiler", enable_profiler, false);
   handlers->param_loader->loadParam("scope_timer/enable", handlers->enable_scope_timer, false);

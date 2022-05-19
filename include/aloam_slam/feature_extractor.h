@@ -27,18 +27,12 @@ private:
   // member objects
   mrs_lib::SubscribeHandler<sensor_msgs::PointCloud2> _sub_laser_cloud;
 
-  std::shared_ptr<AloamOdometry>             _aloam_odometry;
+  std::shared_ptr<AloamOdometry> _aloam_odometry;
 
   // member variables
-  float _vertical_fov_half;
-  float _ray_vert_delta;
-  float _scan_period_sec;
-
-  int _initialization_frames_delay;
-
+  float    _scan_period_sec;
   long int _frame_count = 0;
-
-  int _number_of_rings;
+  int      _initialization_frames_delay;
 
   bool parseRowsFromOusterMsg(const sensor_msgs::PointCloud2::ConstPtr cloud, const pcl::PointCloud<PointType>::Ptr cloud_raw,
                               const pcl::PointCloud<PointType>::Ptr cloud_processed, std::vector<int> &rows_start_index, std::vector<int> &rows_end_index,

@@ -14,14 +14,9 @@ FeatureExtractor::FeatureExtractor(const std::shared_ptr<CommonHandlers_t> handl
 
   ros::Time::waitForValid();
 
-  _handlers->param_loader->loadParam("vertical_fov", _vertical_fov_half, -1.0f);
-  _handlers->param_loader->loadParam("scan_line", _number_of_rings, -1);
-
-  _has_required_parameters = _scan_period_sec > 0.0f && _vertical_fov_half > 0.0f && _number_of_rings > 0;
+  _has_required_parameters = _scan_period_sec > 0.0f && _handlers->scan_lines > 0;
 
   if (_has_required_parameters) {
-    _ray_vert_delta = _vertical_fov_half / float(_number_of_rings - 1);  // vertical resolution
-    _vertical_fov_half /= 2.0;                                           // get half fov
 
     _initialization_frames_delay = int(1.0 / _scan_period_sec);
   } else {
@@ -80,8 +75,8 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
   std::vector<int>                                      rows_end_index;
   std::unordered_map<int, feature_selection::IndexPair> indices_map_proc_in_raw;
 
-  rows_start_index.resize(_number_of_rings, 0);
-  rows_end_index.resize(_number_of_rings, 0);
+  rows_start_index.resize(_handlers->scan_lines, 0);
+  rows_end_index.resize(_handlers->scan_lines, 0);
 
   if (!parseRowsFromOusterMsg(laserCloudMsg, cloud_raw, cloud_wo_nans, rows_start_index, rows_end_index, indices_map_proc_in_raw)) {
     return;
@@ -127,7 +122,7 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
   const static double CURVATURE_THRD = 0.1;
 
   /*//{ Compute features (planes and edges) in two resolutions */
-  for (int i = 0; i < _number_of_rings; i++) {
+  for (int i = 0; i < _handlers->scan_lines; i++) {
 
     if (rows_end_index.at(i) - rows_start_index.at(i) < 6) {
       continue;
@@ -321,16 +316,11 @@ void FeatureExtractor::callbackInputDataProcDiag(const mrs_msgs::PclToolsDiagnos
     return;
   }
 
-  _vertical_fov_half = msg->vfov / 2.0f;
-  _number_of_rings   = msg->rows_after;
-  _scan_period_sec   = 1.0f / msg->frequency;
-
-  _ray_vert_delta = _vertical_fov_half / float(_number_of_rings - 1);  // vertical resolution
-  _vertical_fov_half /= 2.0;                                           // get half fov
+  _handlers->scan_lines = msg->rows_after;
+  _scan_period_sec      = 1.0f / msg->frequency;
 
   _initialization_frames_delay = int(msg->frequency);  // 1 second delay
-
-  _has_required_parameters = _scan_period_sec > 0.0f && _vertical_fov_half > 0.0f && _number_of_rings > 0;
+  _has_required_parameters     = _scan_period_sec > 0.0f && _handlers->scan_lines > 0;
 
   if (_has_required_parameters) {
     _aloam_odometry->setFrequency(msg->frequency);
@@ -355,7 +345,7 @@ bool FeatureExtractor::parseRowsFromOusterMsg(const sensor_msgs::PointCloud2::Co
   if (!cloud_os->isOrganized()) {
     ROS_ERROR_THROTTLE(1.0, "[AloamFeatureExtractor] Input data are not organized.");
     return false;
-  } else if (_number_of_rings != cloud_os->height) {
+  } else if (_handlers->scan_lines != cloud_os->height) {
     ROS_ERROR_THROTTLE(1.0, "[AloamFeatureExtractor] Expected number of rings != input data height.");
     return false;
   }
@@ -368,8 +358,8 @@ bool FeatureExtractor::parseRowsFromOusterMsg(const sensor_msgs::PointCloud2::Co
   cloud_raw->width  = cloud_os->width;
 
   // Prepare outputs
-  rows_start_index.resize(_number_of_rings, 0);
-  rows_end_index.resize(_number_of_rings, 0);
+  rows_start_index.resize(_handlers->scan_lines, 0);
+  rows_end_index.resize(_handlers->scan_lines, 0);
   indices_map_proc_in_raw.reserve(cloud_raw->size());
 
   // Get start and end time of columns

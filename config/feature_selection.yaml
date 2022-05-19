@@ -1,0 +1,28 @@
+feature_selection:
+
+  # Default values for each type
+  enabled: true
+  method: "gradient" # {gradient}
+  resolution: 0.2
+  keep_percentile: 1.0
+  keep_standalone_features: true
+  segment_count: 1
+
+  # Overwrite default parameters above
+  types: ["corners", "surfs"]
+  corners:
+    resolution: 0.2
+    keep_percentile: 0.4
+
+  surfs:
+    resolution: 0.4
+    keep_percentile: 0.4
+
+  # Initialization values of lookup table used for fast NN search
+  lut:
+    resolution:
+      range: 0.1   # [m]
+      radius: 0.05 # [m]
+    max:
+      range: 50.0  # [m]
+      radius: 0.8  # [m]

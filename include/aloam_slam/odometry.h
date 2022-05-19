@@ -33,7 +33,8 @@ public:
   void setFrequency(const float frequency);
 
 private:
-  std::shared_ptr<CommonHandlers_t> _handlers;
+  std::shared_ptr<CommonHandlers_t>                    _handlers;
+  std::shared_ptr<feature_selection::FeatureSelection> _feature_selection;
 
   // member objects
   std::shared_ptr<AloamMapping>                  _aloam_mapping;

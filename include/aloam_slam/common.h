@@ -114,6 +114,7 @@ struct CommonHandlers_t
 
   tf::Transform tf_lidar_in_fcu_frame;
 
+  int   scan_lines;
   float frequency;
 
   bool                                       enable_scope_timer;

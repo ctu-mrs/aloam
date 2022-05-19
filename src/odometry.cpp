@@ -16,8 +16,61 @@ AloamOdometry::AloamOdometry(const std::shared_ptr<CommonHandlers_t> handlers, c
 
   ros::Time::waitForValid();
 
+  /*//{ Load feature selection parameters */
+
+  feature_selection::FSOptionsMap_t          fs_options_map;
+  feature_selection::FSLookUpTableParameters fs_lut_parameters;
+
+  const bool fs_enabled = _handlers->param_loader->loadParam2<bool>("feature_selection/enabled");
+
+  if (fs_enabled) {
+
+    const std::vector<std::string> fs_types = _handlers->param_loader->loadParam2<std::vector<std::string>>("feature_selection/types", {});
+
+    if (!fs_types.empty()) {
+
+      // Load defaults
+      const std::string fs_default_method           = _handlers->param_loader->loadParam2<std::string>("feature_selection/method");
+      const bool        fs_default_keep_standalones = _handlers->param_loader->loadParam2<bool>("feature_selection/keep_standalone_features");
+      const double      fs_default_resolution       = _handlers->param_loader->loadParam2<double>("feature_selection/resolution");
+      const double      fs_default_keep_percentile  = _handlers->param_loader->loadParam2<double>("feature_selection/keep_percentile");
+      const int         fs_default_segment_count    = _handlers->param_loader->loadParam2<int>("feature_selection/segment_count");
+
+      // Load type-specifics
+      for (const auto &type : fs_types) {
+
+        feature_selection::FSOptions fs_options;
+
+        _handlers->param_loader->loadParam<std::string>("feature_selection/" + type + "/method", fs_options.method, fs_default_method);
+        _handlers->param_loader->loadParam<bool>("feature_selection/" + type + "/enabled", fs_options.enabled, fs_enabled);
+        _handlers->param_loader->loadParam<bool>("feature_selection/" + type + "/keep_standalone_features", fs_options.keep_standalone_features,
+                                                 fs_default_keep_standalones);
+        _handlers->param_loader->loadParam<double>("feature_selection/" + type + "/resolution", fs_options.resolution, fs_default_resolution);
+        _handlers->param_loader->loadParam<double>("feature_selection/" + type + "/keep_percentile", fs_options.keep_percentile, fs_default_keep_percentile);
+        _handlers->param_loader->loadParam<int>("feature_selection/" + type + "/segment_count", fs_options.segment_count, fs_default_segment_count);
+
+        fs_options_map.insert({type, fs_options});
+      }
+    }
+
+    // Look Up Table parameters
+    _handlers->param_loader->loadParam<int>("sensor/samples", fs_lut_parameters.width);
+    _handlers->param_loader->loadParam<double>("sensor/vertical_fov", fs_lut_parameters.vfov);
+    _handlers->param_loader->loadParam<double>("feature_selection/lut/resolution/radius", fs_lut_parameters.radius_resolution);
+    _handlers->param_loader->loadParam<double>("feature_selection/lut/resolution/range", fs_lut_parameters.range_resolution);
+    _handlers->param_loader->loadParam<double>("feature_selection/lut/max/radius", fs_lut_parameters.max_radius);
+    _handlers->param_loader->loadParam<double>("feature_selection/lut/max/range", fs_lut_parameters.max_range);
+
+    fs_lut_parameters.height = _handlers->scan_lines;
+    fs_lut_parameters.vfov *= M_PI / 180.0;  // To radians
+    fs_lut_parameters.hfov = 2.0 * M_PI;
+  }
+
+  /*//}*/
+
   // Objects initialization
-  _tf_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>();
+  _feature_selection = std::make_shared<feature_selection::FeatureSelection>(fs_enabled, _handlers->nh, fs_options_map, fs_lut_parameters);
+  _tf_broadcaster    = std::make_shared<tf2_ros::TransformBroadcaster>();
 
   {
     std::scoped_lock lock(_mutex_odometry_process);
@@ -31,14 +84,9 @@ AloamOdometry::AloamOdometry(const std::shared_ptr<CommonHandlers_t> handlers, c
   _transformer = std::make_shared<mrs_lib::Transformer>("AloamOdometry");
   _transformer->setDefaultPrefix(_handlers->uav_name);
 
-  /* mrs_lib::SubscribeHandlerOptions shopts(nh_); */
-  /* shopts.node_name  = "AloamOdometry"; */
-  /* shopts.threadsafe = true; */
-
   /* _sub_handler_orientation = mrs_lib::SubscribeHandler<nav_msgs::Odometry>(shopts, "orientation_in", mrs_lib::no_timeout); */
 
-  _pub_odometry_local = nh_.advertise<nav_msgs::Odometry>("odom_local_out", 1);
-
+  _pub_odometry_local  = nh_.advertise<nav_msgs::Odometry>("odom_local_out", 1);
   _timer_odometry_loop = nh_.createTimer(ros::Rate(1000), &AloamOdometry::timerOdometry, this, false, true);
 }
 //}
