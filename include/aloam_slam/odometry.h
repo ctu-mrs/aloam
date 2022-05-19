@@ -24,28 +24,23 @@ struct OdometryData
 class AloamOdometry {
 
 public:
-  AloamOdometry(const ros::NodeHandle &parent_nh, const std::string uav_name, const std::shared_ptr<mrs_lib::Profiler> profiler,
-                const std::shared_ptr<AloamMapping> aloam_mapping, const std::string &frame_fcu, const std::string &frame_lidar, const std::string &frame_odom,
-                const float scan_period_sec, const tf::Transform &tf_lidar_to_fcu, const bool enable_scope_timer,
-                const std::shared_ptr<mrs_lib::ScopeTimerLogger> scope_timer_logger);
+  AloamOdometry(const std::shared_ptr<CommonHandlers_t> handlers, const std::shared_ptr<AloamMapping> aloam_mapping);
 
   std::atomic<bool> is_initialized = false;
 
   void setData(const std::shared_ptr<OdometryData> odometry_data);
-
   void setTransform(const Eigen::Vector3d &t, const Eigen::Quaterniond &q, const ros::Time &stamp);
+  void setFrequency(const float frequency);
 
 private:
-  bool _enable_scope_timer;
+  std::shared_ptr<CommonHandlers_t> _handlers;
 
   // member objects
-  std::shared_ptr<mrs_lib::Profiler>             _profiler;
   std::shared_ptr<AloamMapping>                  _aloam_mapping;
   std::shared_ptr<tf2_ros::TransformBroadcaster> _tf_broadcaster;
   ros::Timer                                     _timer_odometry_loop;
 
-  std::shared_ptr<mrs_lib::Transformer>      _transformer;
-  std::shared_ptr<mrs_lib::ScopeTimerLogger> _scope_timer_logger;
+  std::shared_ptr<mrs_lib::Transformer> _transformer;
   /* mrs_lib::SubscribeHandler<nav_msgs::Odometry> _sub_handler_orientation; */
 
   std::mutex                      _mutex_odometry_process;
@@ -64,15 +59,9 @@ private:
   ros::Publisher _pub_odometry_local;
 
   // member variables
-  std::string _frame_fcu;
-  std::string _frame_lidar;
-  std::string _frame_odom;
-
   float _scan_period_sec;
 
   long int _frame_count = 0;
-
-  tf::Transform _tf_lidar_to_fcu;
 
   double                         _para_q[4] = {0, 0, 0, 1};
   double                         _para_t[3] = {0, 0, 0};
@@ -85,7 +74,7 @@ private:
   const bool   DISTORTION            = false;
 
   // member methods
-  void timerOdometry([[maybe_unused]] const ros::TimerEvent &event);
+  void timerOdometry(const ros::TimerEvent &event);
 
   void TransformToStart(PointType const *const pi, PointType *const po);
   void TransformToEnd(PointType const *const pi, PointType *const po);

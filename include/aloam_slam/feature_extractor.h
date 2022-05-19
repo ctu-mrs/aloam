@@ -12,29 +12,24 @@ namespace aloam_slam
 class FeatureExtractor {
 
 public:
-  FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, std::shared_ptr<mrs_lib::Profiler> profiler,
-                   const std::shared_ptr<AloamOdometry> odometry, const std::string &map_frame, const float scan_period_sec, const bool enable_scope_timer,
-                   const std::shared_ptr<mrs_lib::ScopeTimerLogger> scope_timer_logger);
+  FeatureExtractor(const std::shared_ptr<CommonHandlers_t> handlers, const std::shared_ptr<AloamOdometry> aloam_odometry);
 
   std::atomic<bool> is_initialized = false;
 
 private:
-  bool _enable_scope_timer;
+  std::shared_ptr<CommonHandlers_t> _handlers;
+
   bool _has_required_parameters = false;
 
   ros::Subscriber _sub_input_data_processing_diag;
   void            callbackInputDataProcDiag(const mrs_msgs::PclToolsDiagnosticsConstPtr &msg);
 
   // member objects
-  std::shared_ptr<mrs_lib::Profiler>                  _profiler;
   mrs_lib::SubscribeHandler<sensor_msgs::PointCloud2> _sub_laser_cloud;
 
-  std::shared_ptr<AloamOdometry>             _odometry;
-  std::shared_ptr<mrs_lib::ScopeTimerLogger> _scope_timer_logger;
+  std::shared_ptr<AloamOdometry>             _aloam_odometry;
 
   // member variables
-  std::string _frame_map;
-
   float _vertical_fov_half;
   float _ray_vert_delta;
   float _scan_period_sec;

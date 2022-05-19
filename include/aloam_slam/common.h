@@ -36,11 +36,61 @@
 
 #pragma once
 
+#include <ros/ros.h>
+#include <nodelet/nodelet.h>
+
+#include <math.h>
 #include <cmath>
+#include <vector>
+#include <string>
+#include <thread>
+#include <iostream>
+#include <mutex>
+#include <condition_variable>
+#include <queue>
+
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/kdtree/kdtree_flann.h>
+#include <pcl_conversions/pcl_conversions.h>
+
+#include <tf/transform_datatypes.h>
+#include <tf/transform_broadcaster.h>
+#include <tf_conversions/tf_eigen.h>
+#include <tf2_ros/transform_broadcaster.h>
+#include <tf2_eigen/tf2_eigen.h>
+
+#include <eigen3/Eigen/Dense>
+#include <eigen_conversions/eigen_msg.h>
+
+#include <ceres/ceres.h>
+/* #include <opencv/cv.h> */
+
+#include <std_srvs/SetBool.h>
+#include <std_srvs/Trigger.h>
+
+#include <std_msgs/String.h>
+
+#include <nav_msgs/Odometry.h>
+#include <nav_msgs/Path.h>
+
+#include <geometry_msgs/PoseStamped.h>
+
+#include <sensor_msgs/PointCloud2.h>
+
+#include <mrs_lib/profiler.h>
+#include <mrs_lib/param_loader.h>
+#include <mrs_lib/mutex.h>
+#include <mrs_lib/transformer.h>
+#include <mrs_lib/attitude_converter.h>
+#include <mrs_lib/scope_timer.h>
+#include <mrs_msgs/Float64ArrayStamped.h>
+#include <mrs_msgs/PclToolsDiagnostics.h>
 
 #include <pcl/point_types.h>
 
-typedef pcl::PointXYZI            PointType;
+typedef pcl::PointXYZI PointType;
 
 inline double rad2deg(double radians) {
   return radians * 180.0 / M_PI;
@@ -49,3 +99,23 @@ inline double rad2deg(double radians) {
 inline double deg2rad(double degrees) {
   return degrees * M_PI / 180.0;
 }
+
+struct CommonHandlers_t
+{
+  ros::NodeHandle                       nh;
+  std::shared_ptr<mrs_lib::ParamLoader> param_loader;
+  std::shared_ptr<mrs_lib::Profiler>    profiler;
+
+  std::string uav_name;
+  std::string frame_fcu;
+  std::string frame_lidar;
+  std::string frame_odom;
+  std::string frame_map;
+
+  tf::Transform tf_lidar_in_fcu_frame;
+
+  float frequency;
+
+  bool                                       enable_scope_timer;
+  std::shared_ptr<mrs_lib::ScopeTimerLogger> scope_timer_logger = nullptr;
+};

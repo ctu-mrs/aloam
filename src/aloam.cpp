@@ -27,14 +27,12 @@ public:
   void initOdom();
 
 private:
-  std::shared_ptr<AloamMapping>              aloam_mapping;
-  std::shared_ptr<AloamOdometry>             aloam_odometry;
-  std::shared_ptr<FeatureExtractor>          feature_extractor;
-  std::shared_ptr<mrs_lib::Profiler>         profiler;
-  std::shared_ptr<mrs_lib::ScopeTimerLogger> scope_timer_logger = nullptr;
+  std::shared_ptr<CommonHandlers_t> handlers;
 
-  std::string frame_fcu;
-  std::string frame_lidar;
+  std::shared_ptr<AloamMapping>     aloam_mapping;
+  std::shared_ptr<AloamOdometry>    aloam_odometry;
+  std::shared_ptr<FeatureExtractor> feature_extractor;
+
   std::string frame_init;
   std::thread t_odom_init;
 
@@ -80,37 +78,34 @@ void AloamSlam::onInit() {
   // | --------------------- parameters ------------------------- |
 
   // Shared parameters
-  mrs_lib::ParamLoader param_loader(nh_, "Aloam");
+  handlers               = std::make_shared<CommonHandlers_t>();
+  handlers->nh           = nh_;
+  handlers->param_loader = std::make_shared<mrs_lib::ParamLoader>(nh_, "Aloam");
 
-  std::string   uav_name;
-  std::string   frame_odom;
-  std::string   frame_map;
-  std::string   time_logger_filepath;
-  std::string   offline_rosbag;
-  std::string   offline_points_topic;
-  float         frequency;
-  tf::Transform tf_lidar_in_fcu_frame;
-  bool          verbose;
-  bool          offline_run;
-  bool          enable_profiler;
-  bool          enable_scope_timer;
+  std::string time_logger_filepath;
+  std::string offline_rosbag;
+  std::string offline_points_topic;
+  bool        verbose;
+  bool        offline_run;
+  bool        enable_profiler;
+  bool        enable_scope_timer;
 
-  param_loader.loadParam("uav_name", uav_name);
-  param_loader.loadParam("lidar_frame", frame_lidar);
-  param_loader.loadParam("fcu_frame", frame_fcu);
-  param_loader.loadParam("odom_frame", frame_odom);
-  param_loader.loadParam("map_frame", frame_map);
-  param_loader.loadParam("init_frame", frame_init, {});
-  param_loader.loadParam("sensor_frequency", frequency, -1.0f);
-  param_loader.loadParam("verbose", verbose, false);
-  param_loader.loadParam("enable_profiler", enable_profiler, false);
-  param_loader.loadParam("scope_timer/enable", enable_scope_timer, false);
-  param_loader.loadParam("scope_timer/log_filename", time_logger_filepath, std::string(""));
-  param_loader.loadParam("offline/run", offline_run, false);
-  param_loader.loadParam("offline/rosbag", offline_rosbag);
-  param_loader.loadParam("offline/points_topic", offline_points_topic);
-  param_loader.loadParam("offline/timeout", _offline_processing_timeout, 0.2);
-  const auto initialize_from_odom = param_loader.loadParam2<bool>("initialize_from_odom", false);
+  handlers->param_loader->loadParam("uav_name", handlers->uav_name);
+  handlers->param_loader->loadParam("lidar_frame", handlers->frame_lidar);
+  handlers->param_loader->loadParam("fcu_frame", handlers->frame_fcu);
+  handlers->param_loader->loadParam("odom_frame", handlers->frame_odom);
+  handlers->param_loader->loadParam("map_frame", handlers->frame_map);
+  handlers->param_loader->loadParam("init_frame", frame_init, {});
+  handlers->param_loader->loadParam("sensor_frequency", handlers->frequency, -1.0f);
+  handlers->param_loader->loadParam("verbose", verbose, false);
+  handlers->param_loader->loadParam("enable_profiler", enable_profiler, false);
+  handlers->param_loader->loadParam("scope_timer/enable", handlers->enable_scope_timer, false);
+  handlers->param_loader->loadParam("scope_timer/log_filename", time_logger_filepath, std::string(""));
+  handlers->param_loader->loadParam("offline/run", offline_run, false);
+  handlers->param_loader->loadParam("offline/rosbag", offline_rosbag);
+  handlers->param_loader->loadParam("offline/points_topic", offline_points_topic);
+  handlers->param_loader->loadParam("offline/timeout", _offline_processing_timeout, 0.2);
+  const auto initialize_from_odom = handlers->param_loader->loadParam2<bool>("initialize_from_odom", false);
 
   if (verbose && ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Debug)) {
     ros::console::notifyLoggerLevelsChanged();
@@ -158,25 +153,23 @@ void AloamSlam::onInit() {
   }
   /*//}*/
 
-  // | --------------------- tf transformer --------------------- |
-  tf_lidar_in_fcu_frame = getStaticTf(frame_fcu, frame_lidar, offline_run);
+  // | ---------------------- TF lidar->fcu --------------------- |
+  handlers->tf_lidar_in_fcu_frame = getStaticTf(handlers->frame_fcu, handlers->frame_lidar, offline_run);
 
   // | ------------------------ profiler ------------------------ |
-  profiler = std::make_shared<mrs_lib::Profiler>(nh_, "Aloam", enable_profiler);
+  handlers->profiler = std::make_shared<mrs_lib::Profiler>(nh_, "Aloam", enable_profiler);
 
   // | ------------------- scope timer logger ------------------- |
-  scope_timer_logger = std::make_shared<mrs_lib::ScopeTimerLogger>(time_logger_filepath, enable_scope_timer);
+  handlers->scope_timer_logger = std::make_shared<mrs_lib::ScopeTimerLogger>(time_logger_filepath, enable_scope_timer);
+
 
   // | ----------------------- SLAM handlers  ------------------- |
 
-  aloam_mapping =
-      std::make_shared<AloamMapping>(nh_, param_loader, profiler, frame_fcu, frame_map, tf_lidar_in_fcu_frame, enable_scope_timer, scope_timer_logger);
-  aloam_odometry = std::make_shared<AloamOdometry>(nh_, uav_name, profiler, aloam_mapping, frame_fcu, frame_lidar, frame_odom, 1.0f / frequency,
-                                                   tf_lidar_in_fcu_frame, enable_scope_timer, scope_timer_logger);
-  feature_extractor =
-      std::make_shared<FeatureExtractor>(nh_, param_loader, profiler, aloam_odometry, frame_map, 1.0f / frequency, enable_scope_timer, scope_timer_logger);
+  aloam_mapping     = std::make_shared<AloamMapping>(handlers);
+  aloam_odometry    = std::make_shared<AloamOdometry>(handlers, aloam_mapping);
+  feature_extractor = std::make_shared<FeatureExtractor>(handlers, aloam_odometry);
 
-  if (!param_loader.loadedSuccessfully()) {
+  if (!handlers->param_loader->loadedSuccessfully()) {
     ROS_ERROR("[Aloam]: Could not load all parameters!");
     ros::shutdown();
   }
@@ -245,10 +238,10 @@ tf::Transform AloamSlam::getStaticTf(const std::string &frame_from, const std::s
 void AloamSlam::initOdom() {
   mrs_lib::Transformer transformer("Aloam");
 
-  ROS_WARN_STREAM("[Aloam] Waiting for transformation between " << frame_lidar << " and " << frame_init << ".");
+  ROS_WARN_STREAM("[Aloam] Waiting for transformation between " << handlers->frame_lidar << " and " << frame_init << ".");
   bool got_tf = false;
   while (!got_tf && ros::ok()) {
-    const auto tf_opt = transformer.getTransform(frame_lidar, frame_init, ros::Time(0));
+    const auto tf_opt = transformer.getTransform(handlers->frame_lidar, frame_init, ros::Time(0));
     if (tf_opt.has_value()) {
 
       const auto tf = tf2::transformToEigen(tf_opt->transform);
@@ -266,7 +259,8 @@ void AloamSlam::initOdom() {
       got_tf                            = true;
       ROS_INFO("[Aloam]: \033[1;32minitialized\033[0m");
     } else {
-      ROS_WARN_STREAM_THROTTLE(1.0, "[AloamSlam]: Did not get odometry initialization transform between " << frame_lidar << " and " << frame_init << ".");
+      ROS_WARN_STREAM_THROTTLE(1.0,
+                               "[AloamSlam]: Did not get odometry initialization transform between " << handlers->frame_lidar << " and " << frame_init << ".");
       ros::Duration(0.1).sleep();
     }
   }

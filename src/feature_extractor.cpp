@@ -4,30 +4,26 @@ namespace aloam_slam
 {
 
 /*//{ FeatureExtractor() */
-FeatureExtractor::FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, std::shared_ptr<mrs_lib::Profiler> profiler,
-                                   const std::shared_ptr<AloamOdometry> odometry, const std::string &map_frame, const float scan_period_sec,
-                                   const bool enable_scope_timer, const std::shared_ptr<mrs_lib::ScopeTimerLogger> scope_timer_logger)
-    : _profiler(profiler),
-      _odometry(odometry),
-      _frame_map(map_frame),
-      _scan_period_sec(scan_period_sec),
-      _scope_timer_logger(scope_timer_logger),
-      _enable_scope_timer(enable_scope_timer) {
+FeatureExtractor::FeatureExtractor(const std::shared_ptr<CommonHandlers_t> handlers, const std::shared_ptr<AloamOdometry> aloam_odometry) {
 
-  ros::NodeHandle nh_(parent_nh);
+  _handlers        = handlers;
+  _aloam_odometry  = aloam_odometry;
+  _scan_period_sec = 1.0f / _handlers->frequency;
+
+  ros::NodeHandle nh_(_handlers->nh);
 
   ros::Time::waitForValid();
 
-  param_loader.loadParam("vertical_fov", _vertical_fov_half, -1.0f);
-  param_loader.loadParam("scan_line", _number_of_rings, -1);
+  _handlers->param_loader->loadParam("vertical_fov", _vertical_fov_half, -1.0f);
+  _handlers->param_loader->loadParam("scan_line", _number_of_rings, -1);
 
-  _has_required_parameters = scan_period_sec > 0.0f && _vertical_fov_half > 0.0f && _number_of_rings > 0;
+  _has_required_parameters = _scan_period_sec > 0.0f && _vertical_fov_half > 0.0f && _number_of_rings > 0;
 
   if (_has_required_parameters) {
     _ray_vert_delta = _vertical_fov_half / float(_number_of_rings - 1);  // vertical resolution
     _vertical_fov_half /= 2.0;                                           // get half fov
 
-    _initialization_frames_delay = int(1.0 / scan_period_sec);
+    _initialization_frames_delay = int(1.0 / _scan_period_sec);
   } else {
     _sub_input_data_processing_diag =
         nh_.subscribe("input_proc_diag_in", 1, &FeatureExtractor::callbackInputDataProcDiag, this, ros::TransportHints().tcpNoDelay());
@@ -60,8 +56,8 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
     ROS_WARN("[AloamFeatureExtractor]: Received empty laser cloud msg. Skipping frame.");
     return;
   }
-  mrs_lib::ScopeTimer timer            = mrs_lib::ScopeTimer("ALOAM::FeatureExtraction::callbackLaserCloud", _scope_timer_logger, _enable_scope_timer);
-  mrs_lib::Routine    profiler_routine = _profiler->createRoutine("callbackLaserCloud");
+  mrs_lib::ScopeTimer timer = mrs_lib::ScopeTimer("ALOAM::FeatureExtraction::callbackLaserCloud", _handlers->scope_timer_logger, _handlers->enable_scope_timer);
+  mrs_lib::Routine    profiler_routine = _handlers->profiler->createRoutine("callbackLaserCloud");
 
   // Skip 1s of data
   ROS_INFO_ONCE("[AloamFeatureExtractor]: Received first laser cloud msg.");
@@ -281,11 +277,11 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
 
   timer.checkpoint("parsing features");
 
-  cloud_wo_nans->header.frame_id = _frame_map;
-
   std::uint64_t stamp_pcl;
   pcl_conversions::toPCL(laserCloudMsg->header.stamp, stamp_pcl);
-  cloud_wo_nans->header.stamp = stamp_pcl;
+
+  cloud_wo_nans->header.frame_id = _handlers->frame_lidar;
+  cloud_wo_nans->header.stamp    = stamp_pcl;
 
   const std::shared_ptr<OdometryData> odometry_data = std::make_shared<OdometryData>();
 
@@ -299,7 +295,7 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
   odometry_data->manager_surfs_less_flat    = std::make_shared<CloudManager>(cloud_raw, indices_surfs_less_flat);
   odometry_data->time_feature_extraction    = timer.getLifetime();
 
-  _odometry->setData(odometry_data);
+  _aloam_odometry->setData(odometry_data);
 
   // TODO: Publish debug visualization msg with extracted features
   /* if (_pub_dbg.getNumSubscribers() > 0) { */
@@ -335,6 +331,10 @@ void FeatureExtractor::callbackInputDataProcDiag(const mrs_msgs::PclToolsDiagnos
   _initialization_frames_delay = int(msg->frequency);  // 1 second delay
 
   _has_required_parameters = _scan_period_sec > 0.0f && _vertical_fov_half > 0.0f && _number_of_rings > 0;
+
+  if (_has_required_parameters) {
+    _aloam_odometry->setFrequency(msg->frequency);
+  }
 
   ROS_INFO("[AloamFeatureExtractor] Received input data diagnostics: VFoV (%.1f deg), rings count (%d), frequency (%.1f Hz)", msg->vfov, msg->rows_after,
            msg->frequency);
@@ -434,7 +434,7 @@ bool FeatureExtractor::parseRowsFromOusterMsg(const sensor_msgs::PointCloud2::Co
 void FeatureExtractor::appendVoxelizedIndices(const IndicesPtr &indices_to_be_appended, const pcl::PointCloud<PointType>::Ptr &cloud_in,
                                               const feature_selection::Indices_t &indices_in_cloud, const float resolution) {
 
-  // IS SO SLOW
+  // IS TWO TIMES AS SLOW AS PCL VOXEL GRID
 
   // Has the input dataset been set already?
   if (!cloud_in) {

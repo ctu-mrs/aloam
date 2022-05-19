@@ -3,58 +3,6 @@
 
 /* includes //{ */
 
-#include <ros/ros.h>
-#include <nodelet/nodelet.h>
-
-#include <math.h>
-#include <cmath>
-#include <vector>
-#include <string>
-#include <thread>
-#include <iostream>
-#include <mutex>
-#include <condition_variable>
-#include <queue>
-
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
-#include <pcl/filters/voxel_grid.h>
-#include <pcl/kdtree/kdtree_flann.h>
-#include <pcl_conversions/pcl_conversions.h>
-
-#include <tf/transform_datatypes.h>
-#include <tf/transform_broadcaster.h>
-#include <tf_conversions/tf_eigen.h>
-#include <tf2_ros/transform_broadcaster.h>
-#include <tf2_eigen/tf2_eigen.h>
-
-#include <eigen3/Eigen/Dense>
-#include <eigen_conversions/eigen_msg.h>
-
-#include <ceres/ceres.h>
-/* #include <opencv/cv.h> */
-
-#include <std_srvs/SetBool.h>
-#include <std_srvs/Trigger.h>
-
-#include <std_msgs/String.h>
-
-#include <nav_msgs/Odometry.h>
-#include <nav_msgs/Path.h>
-
-#include <geometry_msgs/PoseStamped.h>
-
-#include <sensor_msgs/PointCloud2.h>
-
-#include <mrs_lib/profiler.h>
-#include <mrs_lib/param_loader.h>
-#include <mrs_lib/mutex.h>
-#include <mrs_lib/transformer.h>
-#include <mrs_lib/attitude_converter.h>
-#include <mrs_lib/scope_timer.h>
-#include <mrs_msgs/Float64ArrayStamped.h>
-#include <mrs_msgs/PclToolsDiagnostics.h>
-
 #include "aloam_slam/common.h"
 #include "aloam_slam/tic_toc.h"
 #include "aloam_slam/lidarFactor.hpp"
@@ -141,23 +89,18 @@ struct MappingData
 class AloamMapping {
 
 public:
-  AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, const std::shared_ptr<mrs_lib::Profiler> profiler,
-               const std::string &frame_fcu, const std::string &frame_map, const tf::Transform &tf_lidar_to_fcu, const bool enable_scope_timer,
-               const std::shared_ptr<mrs_lib::ScopeTimerLogger> scope_timer_logger);
+  AloamMapping(const std::shared_ptr<CommonHandlers_t> handlers);
 
   std::atomic<bool> is_initialized = false;
 
   void setData(const std::shared_ptr<MappingData> data);
-
   void setTransform(const Eigen::Vector3d &t, const Eigen::Quaterniond &q, const ros::Time &stamp);
 
 private:
-  bool _enable_scope_timer;
+  std::shared_ptr<CommonHandlers_t> _handlers;
 
   // member objects
-  std::shared_ptr<mrs_lib::Profiler>             _profiler;
   std::shared_ptr<tf2_ros::TransformBroadcaster> _tf_broadcaster;
-  std::shared_ptr<mrs_lib::ScopeTimerLogger>     _scope_timer_logger;
 
   ros::Timer _timer_mapping_loop;
   ros::Time  _time_last_map_publish;
@@ -186,14 +129,10 @@ private:
   Eigen::Vector3d     _path_last_added_pos = Eigen::Vector3d::Identity();
 
   // member variables
-  std::string _frame_fcu;
-  std::string _frame_map;
 
   float _mapping_frequency;
   float _map_publish_period;
   bool  _remap_tf;
-
-  tf::Transform _tf_lidar_to_fcu;
 
   double                         _parameters[7] = {0, 0, 0, 1, 0, 0, 0};
   Eigen::Map<Eigen::Quaterniond> _q_w_curr;

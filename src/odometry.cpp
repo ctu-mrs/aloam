@@ -5,23 +5,14 @@ namespace aloam_slam
 {
 
 /* //{ AloamOdometry() */
-AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, const std::string uav_name, const std::shared_ptr<mrs_lib::Profiler> profiler,
-                             const std::shared_ptr<AloamMapping> aloam_mapping, const std::string &frame_fcu, const std::string &frame_lidar,
-                             const std::string &frame_odom, const float scan_period_sec, const tf::Transform &tf_lidar_to_fcu, const bool enable_scope_timer,
-                             const std::shared_ptr<mrs_lib::ScopeTimerLogger> scope_timer_logger)
-    : _profiler(profiler),
-      _aloam_mapping(aloam_mapping),
-      _frame_fcu(frame_fcu),
-      _frame_lidar(frame_lidar),
-      _frame_odom(frame_odom),
-      _scan_period_sec(scan_period_sec),
-      _tf_lidar_to_fcu(tf_lidar_to_fcu),
-      _q_last_curr(_para_q),
-      _t_last_curr(_para_t),
-      _scope_timer_logger(scope_timer_logger),
-      _enable_scope_timer(enable_scope_timer) {
+AloamOdometry::AloamOdometry(const std::shared_ptr<CommonHandlers_t> handlers, const std::shared_ptr<AloamMapping> aloam_mapping)
+    : _q_last_curr(_para_q), _t_last_curr(_para_t) {
 
-  ros::NodeHandle nh_(parent_nh);
+  _handlers        = handlers;
+  _aloam_mapping   = aloam_mapping;
+  _scan_period_sec = 1.0f / handlers->frequency;
+
+  ros::NodeHandle nh_(handlers->nh);
 
   ros::Time::waitForValid();
 
@@ -38,7 +29,7 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, const std::string
   _t_w_curr = Eigen::Vector3d(0, 0, 0);
 
   _transformer = std::make_shared<mrs_lib::Transformer>("AloamOdometry");
-  _transformer->setDefaultPrefix(uav_name);
+  _transformer->setDefaultPrefix(_handlers->uav_name);
 
   /* mrs_lib::SubscribeHandlerOptions shopts(nh_); */
   /* shopts.node_name  = "AloamOdometry"; */
@@ -54,6 +45,7 @@ AloamOdometry::AloamOdometry(const ros::NodeHandle &parent_nh, const std::string
 
 /*//{ timerOdometry() */
 void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event) {
+
   if (!is_initialized) {
     return;
   }
@@ -69,7 +61,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     return;
   }
 
-  mrs_lib::ScopeTimer timer = mrs_lib::ScopeTimer("ALOAM::FeatureExtraction::timerOdometry", _scope_timer_logger, _enable_scope_timer);
+  mrs_lib::ScopeTimer timer = mrs_lib::ScopeTimer("ALOAM::FeatureExtraction::timerOdometry", _handlers->scope_timer_logger, _handlers->enable_scope_timer);
 
   pcl::PointCloud<PointType>::Ptr corner_points_sharp;
   pcl::PointCloud<PointType>::Ptr corner_points_less_sharp;
@@ -108,7 +100,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
 
   timer.checkpoint("loaded data");
 
-  mrs_lib::Routine profiler_routine = _profiler->createRoutine("timerOdometry", 1.0f / _scan_period_sec, 0.05, event);
+  mrs_lib::Routine profiler_routine = _handlers->profiler->createRoutine("timerOdometry", 1.0f / _scan_period_sec, 0.05, event);
 
   /*//{ Find features correspondences and compute local odometry */
 
@@ -325,7 +317,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   /*   geometry_msgs::QuaternionStamped msg_ori; */
   /*   msg_ori.header     = odom_msg->header; */
   /*   msg_ori.quaternion = odom_msg->pose.pose.orientation; */
-  /*   auto ret           = _transformer->transformSingle(_frame_odom, msg_ori); */
+  /*   auto ret           = _transformer->transformSingle(, msg_ori); */
 
   /*   if (ret) { */
   /*     // Set heading of odometry msg to be the aloam odometry estimated heading */
@@ -358,8 +350,8 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     _features_corners_last->header.stamp = stamp_pcl;
     _features_surfs_last->header.stamp   = stamp_pcl;
 
-    _features_corners_last->header.frame_id = _frame_lidar;
-    _features_surfs_last->header.frame_id   = _frame_lidar;
+    _features_corners_last->header.frame_id = _handlers->frame_lidar;
+    _features_surfs_last->header.frame_id   = _handlers->frame_lidar;
 
     const std::shared_ptr<MappingData> mapping_data = std::make_shared<MappingData>();
 
@@ -379,12 +371,12 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
 
   if (_frame_count > 0) {
     // Publish inverse TF transform (lidar -> odom)
-    tf::Transform tf_fcu = tf_lidar * _tf_lidar_to_fcu;
+    tf::Transform tf_fcu = tf_lidar * _handlers->tf_lidar_in_fcu_frame;
 
     geometry_msgs::TransformStamped tf_msg;
     tf_msg.header.stamp    = stamp;
-    tf_msg.header.frame_id = _frame_fcu;
-    tf_msg.child_frame_id  = _frame_odom;
+    tf_msg.header.frame_id = _handlers->frame_fcu;
+    tf_msg.child_frame_id  = _handlers->frame_odom;
     tf::transformTFToMsg(tf_fcu.inverse(), tf_msg.transform);
 
     try {
@@ -399,8 +391,8 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
       // Publish nav_msgs::Odometry msg
       const nav_msgs::Odometry::Ptr laser_odometry_msg = boost::make_shared<nav_msgs::Odometry>();
       laser_odometry_msg->header.stamp                 = stamp;
-      laser_odometry_msg->header.frame_id              = _frame_odom;
-      laser_odometry_msg->child_frame_id               = _frame_fcu;
+      laser_odometry_msg->header.frame_id              = _handlers->frame_odom;
+      laser_odometry_msg->child_frame_id               = _handlers->frame_fcu;
       tf::pointTFToMsg(tf_fcu.getOrigin(), laser_odometry_msg->pose.pose.position);
       tf::quaternionTFToMsg(tf_fcu.getRotation(), laser_odometry_msg->pose.pose.orientation);
 
@@ -430,7 +422,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
 /*//{ setData() */
 void AloamOdometry::setData(const std::shared_ptr<OdometryData> data) {
 
-  mrs_lib::Routine profiler_routine = _profiler->createRoutine("aloamOdometrySetData");
+  mrs_lib::Routine profiler_routine = _handlers->profiler->createRoutine("aloamOdometrySetData");
 
   std::scoped_lock lock(_mutex_odometry_data);
   _has_new_data  = true;
@@ -456,12 +448,12 @@ void AloamOdometry::setTransform(const Eigen::Vector3d &t, const Eigen::Quaterni
   /*//{ Publish odometry */
 
   // Publish inverse TF transform (lidar -> odom)
-  tf::Transform tf_fcu = tf_lidar * _tf_lidar_to_fcu;
+  tf::Transform tf_fcu = tf_lidar * _handlers->tf_lidar_in_fcu_frame;
 
   geometry_msgs::TransformStamped tf_msg;
   tf_msg.header.stamp    = stamp;
-  tf_msg.header.frame_id = _frame_fcu;
-  tf_msg.child_frame_id  = _frame_odom;
+  tf_msg.header.frame_id = _handlers->frame_fcu;
+  tf_msg.child_frame_id  = _handlers->frame_odom;
   tf::transformTFToMsg(tf_fcu.inverse(), tf_msg.transform);
 
   try {
@@ -476,8 +468,8 @@ void AloamOdometry::setTransform(const Eigen::Vector3d &t, const Eigen::Quaterni
     // Publish nav_msgs::Odometry msg
     nav_msgs::Odometry::Ptr laser_odometry_msg = boost::make_shared<nav_msgs::Odometry>();
     laser_odometry_msg->header.stamp           = stamp;
-    laser_odometry_msg->header.frame_id        = _frame_odom;
-    laser_odometry_msg->child_frame_id         = _frame_fcu;
+    laser_odometry_msg->header.frame_id        = _handlers->frame_odom;
+    laser_odometry_msg->child_frame_id         = _handlers->frame_fcu;
     tf::pointTFToMsg(tf_fcu.getOrigin(), laser_odometry_msg->pose.pose.position);
     tf::quaternionTFToMsg(tf_fcu.getRotation(), laser_odometry_msg->pose.pose.orientation);
 
@@ -510,6 +502,12 @@ void AloamOdometry::TransformToStart(PointType const *const pi, PointType *const
   po->y         = un_point.y();
   po->z         = un_point.z();
   po->intensity = pi->intensity;
+}
+/*//}*/
+
+/*//{ setFrequency() */
+void AloamOdometry::setFrequency(const float frequency) {
+  _scan_period_sec = 1.0f / frequency;
 }
 /*//}*/
 

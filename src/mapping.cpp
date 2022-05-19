@@ -4,27 +4,19 @@ namespace aloam_slam
 {
 
 /*//{ AloamMapping() */
-AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, const std::shared_ptr<mrs_lib::Profiler> profiler,
-                           const std::string &frame_fcu, const std::string &frame_map, const tf::Transform &tf_lidar_to_fcu, const bool enable_scope_timer,
-                           const std::shared_ptr<mrs_lib::ScopeTimerLogger> scope_timer_logger)
-    : _profiler(profiler),
-      _frame_fcu(frame_fcu),
-      _frame_map(frame_map),
-      _tf_lidar_to_fcu(tf_lidar_to_fcu),
-      _q_w_curr(_parameters),
-      _t_w_curr(_parameters + 4),
-      _scope_timer_logger(scope_timer_logger),
-      _enable_scope_timer(enable_scope_timer) {
+AloamMapping::AloamMapping(const std::shared_ptr<CommonHandlers_t> handlers) : _q_w_curr(_parameters), _t_w_curr(_parameters + 4) {
 
-  ros::NodeHandle nh_(parent_nh);
+  _handlers = handlers;
+
+  ros::NodeHandle nh_(handlers->nh);
 
   ros::Time::waitForValid();
 
-  param_loader.loadParam("mapping/remap_tf", _remap_tf, false);
-  param_loader.loadParam("mapping/line_resolution", _resolution_line, 0.2f);
-  param_loader.loadParam("mapping/plane_resolution", _resolution_plane, 0.4f);
-  param_loader.loadParam("mapping/rate", _mapping_frequency, 5.0f);
-  param_loader.loadParam("mapping/publish_rate", _map_publish_period, 0.5f);
+  _handlers->param_loader->loadParam("mapping/remap_tf", _remap_tf, false);
+  _handlers->param_loader->loadParam("mapping/line_resolution", _resolution_line, 0.2f);
+  _handlers->param_loader->loadParam("mapping/plane_resolution", _resolution_plane, 0.4f);
+  _handlers->param_loader->loadParam("mapping/rate", _mapping_frequency, 5.0f);
+  _handlers->param_loader->loadParam("mapping/publish_rate", _map_publish_period, 0.5f);
 
   _map_publish_period = 1.0f / _map_publish_period;
 
@@ -44,10 +36,10 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
     }
   }
 
-  _pub_laser_cloud_map        = nh_.advertise<sensor_msgs::PointCloud2>("map_out", 1);
-  _pub_odom_global            = nh_.advertise<nav_msgs::Odometry>("odom_global_out", 1);
-  _pub_path                   = nh_.advertise<nav_msgs::Path>("path_out", 1);
-  _pub_eigenvalue             = nh_.advertise<mrs_msgs::Float64ArrayStamped>("eigenvalues", 1);
+  _pub_laser_cloud_map = nh_.advertise<sensor_msgs::PointCloud2>("map_out", 1);
+  _pub_odom_global     = nh_.advertise<nav_msgs::Odometry>("odom_global_out", 1);
+  _pub_path            = nh_.advertise<nav_msgs::Path>("path_out", 1);
+  _pub_eigenvalue      = nh_.advertise<mrs_msgs::Float64ArrayStamped>("eigenvalues", 1);
 
   if (_mapping_frequency > 0.0f) {
     _timer_mapping_loop = nh_.createTimer(ros::Rate(_mapping_frequency), &AloamMapping::timerMapping, this, true, true);
@@ -64,7 +56,7 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
 /*//{ setData() */
 void AloamMapping::setData(const std::shared_ptr<MappingData> data) {
 
-  mrs_lib::Routine profiler_routine = _profiler->createRoutine("aloamMappingSetData");
+  mrs_lib::Routine profiler_routine = _handlers->profiler->createRoutine("aloamMappingSetData");
 
   {
     std::lock_guard lock(_mutex_mapping_data);
@@ -84,7 +76,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
       continue;
     }
 
-    mrs_lib::ScopeTimer timer = mrs_lib::ScopeTimer("ALOAM::FeatureExtraction::timerMapping", _scope_timer_logger, _enable_scope_timer);
+    mrs_lib::ScopeTimer timer = mrs_lib::ScopeTimer("ALOAM::FeatureExtraction::timerMapping", _handlers->scope_timer_logger, _handlers->enable_scope_timer);
 
     /*//{ Load latest odometry data (blocks for _cv_mapping_data and timeouts if blocking takes longer than 1.0/_mapping_frequency) */
     ros::Time                       time_aloam_odometry;
@@ -121,7 +113,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
     timer.checkpoint("loaded data");
 
-    mrs_lib::Routine profiler_routine = _profiler->createRoutine("timerMapping", _mapping_frequency, 0.1, event);
+    mrs_lib::Routine profiler_routine = _handlers->profiler->createRoutine("timerMapping", _mapping_frequency, 0.1, event);
 
     tf::vectorTFToEigen(aloam_odometry.getOrigin(), _t_wodom_curr);
     tf::quaternionTFToEigen(aloam_odometry.getRotation(), _q_wodom_curr);
@@ -574,15 +566,15 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     tf::quaternionEigenToTF(_q_w_curr, tf_q);
     tf_lidar.setRotation(tf_q);
 
-    tf::Transform tf_fcu = tf_lidar * _tf_lidar_to_fcu;
+    tf::Transform tf_fcu = tf_lidar * _handlers->tf_lidar_in_fcu_frame;
 
     geometry_msgs::TransformStamped tf_msg;
     tf_msg.header.stamp    = time_aloam_odometry;
-    tf_msg.header.frame_id = _frame_fcu;
+    tf_msg.header.frame_id = _handlers->frame_fcu;
     if (_remap_tf) {
-      tf_msg.child_frame_id = _frame_map + "_orig";
+      tf_msg.child_frame_id = _handlers->frame_map + "_orig";
     } else {
-      tf_msg.child_frame_id = _frame_map;
+      tf_msg.child_frame_id = _handlers->frame_map;
     }
     tf::transformTFToMsg(tf_fcu.inverse(), tf_msg.transform);
 
@@ -595,7 +587,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
     // Create nav_msgs::Odometry msg
     const nav_msgs::Odometry::Ptr fcu_odom_msg = boost::make_shared<nav_msgs::Odometry>();
-    fcu_odom_msg->header.frame_id              = _frame_map;
+    fcu_odom_msg->header.frame_id              = _handlers->frame_map;
     fcu_odom_msg->header.stamp                 = time_aloam_odometry;
     tf::pointTFToMsg(tf_fcu.getOrigin(), fcu_odom_msg->pose.pose.position);
     tf::quaternionTFToMsg(tf_fcu.getRotation(), fcu_odom_msg->pose.pose.orientation);
@@ -625,7 +617,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
     // Publish nav_msgs::Odometry msg
     if (_pub_odom_global.getNumSubscribers() > 0) {
-      fcu_odom_msg->child_frame_id = _frame_fcu;
+      fcu_odom_msg->child_frame_id = _handlers->frame_fcu;
       try {
         _pub_odom_global.publish(fcu_odom_msg);
       }
@@ -647,7 +639,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
       const sensor_msgs::PointCloud2::Ptr map_msg = boost::make_shared<sensor_msgs::PointCloud2>();
       pcl::toROSMsg(map_pcl, *map_msg);
       map_msg->header.stamp    = time_aloam_odometry;
-      map_msg->header.frame_id = _frame_map;
+      map_msg->header.frame_id = _handlers->frame_map;
 
       try {
         _pub_laser_cloud_map.publish(map_msg);
@@ -671,7 +663,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     /*   const sensor_msgs::PointCloud2::Ptr cloud_full_res_msg = boost::make_shared<sensor_msgs::PointCloud2>(); */
     /*   pcl::toROSMsg(*cloud_full_res, *cloud_full_res_msg); */
     /*   cloud_full_res_msg->header.stamp    = time_aloam_odometry; */
-    /*   cloud_full_res_msg->header.frame_id = _frame_map; */
+    /*   cloud_full_res_msg->header.frame_id = _handlers->frame_map; */
 
     /*   try { */
     /*     _pub_laser_cloud_registered.publish(cloud_full_res_msg); */
@@ -685,8 +677,9 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
     _frame_count++;
 
-    const auto& time_mapping = timer.getLifetime();
-    ROS_INFO("[Aloam] Run time: %ld ms (FE: %ld | O: %ld | M: %ld)", time_feature_extraction + time_odometry + time_mapping, time_feature_extraction, time_odometry, time_mapping);
+    const auto &time_mapping = timer.getLifetime();
+    ROS_INFO("[Aloam] Run time: %ld ms (FE: %ld | O: %ld | M: %ld)", time_feature_extraction + time_odometry + time_mapping, time_feature_extraction,
+             time_odometry, time_mapping);
   }
 }
 /*//}*/
@@ -751,15 +744,15 @@ void AloamMapping::setTransform(const Eigen::Vector3d &t, const Eigen::Quaternio
   tf::quaternionEigenToTF(_q_w_curr, tf_q);
   tf_lidar.setRotation(tf_q);
 
-  tf::Transform tf_fcu = tf_lidar * _tf_lidar_to_fcu;
+  tf::Transform tf_fcu = tf_lidar * _handlers->tf_lidar_in_fcu_frame;
 
   geometry_msgs::TransformStamped tf_msg;
   tf_msg.header.stamp    = stamp;
-  tf_msg.header.frame_id = _frame_fcu;
+  tf_msg.header.frame_id = _handlers->frame_fcu;
   if (_remap_tf) {
-    tf_msg.child_frame_id = _frame_map + "_orig";
+    tf_msg.child_frame_id = _handlers->frame_map + "_orig";
   } else {
-    tf_msg.child_frame_id = _frame_map;
+    tf_msg.child_frame_id = _handlers->frame_map;
   }
   tf::transformTFToMsg(tf_fcu.inverse(), tf_msg.transform);
 
@@ -772,7 +765,7 @@ void AloamMapping::setTransform(const Eigen::Vector3d &t, const Eigen::Quaternio
 
   // Create nav_msgs::Odometry msg
   nav_msgs::Odometry::Ptr fcu_odom_msg = boost::make_shared<nav_msgs::Odometry>();
-  fcu_odom_msg->header.frame_id        = _frame_map;
+  fcu_odom_msg->header.frame_id        = _handlers->frame_map;
   fcu_odom_msg->header.stamp           = stamp;
   tf::pointTFToMsg(tf_fcu.getOrigin(), fcu_odom_msg->pose.pose.position);
   tf::quaternionTFToMsg(tf_fcu.getRotation(), fcu_odom_msg->pose.pose.orientation);
@@ -801,7 +794,7 @@ void AloamMapping::setTransform(const Eigen::Vector3d &t, const Eigen::Quaternio
 
   // Publish nav_msgs::Odometry msg
   if (_pub_odom_global.getNumSubscribers() > 0) {
-    fcu_odom_msg->child_frame_id = _frame_fcu;
+    fcu_odom_msg->child_frame_id = _handlers->frame_fcu;
     try {
       _pub_odom_global.publish(fcu_odom_msg);
     }
