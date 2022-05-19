@@ -136,7 +136,6 @@ struct MappingData
   tf::Transform                   odometry;
   pcl::PointCloud<PointType>::Ptr cloud_corners_last;
   pcl::PointCloud<PointType>::Ptr cloud_surfs_last;
-  pcl::PointCloud<PointType>::Ptr cloud_full_res;
 };
 
 class AloamMapping {
@@ -175,7 +174,6 @@ private:
 
   // publishers and subscribers
   ros::Publisher _pub_laser_cloud_map;
-  ros::Publisher _pub_laser_cloud_registered;
   ros::Publisher _pub_odom_global;
   ros::Publisher _pub_path;
   ros::Publisher _pub_eigenvalue;

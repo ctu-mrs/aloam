@@ -93,7 +93,7 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
 
   timer.checkpoint("parsing lidar data");
 
-  auto &points = cloud_wo_nans->points;
+  const auto &points = cloud_wo_nans->points;
 
   std::vector<float> cloudCurvature;
   std::vector<int>   cloudSortInd;
@@ -127,8 +127,6 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
   indices_corners_less_sharp->reserve(cloud_size);
   indices_surfs_flat->reserve(cloud_size);
   indices_surfs_less_flat->reserve(cloud_size);
-
-  /* const pcl::PointCloud<PointType>::Ptr cloud_surfs_less_flat = boost::make_shared<pcl::PointCloud<PointType>>(); */
 
   const static double CURVATURE_THRD = 0.1;
 
@@ -288,11 +286,6 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
   std::uint64_t stamp_pcl;
   pcl_conversions::toPCL(laserCloudMsg->header.stamp, stamp_pcl);
   cloud_wo_nans->header.stamp = stamp_pcl;
-
-  // TODO: FSData objects
-  feature_selection::FSData    fs_data;
-  feature_selection::Indices_t feature_indices_in_raw;
-  fs_data.setCloud(cloud_raw, feature_indices_in_raw);
 
   const std::shared_ptr<OdometryData> odometry_data = std::make_shared<OdometryData>();
 

@@ -45,7 +45,6 @@ AloamMapping::AloamMapping(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoade
   }
 
   _pub_laser_cloud_map        = nh_.advertise<sensor_msgs::PointCloud2>("map_out", 1);
-  _pub_laser_cloud_registered = nh_.advertise<sensor_msgs::PointCloud2>("scan_registered_out", 1);
   _pub_odom_global            = nh_.advertise<nav_msgs::Odometry>("odom_global_out", 1);
   _pub_path                   = nh_.advertise<nav_msgs::Path>("path_out", 1);
   _pub_eigenvalue             = nh_.advertise<mrs_msgs::Float64ArrayStamped>("eigenvalues", 1);
@@ -92,7 +91,6 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     tf::Transform                   aloam_odometry;
     pcl::PointCloud<PointType>::Ptr features_corners_last;
     pcl::PointCloud<PointType>::Ptr features_surfs_last;
-    pcl::PointCloud<PointType>::Ptr cloud_full_res;
 
     std::chrono::milliseconds::rep time_feature_extraction;
     std::chrono::milliseconds::rep time_odometry;
@@ -115,7 +113,6 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
       aloam_odometry        = _mapping_data->odometry;
       features_corners_last = _mapping_data->cloud_corners_last;
       features_surfs_last   = _mapping_data->cloud_surfs_last;
-      cloud_full_res        = _mapping_data->cloud_full_res;
 
       time_feature_extraction = _mapping_data->time_feature_extraction;
       time_odometry           = _mapping_data->time_odometry;
@@ -662,26 +659,27 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     }
 
     // Publish registered sensor data
-    if (_pub_laser_cloud_registered.getNumSubscribers() > 0) {
-      // TODO: this pcl might be published in lidar frame instead of map saving some load.
-      // or it might not be published at all as the data are already published by sensor and TFs are published above
-      const int cloud_full_resNum = cloud_full_res->points.size();
-      for (int i = 0; i < cloud_full_resNum; i++) {
-        pointAssociateToMap(&cloud_full_res->points.at(i), &cloud_full_res->points.at(i));
-      }
+    // REMOVED: use TFs to visualize
+    /* if (_pub_laser_cloud_registered.getNumSubscribers() > 0) { */
+    /*   // TODO: this pcl might be published in lidar frame instead of map saving some load. */
+    /*   // or it might not be published at all as the data are already published by sensor and TFs are published above */
+    /*   const int cloud_full_resNum = cloud_full_res->points.size(); */
+    /*   for (int i = 0; i < cloud_full_resNum; i++) { */
+    /*     pointAssociateToMap(&cloud_full_res->points.at(i), &cloud_full_res->points.at(i)); */
+    /*   } */
 
-      const sensor_msgs::PointCloud2::Ptr cloud_full_res_msg = boost::make_shared<sensor_msgs::PointCloud2>();
-      pcl::toROSMsg(*cloud_full_res, *cloud_full_res_msg);
-      cloud_full_res_msg->header.stamp    = time_aloam_odometry;
-      cloud_full_res_msg->header.frame_id = _frame_map;
+    /*   const sensor_msgs::PointCloud2::Ptr cloud_full_res_msg = boost::make_shared<sensor_msgs::PointCloud2>(); */
+    /*   pcl::toROSMsg(*cloud_full_res, *cloud_full_res_msg); */
+    /*   cloud_full_res_msg->header.stamp    = time_aloam_odometry; */
+    /*   cloud_full_res_msg->header.frame_id = _frame_map; */
 
-      try {
-        _pub_laser_cloud_registered.publish(cloud_full_res_msg);
-      }
-      catch (...) {
-        ROS_ERROR("[AloamMapping]: Exception caught during publishing topic %s.", _pub_laser_cloud_registered.getTopic().c_str());
-      }
-    }
+    /*   try { */
+    /*     _pub_laser_cloud_registered.publish(cloud_full_res_msg); */
+    /*   } */
+    /*   catch (...) { */
+    /*     ROS_ERROR("[AloamMapping]: Exception caught during publishing topic %s.", _pub_laser_cloud_registered.getTopic().c_str()); */
+    /*   } */
+    /* } */
 
     /*//}*/
 

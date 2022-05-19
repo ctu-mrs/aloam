@@ -55,7 +55,6 @@
       <!-- Publishers -->
       <remap from="~path_out" to="slam/path"/>
       <remap from="~map_out" to="slam/map"/>
-      <remap from="~scan_registered_out" to="slam/scan_registered"/>
       <remap from="~eigenvalues" to="slam/eigenvalues"/>
 
       <remap from="~odom_local_out" to="slam/odom_local" />

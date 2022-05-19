@@ -77,10 +77,9 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   pcl::PointCloud<PointType>::Ptr surf_points_less_flat;
   unsigned int                    proc_points_count;
 
-  ros::Time                       stamp;
-  std::uint64_t                   stamp_pcl;
-  pcl::PointCloud<PointType>::Ptr laser_cloud_full_res;
-  std::chrono::milliseconds::rep  time_feature_extraction;
+  ros::Time                      stamp;
+  std::uint64_t                  stamp_pcl;
+  std::chrono::milliseconds::rep time_feature_extraction;
   {
     std::scoped_lock lock(_mutex_odometry_data);
     _has_new_data = false;
@@ -93,7 +92,6 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     corner_points_less_sharp = _odometry_data->manager_corners_less_sharp->getUnorderedCloudPtr();
     surf_points_flat         = _odometry_data->manager_surfs_flat->getUnorderedCloudPtr();
     surf_points_less_flat    = _odometry_data->manager_surfs_less_flat->getUnorderedCloudPtr();
-    laser_cloud_full_res     = _odometry_data->manager_finite_points->getUnorderedCloudPtr();
     time_feature_extraction  = _odometry_data->time_feature_extraction;
   }
   /*//}*/
@@ -102,6 +100,11 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     ROS_WARN_THROTTLE(1.0, "[AloamOdometry]: Received an empty input cloud, skipping!");
     return;
   }
+
+  // TODO: FSData objects
+  /* feature_selection::FSData    fs_data; */
+  /* feature_selection::Indices_t feature_indices_in_raw; */
+  /* fs_data.setCloud(cloud_raw, feature_indices_in_raw); */
 
   timer.checkpoint("loaded data");
 
@@ -348,21 +351,15 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
 
   /*//{ Save odometry data to AloamMapping */
   {
-    std::scoped_lock                lock(_mutex_odometry_process);
-    pcl::PointCloud<PointType>::Ptr laserCloudTemp = corner_points_less_sharp;
-    corner_points_less_sharp                       = _features_corners_last;
-    _features_corners_last                         = laserCloudTemp;
-
-    laserCloudTemp        = surf_points_less_flat;
-    surf_points_less_flat = _features_surfs_last;
-    _features_surfs_last  = laserCloudTemp;
+    std::scoped_lock lock(_mutex_odometry_process);
+    _features_corners_last = corner_points_less_sharp;
+    _features_surfs_last   = surf_points_less_flat;
 
     _features_corners_last->header.stamp = stamp_pcl;
     _features_surfs_last->header.stamp   = stamp_pcl;
 
     _features_corners_last->header.frame_id = _frame_lidar;
     _features_surfs_last->header.frame_id   = _frame_lidar;
-    laser_cloud_full_res->header.frame_id   = _frame_lidar;
 
     const std::shared_ptr<MappingData> mapping_data = std::make_shared<MappingData>();
 
@@ -370,8 +367,6 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     mapping_data->odometry           = tf_lidar;
     mapping_data->cloud_corners_last = _features_corners_last;
     mapping_data->cloud_surfs_last   = _features_surfs_last;
-    // TODO: is it required to pass
-    mapping_data->cloud_full_res = laser_cloud_full_res;
 
     mapping_data->time_feature_extraction = time_feature_extraction;
     mapping_data->time_odometry           = timer.getLifetime();
