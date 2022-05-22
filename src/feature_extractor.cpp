@@ -64,6 +64,8 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
         ROS_ERROR("[AloamFeatureExtractor] Laser cloud msg does not contain field `ring`. Ending.");
         ros::shutdown();
       }
+
+      // TODO: set LUT parameters to feature selection
     }
     return;
   }

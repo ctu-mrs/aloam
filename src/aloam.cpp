@@ -202,12 +202,14 @@ tf::Transform AloamSlam::getStaticTf(const std::string &frame_from, const std::s
   ROS_INFO_ONCE("[Aloam]: Looking for transform from %s to %s", frame_from.c_str(), frame_to.c_str());
   geometry_msgs::TransformStamped tf_lidar_fcu;
 
+  bool found = false;
+
   if (custom_buffer) {
 
-    while (true) {
+    while (ros::ok() && !found) {
       try {
         tf_lidar_fcu = tf_buffer->lookupTransform(frame_to, frame_from, ros::Time(0));
-        break;
+        found        = true;
       }
       catch (...) {
         ros::Duration(0.1).sleep();
@@ -217,17 +219,20 @@ tf::Transform AloamSlam::getStaticTf(const std::string &frame_from, const std::s
   } else {
 
     mrs_lib::Transformer transformer("Aloam");
-    ros::Duration(1.0).sleep();  // Wait for TF buffer to fill
+    transformer.setLookupTimeout(ros::Duration(0.1));
 
-    auto ret = transformer.getTransform(frame_from, frame_to, ros::Time(0));
-    while (!ret) {
-      ret = transformer.getTransform(frame_from, frame_to, ros::Time(0));
-      ros::Duration(0.1).sleep();
+    while (ros::ok() && !found) {
+
+      const auto ret = transformer.getTransform(frame_from, frame_to, ros::Time(0));
+      if (ret.has_value()) {
+        found        = true;
+        tf_lidar_fcu = ret.value();
+      }
     }
-    tf_lidar_fcu = ret.value();
   }
 
-  ROS_INFO("[Aloam]: Successfully found transformation from %s to %s.", frame_from.c_str(), frame_to.c_str());
+  ROS_INFO_COND(found, "[Aloam]: Successfully found transformation from %s to %s.", frame_from.c_str(), frame_to.c_str());
+
   tf::Transform tf_ret;
   tf::transformMsgToTF(tf_lidar_fcu.transform, tf_ret);
   return tf_ret;

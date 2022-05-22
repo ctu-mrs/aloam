@@ -77,8 +77,8 @@ using CloudManagerPtr = std::shared_ptr<CloudManager>;
 struct MappingData
 {
 
-  std::chrono::milliseconds::rep time_feature_extraction;
-  std::chrono::milliseconds::rep time_odometry;
+  float time_feature_extraction;
+  float time_odometry;
 
   ros::Time                       stamp_ros;
   tf::Transform                   odometry;

@@ -8,7 +8,7 @@ namespace aloam_slam
 
 struct OdometryData
 {
-  std::chrono::milliseconds::rep time_feature_extraction;
+  float time_feature_extraction;
 
   ros::Time     stamp_ros;
   std::uint64_t stamp_pcl;

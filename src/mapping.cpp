@@ -84,8 +84,8 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     pcl::PointCloud<PointType>::Ptr features_corners_last;
     pcl::PointCloud<PointType>::Ptr features_surfs_last;
 
-    std::chrono::milliseconds::rep time_feature_extraction;
-    std::chrono::milliseconds::rep time_odometry;
+    float time_feature_extraction;
+    float time_odometry;
     {
       std::unique_lock lock(_mutex_mapping_data);
 
@@ -680,7 +680,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     _frame_count++;
 
     const auto &time_mapping = timer.getLifetime();
-    ROS_INFO("[Aloam] Run time: %ld ms (FE: %ld | O: %ld | M: %ld)", time_feature_extraction + time_odometry + time_mapping, time_feature_extraction,
+    ROS_INFO("[Aloam] Run time: %.1f ms (FE: %.0f | O: %.0f | M: %.0f)", time_feature_extraction + time_odometry + time_mapping, time_feature_extraction,
              time_odometry, time_mapping);
   }
 }
