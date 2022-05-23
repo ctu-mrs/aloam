@@ -8,7 +8,7 @@ namespace aloam_slam
 
 struct OdometryData
 {
-  float time_feature_extraction;
+  aloam_slam::FeatureExtractionDiagnostics::Ptr diagnostics_fe;
 
   ros::Time     stamp_ros;
   std::uint64_t stamp_pcl;
@@ -52,6 +52,7 @@ private:
   Eigen::Vector3d    _t_w_curr;
 
   // Feature extractor newest data
+  std::condition_variable       _cv_odometry_data;
   std::mutex                    _mutex_odometry_data;
   bool                          _has_new_data = false;
   std::shared_ptr<OdometryData> _odometry_data;

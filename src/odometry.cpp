@@ -87,7 +87,7 @@ AloamOdometry::AloamOdometry(const std::shared_ptr<CommonHandlers_t> handlers, c
   /* _sub_handler_orientation = mrs_lib::SubscribeHandler<nav_msgs::Odometry>(shopts, "orientation_in", mrs_lib::no_timeout); */
 
   _pub_odometry_local  = nh_.advertise<nav_msgs::Odometry>("odom_local_out", 1);
-  _timer_odometry_loop = nh_.createTimer(ros::Rate(1000), &AloamOdometry::timerOdometry, this, false, true);
+  _timer_odometry_loop = nh_.createTimer(ros::Rate(_handlers->frequency), &AloamOdometry::timerOdometry, this, false, true);
 }
 //}
 
@@ -98,31 +98,33 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     return;
   }
 
+  std::unique_ptr<mrs_lib::ScopeTimer> timer;
+  pcl::PointCloud<PointType>::Ptr      corner_points_sharp;
+  pcl::PointCloud<PointType>::Ptr      corner_points_less_sharp;
+  pcl::PointCloud<PointType>::Ptr      surf_points_flat;
+  pcl::PointCloud<PointType>::Ptr      surf_points_less_flat;
+  unsigned int                         proc_points_count;
+
+  ros::Time                                     stamp;
+  std::uint64_t                                 stamp_pcl;
+  aloam_slam::FeatureExtractionDiagnostics::Ptr diagnostics_fe;
+
   /*//{ Load latest features */
-  bool has_new_data;
   {
-    std::scoped_lock lock(_mutex_odometry_data);
-    has_new_data = _has_new_data;
-  }
+    std::unique_lock lock(_mutex_odometry_data);
 
-  if (!has_new_data) {
-    return;
-  }
+    const std::chrono::duration<float> timeout(_scan_period_sec);
+    bool                               has_new_data = false;
 
-  mrs_lib::ScopeTimer timer = mrs_lib::ScopeTimer("ALOAM::FeatureExtraction::timerOdometry", _handlers->scope_timer_logger, _handlers->enable_scope_timer);
+    if (_cv_odometry_data.wait_for(lock, timeout) == std::cv_status::no_timeout) {
+      has_new_data = _has_new_data;
+    }
 
-  pcl::PointCloud<PointType>::Ptr corner_points_sharp;
-  pcl::PointCloud<PointType>::Ptr corner_points_less_sharp;
-  pcl::PointCloud<PointType>::Ptr surf_points_flat;
-  pcl::PointCloud<PointType>::Ptr surf_points_less_flat;
-  unsigned int                    proc_points_count;
+    if (!has_new_data) {
+      return;
+    }
 
-  ros::Time                      stamp;
-  std::uint64_t                  stamp_pcl;
-  std::chrono::milliseconds::rep time_feature_extraction;
-  {
-    std::scoped_lock lock(_mutex_odometry_data);
-    _has_new_data = false;
+    timer = std::make_unique<mrs_lib::ScopeTimer>("ALOAM::FeatureExtraction::timerOdometry", _handlers->scope_timer_logger, _handlers->enable_scope_timer);
 
     proc_points_count = _odometry_data->manager_finite_points->getSize();
     stamp             = _odometry_data->stamp_ros;
@@ -132,8 +134,9 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     corner_points_less_sharp = _odometry_data->manager_corners_less_sharp->getUnorderedCloudPtr();
     surf_points_flat         = _odometry_data->manager_surfs_flat->getUnorderedCloudPtr();
     surf_points_less_flat    = _odometry_data->manager_surfs_less_flat->getUnorderedCloudPtr();
-    time_feature_extraction  = _odometry_data->time_feature_extraction;
+    diagnostics_fe           = _odometry_data->diagnostics_fe;
   }
+
   /*//}*/
 
   if (proc_points_count == 0) {
@@ -141,12 +144,16 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     return;
   }
 
+  const std::shared_ptr<MappingData> mapping_data = std::make_shared<MappingData>();
+  mapping_data->diagnostics_odometry              = boost::make_shared<aloam_slam::OdometryDiagnostics>();
+
   // TODO: FSData objects
   /* feature_selection::FSData    fs_data; */
   /* feature_selection::Indices_t feature_indices_in_raw; */
   /* fs_data.setCloud(cloud_raw, feature_indices_in_raw); */
 
-  timer.checkpoint("loaded data");
+  timer->checkpoint("loading data");
+  mapping_data->diagnostics_odometry->ms_loading_data = timer->getLifetime();
 
   mrs_lib::Routine profiler_routine = _handlers->profiler->createRoutine("timerOdometry", 1.0f / _scan_period_sec, 0.05, event);
 
@@ -188,23 +195,25 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
 
         int closestPointInd = -1, minPointInd2 = -1;
         if (pointSearchSqDis.at(0) < DISTANCE_SQ_THRESHOLD) {
-          closestPointInd        = pointSearchInd.at(0);
-          int closestPointScanID = int(_features_corners_last->points.at(closestPointInd).intensity);
+          closestPointInd              = pointSearchInd.at(0);
+          const int closestPointScanID = int(_features_corners_last->points.at(closestPointInd).intensity);
 
           double minPointSqDis2 = DISTANCE_SQ_THRESHOLD;
           // search in the direction of increasing scan line
           for (int j = closestPointInd + 1; j < (int)_features_corners_last->points.size(); ++j) {
             // if in the same scan line, continue
-            if (int(_features_corners_last->points.at(j).intensity) <= closestPointScanID)
+            if (int(_features_corners_last->points.at(j).intensity) <= closestPointScanID) {
               continue;
+            }
 
             // if not in nearby scans, end the loop
-            if (int(_features_corners_last->points.at(j).intensity) > (closestPointScanID + NEARBY_SCAN))
+            if (int(_features_corners_last->points.at(j).intensity) > (closestPointScanID + NEARBY_SCAN)) {
               break;
+            }
 
-            double pointSqDis = (_features_corners_last->points.at(j).x - pointSel.x) * (_features_corners_last->points.at(j).x - pointSel.x) +
-                                (_features_corners_last->points.at(j).y - pointSel.y) * (_features_corners_last->points.at(j).y - pointSel.y) +
-                                (_features_corners_last->points.at(j).z - pointSel.z) * (_features_corners_last->points.at(j).z - pointSel.z);
+            const double pointSqDis = (_features_corners_last->points.at(j).x - pointSel.x) * (_features_corners_last->points.at(j).x - pointSel.x) +
+                                      (_features_corners_last->points.at(j).y - pointSel.y) * (_features_corners_last->points.at(j).y - pointSel.y) +
+                                      (_features_corners_last->points.at(j).z - pointSel.z) * (_features_corners_last->points.at(j).z - pointSel.z);
 
             if (pointSqDis < minPointSqDis2) {
               // find nearer point
@@ -225,9 +234,9 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
               break;
             }
 
-            double pointSqDis = (_features_corners_last->points.at(j).x - pointSel.x) * (_features_corners_last->points.at(j).x - pointSel.x) +
-                                (_features_corners_last->points.at(j).y - pointSel.y) * (_features_corners_last->points.at(j).y - pointSel.y) +
-                                (_features_corners_last->points.at(j).z - pointSel.z) * (_features_corners_last->points.at(j).z - pointSel.z);
+            const double pointSqDis = (_features_corners_last->points.at(j).x - pointSel.x) * (_features_corners_last->points.at(j).x - pointSel.x) +
+                                      (_features_corners_last->points.at(j).y - pointSel.y) * (_features_corners_last->points.at(j).y - pointSel.y) +
+                                      (_features_corners_last->points.at(j).z - pointSel.z) * (_features_corners_last->points.at(j).z - pointSel.z);
 
             if (pointSqDis < minPointSqDis2) {
               // find nearer point
@@ -270,8 +279,9 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
           // search in the direction of increasing scan line
           for (int j = closestPointInd + 1; j < (int)_features_surfs_last->points.size(); ++j) {
             // if not in nearby scans, end the loop
-            if (int(_features_surfs_last->points.at(j).intensity) > (closestPointScanID + NEARBY_SCAN))
+            if (int(_features_surfs_last->points.at(j).intensity) > (closestPointScanID + NEARBY_SCAN)) {
               break;
+            }
 
             const double pointSqDis = (_features_surfs_last->points.at(j).x - pointSel.x) * (_features_surfs_last->points.at(j).x - pointSel.x) +
                                       (_features_surfs_last->points.at(j).y - pointSel.y) * (_features_surfs_last->points.at(j).y - pointSel.y) +
@@ -292,8 +302,9 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
           // search in the direction of decreasing scan line
           for (int j = closestPointInd - 1; j >= 0; --j) {
             // if not in nearby scans, end the loop
-            if (int(_features_surfs_last->points.at(j).intensity) < (closestPointScanID - NEARBY_SCAN))
+            if (int(_features_surfs_last->points.at(j).intensity) < (closestPointScanID - NEARBY_SCAN)) {
               break;
+            }
 
             const double pointSqDis = (_features_surfs_last->points.at(j).x - pointSel.x) * (_features_surfs_last->points.at(j).x - pointSel.x) +
                                       (_features_surfs_last->points.at(j).y - pointSel.y) * (_features_surfs_last->points.at(j).y - pointSel.y) +
@@ -350,7 +361,8 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
 
   /*//}*/
 
-  timer.checkpoint("computing local odometry");
+  timer->checkpoint("computing local odometry");
+  mapping_data->diagnostics_odometry->ms_optimization = timer->getLifetime();
 
   geometry_msgs::Quaternion ori;
   tf::quaternionEigenToMsg(_q_w_curr, ori);
@@ -401,15 +413,13 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     _features_corners_last->header.frame_id = _handlers->frame_lidar;
     _features_surfs_last->header.frame_id   = _handlers->frame_lidar;
 
-    const std::shared_ptr<MappingData> mapping_data = std::make_shared<MappingData>();
-
     mapping_data->stamp_ros          = stamp;
     mapping_data->odometry           = tf_lidar;
     mapping_data->cloud_corners_last = _features_corners_last;
     mapping_data->cloud_surfs_last   = _features_surfs_last;
 
-    mapping_data->time_feature_extraction = time_feature_extraction;
-    mapping_data->time_odometry           = timer.getLifetime();
+    mapping_data->diagnostics_fe                 = diagnostics_fe;
+    mapping_data->diagnostics_odometry->ms_total = timer->getLifetime();
 
     _aloam_mapping->setData(mapping_data);
   }
@@ -472,9 +482,13 @@ void AloamOdometry::setData(const std::shared_ptr<OdometryData> data) {
 
   mrs_lib::Routine profiler_routine = _handlers->profiler->createRoutine("aloamOdometrySetData");
 
-  std::scoped_lock lock(_mutex_odometry_data);
-  _has_new_data  = true;
-  _odometry_data = data;
+  {
+    std::unique_lock lock(_mutex_odometry_data);
+    _has_new_data  = true;
+    _odometry_data = data;
+  }
+
+  _cv_odometry_data.notify_all();
 }
 /*//}*/
 

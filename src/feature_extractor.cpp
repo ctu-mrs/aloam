@@ -70,6 +70,8 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
     return;
   }
 
+  const std::shared_ptr<OdometryData> odometry_data = std::make_shared<OdometryData>();
+
   // Process input data per row
   const pcl::PointCloud<PointType>::Ptr                 cloud_raw     = boost::make_shared<pcl::PointCloud<PointType>>();
   const pcl::PointCloud<PointType>::Ptr                 cloud_wo_nans = boost::make_shared<pcl::PointCloud<PointType>>();
@@ -84,6 +86,8 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
     return;
   }
 
+  odometry_data->diagnostics_fe                  = boost::make_shared<aloam_slam::FeatureExtractionDiagnostics>();
+  odometry_data->diagnostics_fe->ms_parsing_data = timer.getLifetime();
   timer.checkpoint("parsing lidar data");
 
   const auto &points = cloud_wo_nans->points;
@@ -272,15 +276,14 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
 
   /*//}*/
 
-  timer.checkpoint("parsing features");
+  timer.checkpoint("extracting features");
+  odometry_data->diagnostics_fe->ms_extracting_features = timer.getLifetime();
 
   std::uint64_t stamp_pcl;
   pcl_conversions::toPCL(laserCloudMsg->header.stamp, stamp_pcl);
 
   cloud_wo_nans->header.frame_id = _handlers->frame_lidar;
   cloud_wo_nans->header.stamp    = stamp_pcl;
-
-  const std::shared_ptr<OdometryData> odometry_data = std::make_shared<OdometryData>();
 
   odometry_data->stamp_ros                  = laserCloudMsg->header.stamp;
   odometry_data->stamp_pcl                  = stamp_pcl;
@@ -290,7 +293,7 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
   odometry_data->manager_corners_less_sharp = std::make_shared<CloudManager>(cloud_raw, indices_corners_less_sharp);
   odometry_data->manager_surfs_flat         = std::make_shared<CloudManager>(cloud_raw, indices_surfs_flat);
   odometry_data->manager_surfs_less_flat    = std::make_shared<CloudManager>(cloud_raw, indices_surfs_less_flat);
-  odometry_data->time_feature_extraction    = timer.getLifetime();
+  odometry_data->diagnostics_fe->ms_total   = timer.getLifetime();
 
   _aloam_odometry->setData(odometry_data);
 

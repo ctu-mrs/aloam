@@ -51,6 +51,17 @@ find_package(Eigen3 REQUIRED)
 set(Eigen_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIRS})
 set(Eigen_LIBRARIES ${Eigen_LIBRARIES})
 
+add_message_files(DIRECTORY msg FILES
+  AloamDiagnostics.msg
+  FeatureExtractionDiagnostics.msg
+  OdometryDiagnostics.msg
+  MappingDiagnostics.msg
+)
+
+generate_messages(DEPENDENCIES
+  geometry_msgs nav_msgs std_msgs mrs_msgs pcl_msgs
+)
+
 set(LIBRARIES
   AloamSlam
   )

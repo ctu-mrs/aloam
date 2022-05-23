@@ -54,6 +54,8 @@
       <remap from="~input_proc_diag_in" to="$(arg points_proc_diag_topic)" />
 
       <!-- Publishers -->
+      <remap from="~diag_out" to="slam/diagnostics"/>
+      <remap from="~fs_diag_out" to="slam/fs/diagnostics"/>
       <remap from="~path_out" to="slam/path"/>
       <remap from="~map_out" to="slam/map"/>
       <remap from="~eigenvalues" to="slam/eigenvalues"/>

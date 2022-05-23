@@ -7,6 +7,11 @@
 #include "aloam_slam/tic_toc.h"
 #include "aloam_slam/lidarFactor.hpp"
 
+#include "aloam_slam/AloamDiagnostics.h"
+#include "aloam_slam/FeatureExtractionDiagnostics.h"
+#include "aloam_slam/OdometryDiagnostics.h"
+#include "aloam_slam/MappingDiagnostics.h"
+
 #include <feature_selection/feature_selection.h>
 
 //}
@@ -76,9 +81,8 @@ using CloudManagerPtr = std::shared_ptr<CloudManager>;
 
 struct MappingData
 {
-
-  float time_feature_extraction;
-  float time_odometry;
+  aloam_slam::FeatureExtractionDiagnostics::Ptr diagnostics_fe;
+  aloam_slam::OdometryDiagnostics::Ptr          diagnostics_odometry;
 
   ros::Time                       stamp_ros;
   tf::Transform                   odometry;
@@ -120,6 +124,7 @@ private:
   ros::Publisher _pub_odom_global;
   ros::Publisher _pub_path;
   ros::Publisher _pub_eigenvalue;
+  ros::Publisher _pub_diag;
 
   // services
   ros::ServiceServer _srv_reset_mapping;
@@ -146,7 +151,7 @@ private:
   Eigen::Quaterniond _q_wodom_curr;
   Eigen::Vector3d    _t_wodom_curr;
 
-  long int _frame_count = 0;
+  uint32_t _frame_count = 0;
 
   int       _cloud_center_width  = 10;
   int       _cloud_center_height = 10;
