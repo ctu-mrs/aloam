@@ -13,12 +13,13 @@ struct OdometryData
   ros::Time     stamp_ros;
   std::uint64_t stamp_pcl;
 
-  pcl::PointCloud<PointType>::Ptr cloud_raw;
-  CloudManagerPtr                 manager_finite_points;
-  CloudManagerPtr                 manager_corners_sharp;
-  CloudManagerPtr                 manager_corners_less_sharp;
-  CloudManagerPtr                 manager_surfs_flat;
-  CloudManagerPtr                 manager_surfs_less_flat;
+  std::size_t finite_points_count;
+
+  pcl::PointCloud<PointType>::Ptr      cloud_raw;
+  feature_selection::FSCloudManagerPtr manager_corners_sharp;
+  feature_selection::FSCloudManagerPtr manager_corners_less_sharp;
+  feature_selection::FSCloudManagerPtr manager_surfs_flat;
+  feature_selection::FSCloudManagerPtr manager_surfs_less_flat;
 };
 
 class AloamOdometry {

@@ -23,6 +23,6 @@ feature_selection:
     resolution:
       range: 0.1   # [m]
       radius: 0.05 # [m]
-    max:
+    max: # the max values are dynamically increased if a greater value is queried
       range: 50.0  # [m]
       radius: 0.8  # [m]

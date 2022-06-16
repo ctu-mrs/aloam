@@ -285,15 +285,17 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
   cloud_wo_nans->header.frame_id = _handlers->frame_lidar;
   cloud_wo_nans->header.stamp    = stamp_pcl;
 
-  odometry_data->stamp_ros                  = laserCloudMsg->header.stamp;
-  odometry_data->stamp_pcl                  = stamp_pcl;
-  odometry_data->cloud_raw                  = cloud_raw;
-  odometry_data->manager_finite_points      = std::make_shared<CloudManager>(cloud_wo_nans);
-  odometry_data->manager_corners_sharp      = std::make_shared<CloudManager>(cloud_raw, indices_corners_sharp);
-  odometry_data->manager_corners_less_sharp = std::make_shared<CloudManager>(cloud_raw, indices_corners_less_sharp);
-  odometry_data->manager_surfs_flat         = std::make_shared<CloudManager>(cloud_raw, indices_surfs_flat);
-  odometry_data->manager_surfs_less_flat    = std::make_shared<CloudManager>(cloud_raw, indices_surfs_less_flat);
-  odometry_data->diagnostics_fe->ms_total   = timer.getLifetime();
+  odometry_data->stamp_ros           = laserCloudMsg->header.stamp;
+  odometry_data->stamp_pcl           = stamp_pcl;
+  odometry_data->cloud_raw           = cloud_raw;
+  odometry_data->finite_points_count = points.size();
+
+  odometry_data->manager_corners_sharp      = std::make_shared<feature_selection::FSCloudManager>(cloud_raw, indices_corners_sharp);
+  odometry_data->manager_corners_less_sharp = std::make_shared<feature_selection::FSCloudManager>(cloud_raw, indices_corners_less_sharp);
+  odometry_data->manager_surfs_flat         = std::make_shared<feature_selection::FSCloudManager>(cloud_raw, indices_surfs_flat);
+  odometry_data->manager_surfs_less_flat    = std::make_shared<feature_selection::FSCloudManager>(cloud_raw, indices_surfs_less_flat);
+
+  odometry_data->diagnostics_fe->ms_total = timer.getLifetime();
 
   _aloam_odometry->setData(odometry_data);
 

@@ -59,7 +59,7 @@ add_message_files(DIRECTORY msg FILES
 )
 
 generate_messages(DEPENDENCIES
-  geometry_msgs nav_msgs std_msgs mrs_msgs pcl_msgs
+  geometry_msgs nav_msgs std_msgs mrs_msgs pcl_msgs feature_selection
 )
 
 set(LIBRARIES

@@ -126,7 +126,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
 
     timer = std::make_unique<mrs_lib::ScopeTimer>("ALOAM::FeatureExtraction::timerOdometry", _handlers->scope_timer_logger, _handlers->enable_scope_timer);
 
-    proc_points_count = _odometry_data->manager_finite_points->getSize();
+    proc_points_count = _odometry_data->finite_points_count;
     stamp             = _odometry_data->stamp_ros;
     stamp_pcl         = _odometry_data->stamp_pcl;
 
