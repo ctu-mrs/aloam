@@ -4,7 +4,7 @@
   <arg name="points_proc_diag_topic" default="pcl_filter/diagnostics" />
 
   <!-- ENV VARS -->
-  <arg name="UAV_NAME" default="$(env UAV_NAME)" />
+  <arg name="UAV_NAME" default="$(optenv UAV_NAME)" />
   <arg name="ENABLE_PROFILER" default="$(optenv PROFILER false)" />
 
   <arg name="standalone" default="true" />
