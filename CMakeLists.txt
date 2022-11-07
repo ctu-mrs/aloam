@@ -19,6 +19,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# remove warning info from PCL
+set(PCL_FIND_QUIETLY INTERNAL)
+
 find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   nav_msgs
