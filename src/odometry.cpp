@@ -21,20 +21,20 @@ AloamOdometry::AloamOdometry(const std::shared_ptr<CommonHandlers_t> handlers, c
   feature_selection::FSOptionsMap_t          fs_options_map;
   feature_selection::FSLookUpTableParameters fs_lut_parameters;
 
-  const bool fs_enabled = _handlers->param_loader->loadParam2<bool>("feature_selection/enabled");
+  const bool fs_enabled = _handlers->param_loader->loadParamReusable<bool>("feature_selection/enabled");
 
   if (fs_enabled) {
 
-    const std::vector<std::string> fs_types = _handlers->param_loader->loadParam2<std::vector<std::string>>("feature_selection/types", {});
+    const std::vector<std::string> fs_types = _handlers->param_loader->loadParamReusable<std::vector<std::string>>("feature_selection/types", {});
 
     if (!fs_types.empty()) {
 
       // Load defaults
-      const std::string fs_default_method           = _handlers->param_loader->loadParam2<std::string>("feature_selection/method");
-      const bool        fs_default_keep_standalones = _handlers->param_loader->loadParam2<bool>("feature_selection/keep_standalone_features");
-      const double      fs_default_resolution       = _handlers->param_loader->loadParam2<double>("feature_selection/resolution");
-      const double      fs_default_keep_percentile  = _handlers->param_loader->loadParam2<double>("feature_selection/keep_percentile");
-      const int         fs_default_segment_count    = _handlers->param_loader->loadParam2<int>("feature_selection/segment_count");
+      const std::string fs_default_method           = _handlers->param_loader->loadParamReusable<std::string>("feature_selection/method");
+      const bool        fs_default_keep_standalones = _handlers->param_loader->loadParamReusable<bool>("feature_selection/keep_standalone_features");
+      const double      fs_default_resolution       = _handlers->param_loader->loadParamReusable<double>("feature_selection/resolution");
+      const double      fs_default_keep_percentile  = _handlers->param_loader->loadParamReusable<double>("feature_selection/keep_percentile");
+      const int         fs_default_segment_count    = _handlers->param_loader->loadParamReusable<int>("feature_selection/segment_count");
 
       // Load type-specifics
       for (const auto &type : fs_types) {
