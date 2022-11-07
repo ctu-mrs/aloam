@@ -2,3 +2,5 @@ install/tmp
 *.swp
 *.swo
 lib
+ 
+debug.sh

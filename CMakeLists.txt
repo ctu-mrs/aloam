@@ -43,6 +43,7 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_conversions
   pcl_msgs
   ouster_ros
+  feature_selection
   )
 
 find_package(PCL REQUIRED)
@@ -53,12 +54,23 @@ find_package(Eigen3 REQUIRED)
 set(Eigen_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIRS})
 set(Eigen_LIBRARIES ${Eigen_LIBRARIES})
 
+add_message_files(DIRECTORY msg FILES
+  AloamDiagnostics.msg
+  FeatureExtractionDiagnostics.msg
+  OdometryDiagnostics.msg
+  MappingDiagnostics.msg
+)
+
+generate_messages(DEPENDENCIES
+  geometry_msgs nav_msgs std_msgs mrs_msgs pcl_msgs feature_selection
+)
+
 set(LIBRARIES
   AloamSlam
   )
 
 catkin_package(
-  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs mrs_lib mrs_msgs eigen_conversions tf_conversions pcl_ros pcl_conversions pcl_msgs
+  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs mrs_lib mrs_msgs eigen_conversions tf_conversions pcl_ros pcl_conversions pcl_msgs feature_selection
   LIBRARIES ${LIBRARIES}
   )
 

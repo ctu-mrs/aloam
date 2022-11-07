@@ -33,6 +33,7 @@
     <node pkg="nodelet" type="nodelet" name="aloam" args="$(arg nodelet) aloam_slam/AloamSlam $(arg nodelet_manager)" output="screen" launch-prefix="bash -c 'sleep $(arg launch_delay); $0 $@'; $(arg launch_prefix)">
 
       <rosparam file="$(find aloam_slam)/config/aloam.yaml" command="load" />
+      <rosparam file="$(find aloam_slam)/config/feature_selection.yaml" command="load" />
       <rosparam if="$(eval not arg('custom_config') == '')" file="$(arg custom_config)" command="load" />
 
       <param name="enable_profiler" type="bool" value="$(arg ENABLE_PROFILER)" />
@@ -53,9 +54,10 @@
       <remap from="~input_proc_diag_in" to="$(arg points_proc_diag_topic)" />
 
       <!-- Publishers -->
+      <remap from="~diag_out" to="slam/diagnostics"/>
+      <remap from="~fs_diag_out" to="slam/fs/diagnostics"/>
       <remap from="~path_out" to="slam/path"/>
       <remap from="~map_out" to="slam/map"/>
-      <remap from="~scan_registered_out" to="slam/scan_registered"/>
       <remap from="~eigenvalues" to="slam/eigenvalues"/>
 
       <remap from="~odom_local_out" to="slam/odom_local" />

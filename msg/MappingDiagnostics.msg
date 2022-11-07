@@ -1,0 +1,4 @@
+float32 ms_loading_data
+float32 ms_associating_features
+float32 ms_adding_features_to_map
+float32 ms_total

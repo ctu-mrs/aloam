@@ -4,34 +4,27 @@ namespace aloam_slam
 {
 
 /*//{ FeatureExtractor() */
-FeatureExtractor::FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::ParamLoader param_loader, std::shared_ptr<mrs_lib::Profiler> profiler,
-                                   const std::shared_ptr<AloamOdometry> odometry, const std::string &map_frame, const float scan_period_sec,
-                                   const bool enable_scope_timer, const std::shared_ptr<mrs_lib::ScopeTimerLogger> scope_timer_logger)
-    : _profiler(profiler),
-      _odometry(odometry),
-      _frame_map(map_frame),
-      _scan_period_sec(scan_period_sec),
-      _scope_timer_logger(scope_timer_logger),
-      _enable_scope_timer(enable_scope_timer) {
+FeatureExtractor::FeatureExtractor(const std::shared_ptr<CommonHandlers_t> handlers, const std::shared_ptr<AloamOdometry> aloam_odometry) {
 
-  ros::NodeHandle nh_(parent_nh);
+  _handlers        = handlers;
+  _aloam_odometry  = aloam_odometry;
+  _scan_period_sec = 1.0f / _handlers->frequency;
+
+  ros::NodeHandle nh_(_handlers->nh);
 
   ros::Time::waitForValid();
 
-  param_loader.loadParam("vertical_fov", _vertical_fov_half, -1.0f);
-  param_loader.loadParam("scan_line", _number_of_rings, -1);
-
-  _has_required_parameters = scan_period_sec > 0.0f && _vertical_fov_half > 0.0f && _number_of_rings > 0;
+  _has_required_parameters = _scan_period_sec > 0.0f && _handlers->scan_lines > 0;
 
   if (_has_required_parameters) {
-    _ray_vert_delta = _vertical_fov_half / float(_number_of_rings - 1);  // vertical resolution
-    _vertical_fov_half /= 2.0;                                           // get half fov
 
-    _initialization_frames_delay = int(1.0 / scan_period_sec);
+    _initialization_frames_delay = int(1.0 / _scan_period_sec);
   } else {
     _sub_input_data_processing_diag =
         nh_.subscribe("input_proc_diag_in", 1, &FeatureExtractor::callbackInputDataProcDiag, this, ros::TransportHints().tcpNoDelay());
   }
+
+  /* _pub_dbg = nh_.advertise<sensor_msgs::PointCloud2>("fe/dbg", 1); */
 
   mrs_lib::SubscribeHandlerOptions shopts(nh_);
   shopts.node_name          = "FeatureExtractor";
@@ -58,102 +51,140 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
     ROS_WARN("[AloamFeatureExtractor]: Received empty laser cloud msg. Skipping frame.");
     return;
   }
-  mrs_lib::ScopeTimer timer            = mrs_lib::ScopeTimer("ALOAM::FeatureExtraction::callbackLaserCloud", _scope_timer_logger, _enable_scope_timer);
-  mrs_lib::Routine    profiler_routine = _profiler->createRoutine("callbackLaserCloud");
+  mrs_lib::ScopeTimer timer = mrs_lib::ScopeTimer("ALOAM::FeatureExtraction::callbackLaserCloud", _handlers->scope_timer_logger, _handlers->enable_scope_timer);
+  mrs_lib::Routine    profiler_routine = _handlers->profiler->createRoutine("callbackLaserCloud");
 
   // Skip 1s of data
   ROS_INFO_ONCE("[AloamFeatureExtractor]: Received first laser cloud msg.");
   if (_frame_count++ < _initialization_frames_delay) {
     if (_frame_count == 1) {
-      _data_have_ring_field = hasField("ring", laserCloudMsg);
-      ROS_INFO_COND(_data_have_ring_field, "[AloamFeatureExtractor]: Laser cloud msg contains field `ring`. Will use this information for data processing.");
+      if (hasField("ring", laserCloudMsg)) {
+        ROS_INFO("[AloamFeatureExtractor] Laser cloud msg contains field `ring`. Will use this information for data processing.");
+      } else {
+        ROS_ERROR("[AloamFeatureExtractor] Laser cloud msg does not contain field `ring`. Ending.");
+        ros::shutdown();
+      }
+
+      // TODO: set LUT parameters to feature selection
     }
     return;
   }
 
+  const std::shared_ptr<OdometryData> odometry_data = std::make_shared<OdometryData>();
+
   // Process input data per row
-  std::vector<int>                      rows_start_idxs(_number_of_rings, 0);
-  std::vector<int>                      rows_end_idxs(_number_of_rings, 0);
-  const pcl::PointCloud<PointType>::Ptr laser_cloud = boost::make_shared<pcl::PointCloud<PointType>>();
-  if (_data_have_ring_field) {
-    parseRowsFromOusterMsg(laserCloudMsg, laser_cloud, rows_start_idxs, rows_end_idxs);
-  } else {
-    parseRowsFromCloudMsg(laserCloudMsg, laser_cloud, rows_start_idxs, rows_end_idxs);
+  const pcl::PointCloud<PointType>::Ptr                 cloud_raw     = boost::make_shared<pcl::PointCloud<PointType>>();
+  const pcl::PointCloud<PointType>::Ptr                 cloud_wo_nans = boost::make_shared<pcl::PointCloud<PointType>>();
+  std::vector<int>                                      rows_start_index;
+  std::vector<int>                                      rows_end_index;
+  std::unordered_map<int, feature_selection::IndexPair> indices_map_proc_in_raw;
+
+  rows_start_index.resize(_handlers->scan_lines, 0);
+  rows_end_index.resize(_handlers->scan_lines, 0);
+
+  if (!parseRowsFromOusterMsg(laserCloudMsg, cloud_raw, cloud_wo_nans, rows_start_index, rows_end_index, indices_map_proc_in_raw)) {
+    return;
   }
+
+  odometry_data->diagnostics_fe                  = boost::make_shared<aloam_slam::FeatureExtractionDiagnostics>();
+  odometry_data->diagnostics_fe->ms_parsing_data = timer.getLifetime();
   timer.checkpoint("parsing lidar data");
 
-  /* if (!isfinite(*laser_cloud)) */
-  /*   std::cerr << "                                                                [FeatureExtractor::callbackLaserCloud]: laser_cloud are not finite!!" <<
-   * "\n"; */
+  const auto &points = cloud_wo_nans->points;
 
   std::vector<float> cloudCurvature;
   std::vector<int>   cloudSortInd;
   std::vector<int>   cloudNeighborPicked;
   std::vector<int>   cloudLabel;
 
-  const unsigned int cloud_size = laser_cloud->points.size();
+  const unsigned int cloud_size = points.size();
   cloudCurvature.resize(cloud_size);
   cloudSortInd.resize(cloud_size);
   cloudNeighborPicked.resize(cloud_size, 0);
   cloudLabel.resize(cloud_size, 0);
 
   for (unsigned int i = 5; i < cloud_size - 5; i++) {
-    const float diffX = laser_cloud->points.at(i - 5).x + laser_cloud->points.at(i - 4).x + laser_cloud->points.at(i - 3).x + laser_cloud->points.at(i - 2).x +
-                        laser_cloud->points.at(i - 1).x - 10 * laser_cloud->points.at(i).x + laser_cloud->points.at(i + 1).x + laser_cloud->points.at(i + 2).x +
-                        laser_cloud->points.at(i + 3).x + laser_cloud->points.at(i + 4).x + laser_cloud->points.at(i + 5).x;
-    const float diffY = laser_cloud->points.at(i - 5).y + laser_cloud->points.at(i - 4).y + laser_cloud->points.at(i - 3).y + laser_cloud->points.at(i - 2).y +
-                        laser_cloud->points.at(i - 1).y - 10 * laser_cloud->points.at(i).y + laser_cloud->points.at(i + 1).y + laser_cloud->points.at(i + 2).y +
-                        laser_cloud->points.at(i + 3).y + laser_cloud->points.at(i + 4).y + laser_cloud->points.at(i + 5).y;
-    const float diffZ = laser_cloud->points.at(i - 5).z + laser_cloud->points.at(i - 4).z + laser_cloud->points.at(i - 3).z + laser_cloud->points.at(i - 2).z +
-                        laser_cloud->points.at(i - 1).z - 10 * laser_cloud->points.at(i).z + laser_cloud->points.at(i + 1).z + laser_cloud->points.at(i + 2).z +
-                        laser_cloud->points.at(i + 3).z + laser_cloud->points.at(i + 4).z + laser_cloud->points.at(i + 5).z;
+    const float diffX = points.at(i - 5).x + points.at(i - 4).x + points.at(i - 3).x + points.at(i - 2).x + points.at(i - 1).x - 10 * points.at(i).x +
+                        points.at(i + 1).x + points.at(i + 2).x + points.at(i + 3).x + points.at(i + 4).x + points.at(i + 5).x;
+    const float diffY = points.at(i - 5).y + points.at(i - 4).y + points.at(i - 3).y + points.at(i - 2).y + points.at(i - 1).y - 10 * points.at(i).y +
+                        points.at(i + 1).y + points.at(i + 2).y + points.at(i + 3).y + points.at(i + 4).y + points.at(i + 5).y;
+    const float diffZ = points.at(i - 5).z + points.at(i - 4).z + points.at(i - 3).z + points.at(i - 2).z + points.at(i - 1).z - 10 * points.at(i).z +
+                        points.at(i + 1).z + points.at(i + 2).z + points.at(i + 3).z + points.at(i + 4).z + points.at(i + 5).z;
 
     cloudCurvature.at(i) = diffX * diffX + diffY * diffY + diffZ * diffZ;
     cloudSortInd.at(i)   = i;
   }
 
-  const pcl::PointCloud<PointType>::Ptr corner_points_sharp      = boost::make_shared<pcl::PointCloud<PointType>>();
-  const pcl::PointCloud<PointType>::Ptr corner_points_less_sharp = boost::make_shared<pcl::PointCloud<PointType>>();
-  const pcl::PointCloud<PointType>::Ptr surf_points_flat         = boost::make_shared<pcl::PointCloud<PointType>>();
-  const pcl::PointCloud<PointType>::Ptr surf_points_less_flat    = boost::make_shared<pcl::PointCloud<PointType>>();
+  const IndicesPtr indices_corners_sharp      = std::make_shared<feature_selection::Indices_t>();
+  const IndicesPtr indices_corners_less_sharp = std::make_shared<feature_selection::Indices_t>();
+  const IndicesPtr indices_surfs_flat         = std::make_shared<feature_selection::Indices_t>();
+  const IndicesPtr indices_surfs_less_flat    = std::make_shared<feature_selection::Indices_t>();
+
+  indices_corners_sharp->reserve(cloud_size);
+  indices_corners_less_sharp->reserve(cloud_size);
+  indices_surfs_flat->reserve(cloud_size);
+  indices_surfs_less_flat->reserve(cloud_size);
+
+  const static double CURVATURE_THRD = 0.1;
 
   /*//{ Compute features (planes and edges) in two resolutions */
-  for (int i = 0; i < _number_of_rings; i++) {
-    if (rows_end_idxs.at(i) - rows_start_idxs.at(i) < 6) {
+  for (int i = 0; i < _handlers->scan_lines; i++) {
+
+    if (rows_end_index.at(i) - rows_start_index.at(i) < 6) {
       continue;
     }
-    pcl::PointCloud<PointType>::Ptr surfPointsLessFlatScan = boost::make_shared<pcl::PointCloud<PointType>>();
-    for (int j = 0; j < 6; j++) {
-      const int sp = rows_start_idxs.at(i) + (rows_end_idxs.at(i) - rows_start_idxs.at(i)) * j / 6;
-      const int ep = rows_start_idxs.at(i) + (rows_end_idxs.at(i) - rows_start_idxs.at(i)) * (j + 1) / 6 - 1;
 
+    feature_selection::Indices_t indices_surfs_less_flat_scan;
+    indices_surfs_less_flat_scan.reserve(rows_end_index.at(i) - rows_start_index.at(i));
+
+    /* pcl::PointCloud<PointType>::Ptr cloud_surfs_less_flat_scan = boost::make_shared<pcl::PointCloud<PointType>>(); */
+
+    for (int j = 0; j < 6; j++) {
+
+      const int sp = rows_start_index.at(i) + (rows_end_index.at(i) - rows_start_index.at(i)) * j / 6;
+      const int ep = rows_start_index.at(i) + (rows_end_index.at(i) - rows_start_index.at(i)) * (j + 1) / 6 - 1;
+
+      // Sort feature indices by curvature in ascending order in given 1/6 segment
       std::sort(cloudSortInd.begin() + sp, cloudSortInd.begin() + ep + 1,
                 [&cloudCurvature](int i, int j) { return cloudCurvature.at(i) < cloudCurvature.at(j); });
 
+      /*//{ Select edges: highest curvature */
       int largestPickedNum = 0;
       for (int k = ep; k >= sp; k--) {
         const int ind = cloudSortInd.at(k);
 
-        if (cloudNeighborPicked.at(ind) == 0 && cloudCurvature.at(ind) > 0.1) {
+        if (cloudNeighborPicked.at(ind) == 0 && cloudCurvature.at(ind) > CURVATURE_THRD) {
 
+          // Pick max number of corner features in given segment
           largestPickedNum++;
-          if (largestPickedNum <= 2) {
-            cloudLabel.at(ind) = 2;
-            corner_points_sharp->push_back(laser_cloud->points.at(ind));
-            corner_points_less_sharp->push_back(laser_cloud->points.at(ind));
-          } else if (largestPickedNum <= 20) {
-            cloudLabel.at(ind) = 1;
-            corner_points_less_sharp->push_back(laser_cloud->points.at(ind));
+          if (largestPickedNum <= 20) {
+
+            const auto &fs_idx = indices_map_proc_in_raw.at(ind);
+
+            indices_corners_less_sharp->push_back(fs_idx);
+
+            if (largestPickedNum > 2) {
+
+              cloudLabel.at(ind) = 1;
+
+            } else {
+
+              cloudLabel.at(ind) = 2;
+
+              indices_corners_sharp->push_back(fs_idx);
+            }
+
           } else {
             break;
           }
 
+          // Mark this point and its neighbors as non-selectable as feature (to remove very-close features)
           cloudNeighborPicked.at(ind) = 1;
 
           for (int l = 1; l <= 5; l++) {
-            const float diffX = laser_cloud->points.at(ind + l).x - laser_cloud->points.at(ind + l - 1).x;
-            const float diffY = laser_cloud->points.at(ind + l).y - laser_cloud->points.at(ind + l - 1).y;
-            const float diffZ = laser_cloud->points.at(ind + l).z - laser_cloud->points.at(ind + l - 1).z;
+            const float diffX = points.at(ind + l).x - points.at(ind + l - 1).x;
+            const float diffY = points.at(ind + l).y - points.at(ind + l - 1).y;
+            const float diffZ = points.at(ind + l).z - points.at(ind + l - 1).z;
             if (diffX * diffX + diffY * diffY + diffZ * diffZ > 0.05) {
               break;
             }
@@ -161,9 +192,9 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
             cloudNeighborPicked.at(ind + l) = 1;
           }
           for (int l = -1; l >= -5; l--) {
-            const float diffX = laser_cloud->points.at(ind + l).x - laser_cloud->points.at(ind + l + 1).x;
-            const float diffY = laser_cloud->points.at(ind + l).y - laser_cloud->points.at(ind + l + 1).y;
-            const float diffZ = laser_cloud->points.at(ind + l).z - laser_cloud->points.at(ind + l + 1).z;
+            const float diffX = points.at(ind + l).x - points.at(ind + l + 1).x;
+            const float diffY = points.at(ind + l).y - points.at(ind + l + 1).y;
+            const float diffZ = points.at(ind + l).z - points.at(ind + l + 1).z;
             if (diffX * diffX + diffY * diffY + diffZ * diffZ > 0.05) {
               break;
             }
@@ -172,36 +203,44 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
           }
         }
       }
+      /*//}*/
 
+      /*//{ Select surfs: lowest curvature */
       int smallestPickedNum = 0;
       for (int k = sp; k <= ep; k++) {
         const int ind = cloudSortInd.at(k);
 
-        if (cloudNeighborPicked.at(ind) == 0 && cloudCurvature.at(ind) < 0.1) {
+        if (cloudNeighborPicked.at(ind) == 0 && cloudCurvature.at(ind) < CURVATURE_THRD) {
 
+          const auto &fs_idx = indices_map_proc_in_raw.at(ind);
+
+          // Mark first few lowest-curvature points as sharp edges
           cloudLabel.at(ind) = -1;
-          surf_points_flat->push_back(laser_cloud->points.at(ind));
+          indices_surfs_flat->push_back(fs_idx);
 
           smallestPickedNum++;
           if (smallestPickedNum >= 4) {
             break;
           }
 
+          // Mark this point and its neighbors as non-selectable as feature (to remove very-close features)
           cloudNeighborPicked.at(ind) = 1;
+
           for (int l = 1; l <= 5; l++) {
-            const float diffX = laser_cloud->points.at(ind + l).x - laser_cloud->points.at(ind + l - 1).x;
-            const float diffY = laser_cloud->points.at(ind + l).y - laser_cloud->points.at(ind + l - 1).y;
-            const float diffZ = laser_cloud->points.at(ind + l).z - laser_cloud->points.at(ind + l - 1).z;
+            const float diffX = points.at(ind + l).x - points.at(ind + l - 1).x;
+            const float diffY = points.at(ind + l).y - points.at(ind + l - 1).y;
+            const float diffZ = points.at(ind + l).z - points.at(ind + l - 1).z;
             if (diffX * diffX + diffY * diffY + diffZ * diffZ > 0.05) {
               break;
             }
 
             cloudNeighborPicked.at(ind + l) = 1;
           }
+
           for (int l = -1; l >= -5; l--) {
-            const float diffX = laser_cloud->points.at(ind + l).x - laser_cloud->points.at(ind + l + 1).x;
-            const float diffY = laser_cloud->points.at(ind + l).y - laser_cloud->points.at(ind + l + 1).y;
-            const float diffZ = laser_cloud->points.at(ind + l).z - laser_cloud->points.at(ind + l + 1).z;
+            const float diffX = points.at(ind + l).x - points.at(ind + l + 1).x;
+            const float diffY = points.at(ind + l).y - points.at(ind + l + 1).y;
+            const float diffZ = points.at(ind + l).z - points.at(ind + l + 1).z;
             if (diffX * diffX + diffY * diffY + diffZ * diffZ > 0.05) {
               break;
             }
@@ -211,43 +250,63 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
         }
       }
 
+      // Mark the rest of features as a bit-curvy surfs
       for (int k = sp; k <= ep; k++) {
         if (cloudLabel.at(k) <= 0) {
-          surfPointsLessFlatScan->push_back(laser_cloud->points.at(k));
+
+          const auto &fs_idx = indices_map_proc_in_raw.at(k);
+          indices_surfs_less_flat_scan.push_back(fs_idx);
+
+          /* cloud_surfs_less_flat_scan->push_back(points.at(k)); */
         }
       }
+
+      /*//}*/
     }
 
-    pcl::PointCloud<PointType> surfPointsLessFlatScanDS;
-    pcl::VoxelGrid<PointType>  downSizeFilter;
-    downSizeFilter.setInputCloud(surfPointsLessFlatScan);
-    downSizeFilter.setLeafSize(0.2, 0.2, 0.2);
-    downSizeFilter.filter(surfPointsLessFlatScanDS);
+    // There is now many less-flat surf features: downsample
+    pseudoDownsampleIndices(indices_surfs_less_flat, cloud_raw, indices_surfs_less_flat_scan, 0.04);
 
-    *surf_points_less_flat += surfPointsLessFlatScanDS;
+    /* pcl::VoxelGrid<PointType> vg; */
+    /* vg.setInputCloud(cloud_surfs_less_flat_scan); */
+    /* vg.setLeafSize(0.2, 0.2, 0.2); */
+    /* vg.filter(*cloud_surfs_less_flat_scan); */
+    /* *cloud_surfs_less_flat += *cloud_surfs_less_flat_scan; */
   }
+
   /*//}*/
 
-  timer.checkpoint("parsing features");
+  timer.checkpoint("extracting features");
+  odometry_data->diagnostics_fe->ms_extracting_features = timer.getLifetime();
 
-  laser_cloud->header.frame_id              = _frame_map;
-  corner_points_sharp->header.frame_id      = _frame_map;
-  corner_points_less_sharp->header.frame_id = _frame_map;
-  surf_points_flat->header.frame_id         = _frame_map;
-  surf_points_less_flat->header.frame_id    = _frame_map;
+  std::uint64_t stamp_pcl;
+  pcl_conversions::toPCL(laserCloudMsg->header.stamp, stamp_pcl);
 
-  std::uint64_t stamp;
-  pcl_conversions::toPCL(laserCloudMsg->header.stamp, stamp);
-  laser_cloud->header.stamp              = stamp;
-  corner_points_sharp->header.stamp      = stamp;
-  corner_points_less_sharp->header.stamp = stamp;
-  surf_points_flat->header.stamp         = stamp;
-  surf_points_less_flat->header.stamp    = stamp;
+  cloud_wo_nans->header.frame_id = _handlers->frame_lidar;
+  cloud_wo_nans->header.stamp    = stamp_pcl;
 
-  _odometry->setData(corner_points_sharp, corner_points_less_sharp, surf_points_flat, surf_points_less_flat, laser_cloud);
+  odometry_data->stamp_ros           = laserCloudMsg->header.stamp;
+  odometry_data->stamp_pcl           = stamp_pcl;
+  odometry_data->cloud_raw           = cloud_raw;
+  odometry_data->finite_points_count = points.size();
+
+  odometry_data->manager_corners_sharp      = std::make_shared<feature_selection::FSCloudManager>(cloud_raw, indices_corners_sharp);
+  odometry_data->manager_corners_less_sharp = std::make_shared<feature_selection::FSCloudManager>(cloud_raw, indices_corners_less_sharp);
+  odometry_data->manager_surfs_flat         = std::make_shared<feature_selection::FSCloudManager>(cloud_raw, indices_surfs_flat);
+  odometry_data->manager_surfs_less_flat    = std::make_shared<feature_selection::FSCloudManager>(cloud_raw, indices_surfs_less_flat);
+
+  odometry_data->diagnostics_fe->ms_total = timer.getLifetime();
+
+  _aloam_odometry->setData(odometry_data);
+
+  // TODO: Publish debug visualization msg with extracted features
+  /* if (_pub_dbg.getNumSubscribers() > 0) { */
+  /*   _pub_dbg.publish(odometry_data->manager_surfs_less_flat->getUnorderedCloudPtr()); */
+  /* } */
 
   /* ROS_INFO_THROTTLE(1.0, "[AloamFeatureExtractor] Run time: %0.1f ms (%0.1f Hz)", time_whole, std::min(1.0f / _scan_period_sec, 1000.0f / time_whole)); */
-  /* ROS_DEBUG_THROTTLE(1.0, "[AloamFeatureExtractor] points: %d; preparing data: %0.1f ms; q-sorting data: %0.1f ms; computing features: %0.1f ms", cloud_size,
+  /* ROS_DEBUG_THROTTLE(1.0, "[AloamFeatureExtractor] points: %d; preparing data: %0.1f ms; q-sorting data: %0.1f ms; computing features: %0.1f ms",
+   * cloud_size,
    */
   /*                    processing_time, time_q_sort, time_pts); */
   /* ROS_WARN_COND(time_whole > _scan_period_sec * 1000.0f, "[AloamFeatureExtractor] Feature extraction took over %0.2f ms", _scan_period_sec * 1000.0f); */
@@ -264,214 +323,205 @@ void FeatureExtractor::callbackInputDataProcDiag(const mrs_msgs::PclToolsDiagnos
     return;
   }
 
-  _vertical_fov_half = msg->vfov / 2.0f;
-  _number_of_rings   = msg->rows_after;
-  _scan_period_sec   = 1.0f / msg->frequency;
-
-  _ray_vert_delta = _vertical_fov_half / float(_number_of_rings - 1);  // vertical resolution
-  _vertical_fov_half /= 2.0;                                           // get half fov
+  _handlers->scan_lines = msg->rows_after;
+  _scan_period_sec      = 1.0f / msg->frequency;
 
   _initialization_frames_delay = int(msg->frequency);  // 1 second delay
+  _has_required_parameters     = _scan_period_sec > 0.0f && _handlers->scan_lines > 0;
 
-  _has_required_parameters = _scan_period_sec > 0.0f && _vertical_fov_half > 0.0f && _number_of_rings > 0;
+  if (_has_required_parameters) {
+    _aloam_odometry->setFrequency(msg->frequency);
+  }
 
   ROS_INFO("[AloamFeatureExtractor] Received input data diagnostics: VFoV (%.1f deg), rings count (%d), frequency (%.1f Hz)", msg->vfov, msg->rows_after,
            msg->frequency);
 }
 /*//}*/
 
-/*//{ parseRowsFromCloudMsg() */
-void FeatureExtractor::parseRowsFromCloudMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, const pcl::PointCloud<PointType>::Ptr &cloud_processed,
-                                             std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices) {
-
-  pcl::PointCloud<PointType> cloud_pcl;
-  pcl::fromROSMsg(*cloud, cloud_pcl);
-
-  /*//{ Precompute points indices */
-  const int   cloud_size    = cloud_pcl.points.size();
-  const float azimuth_start = -std::atan2(cloud_pcl.points.at(0).y, cloud_pcl.points.at(0).x);
-  float       azimuth_end   = -std::atan2(cloud_pcl.points.at(cloud_size - 1).y, cloud_pcl.points.at(cloud_size - 1).x) + 2 * M_PI;
-
-  if (azimuth_end - azimuth_start > 3 * M_PI) {
-    azimuth_end -= 2 * M_PI;
-  } else if (azimuth_end - azimuth_start < M_PI) {
-    azimuth_end += 2 * M_PI;
-  }
-
-  bool                                    halfPassed = false;
-  int                                     count      = cloud_size;
-  std::vector<pcl::PointCloud<PointType>> laser_cloud_rows(_number_of_rings);
-  for (int i = 0; i < cloud_size; i++) {
-    PointType point;
-    point.x = cloud_pcl.points.at(i).x;
-    point.y = cloud_pcl.points.at(i).y;
-    point.z = cloud_pcl.points.at(i).z;
-
-    int point_ring = 0;
-
-    const float angle = (M_PI_2 - acos(point.z / sqrt(point.x * point.x + point.y * point.y + point.z * point.z))) * 180.0 / M_PI;
-
-    if (_number_of_rings == 16) {
-      point_ring = std::round((angle + _vertical_fov_half) / _ray_vert_delta);
-      /* ROS_WARN("point: (%0.2f, %0.2f, %0.2f), angle: %0.2f deg, scan_id: %d", point.x, point.y, point.z, angle, point_ring); */
-      /* point_ring = int((angle + 15) / 2 + 0.5); */
-      if (point_ring > int(_number_of_rings - 1) || point_ring < 0) {
-        count--;
-        continue;
-      }
-    } else if (_number_of_rings == 32) {
-      // TODO: get correct point_ring
-      point_ring = int((angle + 92.0 / 3.0) * 3.0 / 4.0);
-      if (point_ring > int(_number_of_rings - 1) || point_ring < 0) {
-        count--;
-        continue;
-      }
-    } else if (_number_of_rings == 64) {
-      // TODO: get correct point_ring
-      if (angle >= -8.83)
-        point_ring = int((2 - angle) * 3.0 + 0.5);
-      else
-        point_ring = int(_number_of_rings / 2 + int((-8.83 - angle) * 2.0 + 0.5));
-
-      // use [0 50]  > 50 remove outlies
-      if (angle > 2 || angle < -24.33 || point_ring > 50 || point_ring < 0) {
-        count--;
-        continue;
-      }
-    }
-
-    float point_azimuth = -std::atan2(point.y, point.x);
-    if (!halfPassed) {
-      if (point_azimuth < azimuth_start - M_PI / 2) {
-        point_azimuth += 2 * M_PI;
-      } else if (point_azimuth > azimuth_start + M_PI * 3 / 2) {
-        point_azimuth -= 2 * M_PI;
-      }
-
-      if (point_azimuth - azimuth_start > M_PI) {
-        halfPassed = true;
-      }
-    } else {
-      point_azimuth += 2 * M_PI;
-      if (point_azimuth < azimuth_end - M_PI * 3 / 2) {
-        point_azimuth += 2 * M_PI;
-      } else if (point_azimuth > azimuth_end + M_PI / 2) {
-        point_azimuth -= 2 * M_PI;
-      }
-    }
-
-    const float rel_time = (point_azimuth - azimuth_start) / (azimuth_end - azimuth_start);
-    point.intensity      = point_ring + _scan_period_sec * rel_time;
-    laser_cloud_rows.at(point_ring).push_back(point);
-  }
-  /*//}*/
-
-  for (int i = 0; i < _number_of_rings; i++) {
-    rows_start_indices.at(i) = cloud_processed->size() + 5;
-    *cloud_processed += laser_cloud_rows.at(i);
-    rows_end_indices.at(i) = cloud_processed->size() - 6;
-  }
-}
-/*//}*/
-
 /*//{ parseRowsFromOusterMsg() */
-void FeatureExtractor::parseRowsFromOusterMsg(const sensor_msgs::PointCloud2::ConstPtr &cloud, const pcl::PointCloud<PointType>::Ptr &cloud_processed,
-                                              std::vector<int> &rows_start_indices, std::vector<int> &rows_end_indices) {
+bool FeatureExtractor::parseRowsFromOusterMsg(const sensor_msgs::PointCloud2::ConstPtr cloud, const pcl::PointCloud<PointType>::Ptr cloud_raw,
+                                              const pcl::PointCloud<PointType>::Ptr cloud_processed, std::vector<int> &rows_start_index,
+                                              std::vector<int> &                                     rows_end_index,
+                                              std::unordered_map<int, feature_selection::IndexPair> &indices_map_proc_in_raw) {
 
-  // Create PointOS1 pointcloud {x, y, z, intensity, t, reflectivity, ring, noise, range}
-  pcl::PointCloud<ouster_ros::Point>::Ptr        cloud_raw = boost::make_shared<pcl::PointCloud<ouster_ros::Point>>();
-  pcl::PointCloud<ouster_ros::Point>::Ptr        cloud_pcl = boost::make_shared<pcl::PointCloud<ouster_ros::Point>>();
-  std::unordered_map<unsigned int, unsigned int> indices_in_raw_cloud;
+  // Convert ROS msg to OS cloud
+  const pcl::PointCloud<ouster_ros::Point>::Ptr cloud_os = boost::make_shared<pcl::PointCloud<ouster_ros::Point>>();
+  pcl::fromROSMsg(*cloud, *cloud_os);
 
-  pcl::fromROSMsg(*cloud, *cloud_raw);
-  removeNaNFromPointCloud(cloud_raw, cloud_pcl, indices_in_raw_cloud);
-
-  /*//{ Precompute points indices */
-  const int   cloud_size    = cloud_pcl->points.size();
-  const float azimuth_start = -std::atan2(cloud_pcl->points.at(0).y, cloud_pcl->points.at(0).x);
-  float       azimuth_end   = -std::atan2(cloud_pcl->points.at(cloud_size - 1).y, cloud_pcl->points.at(cloud_size - 1).x) + 2 * M_PI;
-
-  if (azimuth_end - azimuth_start > 3 * M_PI) {
-    azimuth_end -= 2 * M_PI;
-  } else if (azimuth_end - azimuth_start < M_PI) {
-    azimuth_end += 2 * M_PI;
+  // Check if data are valid
+  if (!cloud_os->isOrganized()) {
+    ROS_ERROR_THROTTLE(1.0, "[AloamFeatureExtractor] Input data are not organized.");
+    return false;
+  } else if (_handlers->scan_lines != cloud_os->height) {
+    ROS_ERROR_THROTTLE(1.0, "[AloamFeatureExtractor] Expected number of rings != input data height.");
+    return false;
   }
 
-  bool                                    halfPassed = false;
-  std::vector<pcl::PointCloud<PointType>> laser_cloud_rows(_number_of_rings);
-  for (int i = 0; i < cloud_size; i++) {
-    PointType point;
-    point.x = cloud_pcl->points.at(i).x;
-    point.y = cloud_pcl->points.at(i).y;
-    point.z = cloud_pcl->points.at(i).z;
+  // Prepare metadata
+  cloud_processed->header = cloud_os->header;
+  cloud_raw->header       = cloud_os->header;
+  cloud_raw->resize(cloud_os->height * cloud_os->width);
+  cloud_raw->height = cloud_os->height;
+  cloud_raw->width  = cloud_os->width;
 
-    // Read row (ring) directly from msg
-    const int point_ring = cloud_pcl->points.at(i).ring;
+  // Prepare outputs
+  rows_start_index.resize(_handlers->scan_lines, 0);
+  rows_end_index.resize(_handlers->scan_lines, 0);
+  indices_map_proc_in_raw.reserve(cloud_raw->size());
 
-    // Compute intensity TODO: can we polish this crazy ifs?
-    float point_azimuth = -std::atan2(point.y, point.x);
-    if (!halfPassed) {
-      if (point_azimuth < azimuth_start - M_PI / 2) {
-        point_azimuth += 2 * M_PI;
-      } else if (point_azimuth > azimuth_start + M_PI * 3 / 2) {
-        point_azimuth -= 2 * M_PI;
+  // Get start and end time of columns
+  const uint32_t t_start    = cloud_os->at(0, 0).t;
+  const uint32_t t_end      = cloud_os->at(static_cast<int>(cloud_os->width) - 1, 0).t;
+  const float    t_duration = static_cast<float>(t_end - t_start);
+
+  int index = 0;
+
+  for (int r = 0; r < cloud_os->height; r++) {
+
+    pcl::PointCloud<PointType> row;
+    row.reserve(cloud->width);
+
+    for (int c = 0; c < cloud_os->width; c++) {
+
+      const auto &point_os = cloud_os->at(c, r);
+
+      // TODO: remove after testing
+      if (point_os.range < 450) {
+        continue;
       }
 
-      if (point_azimuth - azimuth_start > M_PI) {
-        halfPassed = true;
-      }
-    } else {
-      point_azimuth += 2 * M_PI;
-      if (point_azimuth < azimuth_end - M_PI * 3 / 2) {
-        point_azimuth += 2 * M_PI;
-      } else if (point_azimuth > azimuth_end + M_PI / 2) {
-        point_azimuth -= 2 * M_PI;
+      if (pcl::isXYZFinite(point_os) && point_os.range > 0) {
+
+        auto &point = cloud_raw->at(c, r);
+
+        point.x = point_os.x;
+        point.y = point_os.y;
+        point.z = point_os.z;
+
+        // Read row (ring) directly from msg
+        const int point_ring = point_os.ring;
+
+        // Remap scan time to <0, 1>
+        const float rel_time = static_cast<float>(point_os.t - t_start) / t_duration;
+
+        // Store unique r/c info to intensity (for association purposes)
+        point.intensity = static_cast<float>(point_ring) + _scan_period_sec * rel_time;
+
+        row.push_back(point);
+
+        // Store indices map from processed -> raw cloud
+        feature_selection::IndexPair fs_idx;
+        fs_idx.col = c;
+        fs_idx.row = r;
+
+        indices_map_proc_in_raw.insert({index++, fs_idx});
       }
     }
 
-    // TODO: can we use `t` fiels from OS1 message?
-    const float rel_time = (point_azimuth - azimuth_start) / (azimuth_end - azimuth_start);
-    point.intensity      = point_ring + _scan_period_sec * rel_time;
-    laser_cloud_rows.at(point_ring).push_back(point);
+    rows_start_index.at(r) = cloud_processed->size() + 5;
+    *cloud_processed += row;
+    rows_end_index.at(r) = cloud_processed->size() - 6;
   }
-  /*//}*/
 
-  for (int i = 0; i < _number_of_rings; i++) {
-    rows_start_indices.at(i) = cloud_processed->size() + 5;
-    *cloud_processed += laser_cloud_rows.at(i);
-    rows_end_indices.at(i) = cloud_processed->size() - 6;
-  }
+  return true;
 }
 /*//}*/
 
-/*//{ removeNaNFromPointCloud() */
-void FeatureExtractor::removeNaNFromPointCloud(const pcl::PointCloud<ouster_ros::Point>::Ptr &cloud_in, pcl::PointCloud<ouster_ros::Point>::Ptr &cloud_out,
-                                               std::unordered_map<unsigned int, unsigned int> &indices) {
+/*//{ appendVoxelizedIndices() */
+void FeatureExtractor::appendVoxelizedIndices(const IndicesPtr &indices_to_be_appended, const pcl::PointCloud<PointType>::Ptr &cloud_in,
+                                              const feature_selection::Indices_t &indices_in_cloud, const float resolution) {
 
-  if (cloud_in->is_dense) {
-    cloud_out = cloud_in;
+  // IS TWO TIMES AS SLOW AS PCL VOXEL GRID
+
+  // Has the input dataset been set already?
+  if (!cloud_in) {
+    ROS_WARN("[FeatureExtractor] No input dataset given!");
+    return;
+  }
+  if (!cloud_in->is_dense) {
+    ROS_WARN("[FeatureExtractor] Voxel grid supports only dense point cloud too speed up computation.");
     return;
   }
 
-  unsigned int k = 0;
+  const Eigen::Array4f inverse_leaf_size = Eigen::Array4f::Ones() / Eigen::Vector4f(resolution, resolution, resolution, 1).array();
 
-  cloud_out->resize(cloud_in->size());
+  // Get the minimum and maximum dimensions
+  Eigen::Vector4f min_p, max_p;
+  pcl::getMinMax3D(*cloud_in, min_p, max_p);
 
-  for (unsigned int i = 0; i < cloud_in->size(); i++) {
+  // Check that the leaf size is not too small, given the size of the data
+  const uint64_t dx = static_cast<uint64_t>((max_p[0] - min_p[0]) * inverse_leaf_size[0]) + 1;
+  const uint64_t dy = static_cast<uint64_t>((max_p[1] - min_p[1]) * inverse_leaf_size[1]) + 1;
+  const uint64_t dz = static_cast<uint64_t>((max_p[2] - min_p[2]) * inverse_leaf_size[2]) + 1;
 
-    if (std::isfinite(cloud_in->at(i).x) && std::isfinite(cloud_in->at(i).y) && std::isfinite(cloud_in->at(i).z)) {
-      cloud_out->at(k) = cloud_in->at(i);
-      indices[k]       = i;
-
-      k++;
-    }
+  if ((dx * dy * dz) > static_cast<uint64_t>(std::numeric_limits<int>::max())) {
+    PCL_WARN("[FeatureExtractor] Leaf size is too small for the input dataset. Integer indices would overflow.");
+    return;
   }
 
-  cloud_out->header   = cloud_in->header;
-  cloud_out->is_dense = true;
+  // Compute the minimum and maximum bounding box values
+  Eigen::Vector4i min_b, max_b;
+  min_b[0] = static_cast<int>(floor(min_p[0] * inverse_leaf_size[0]));
+  max_b[0] = static_cast<int>(floor(max_p[0] * inverse_leaf_size[0]));
+  min_b[1] = static_cast<int>(floor(min_p[1] * inverse_leaf_size[1]));
+  max_b[1] = static_cast<int>(floor(max_p[1] * inverse_leaf_size[1]));
+  min_b[2] = static_cast<int>(floor(min_p[2] * inverse_leaf_size[2]));
+  max_b[2] = static_cast<int>(floor(max_p[2] * inverse_leaf_size[2]));
 
-  if (cloud_in->size() != k) {
-    cloud_out->resize(k);
+  // Compute the number of divisions needed along all axis
+  const Eigen::Vector4i div_b = max_b - min_b + Eigen::Vector4i::Ones();
+  /* div_b[3]              = 0; */
+
+  // Set up the division multiplier
+  const Eigen::Vector4i divb_mul = Eigen::Vector4i(1, div_b[0], div_b[0] * div_b[1], 0);
+
+  // Storage for mapping leaf
+  std::unordered_map<int, feature_selection::IndexPair> indices_map;
+
+  indices_map.reserve(indices_in_cloud.size());
+
+  // First pass: go over all points and insert them into the index_vector vector
+  // with calculated idx. Points with the same idx value will contribute to the
+  // same point of resulting CloudPoint
+  for (const auto &idx : indices_in_cloud) {
+
+    const auto &point = cloud_in->at(idx.col, idx.row);
+
+    const int ijk0 = static_cast<int>(floor(point.x * inverse_leaf_size[0]) - static_cast<float>(min_b[0]));
+    const int ijk1 = static_cast<int>(floor(point.y * inverse_leaf_size[1]) - static_cast<float>(min_b[1]));
+    const int ijk2 = static_cast<int>(floor(point.z * inverse_leaf_size[2]) - static_cast<float>(min_b[2]));
+
+    // Compute the centroid leaf index
+    const int voxel_idx = ijk0 * divb_mul[0] + ijk1 * divb_mul[1] + ijk2 * divb_mul[2];
+
+    // Store last added point index for each voxel cell
+    indices_map[voxel_idx] = idx;
+  }
+
+  indices_to_be_appended->reserve(indices_to_be_appended->size() + indices_map.size());
+  for (auto iter = std::begin(indices_map); iter != std::end(indices_map); iter++) {
+    indices_to_be_appended->push_back(iter->second);
+  }
+}
+/*//}*/
+
+/*//{ pseudoDownsampleIndices() */
+void FeatureExtractor::pseudoDownsampleIndices(const IndicesPtr &indices_to_be_appended, const pcl::PointCloud<PointType>::Ptr &cloud,
+                                               const feature_selection::Indices_t &indices_in_cloud, const double resolution_sq) {
+
+  PointType &point_prev = cloud->at(indices_in_cloud.at(0).col, indices_in_cloud.at(0).row);
+
+  for (int i = 1; i < indices_in_cloud.size(); i++) {
+
+    const auto &idx   = indices_in_cloud.at(i);
+    const auto &point = cloud->at(idx.col, idx.row);
+
+    const double dist_sq = std::pow(point.x - point_prev.x, 2) + std::pow(point.y - point_prev.y, 2) + std::pow(point.z - point_prev.z, 2);
+
+    if (dist_sq > resolution_sq) {
+      point_prev = point;
+      indices_to_be_appended->push_back(idx);
+    }
   }
 }
 /*//}*/
