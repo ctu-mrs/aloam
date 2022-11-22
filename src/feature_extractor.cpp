@@ -24,7 +24,7 @@ FeatureExtractor::FeatureExtractor(const std::shared_ptr<CommonHandlers_t> handl
         nh_.subscribe("input_proc_diag_in", 1, &FeatureExtractor::callbackInputDataProcDiag, this, ros::TransportHints().tcpNoDelay());
   }
 
-  /* _pub_dbg = nh_.advertise<sensor_msgs::PointCloud2>("fe/dbg", 1); */
+  _pub_dbg = nh_.advertise<sensor_msgs::PointCloud2>("features_out", 1);
 
   mrs_lib::SubscribeHandlerOptions shopts(nh_);
   shopts.node_name          = "FeatureExtractor";
@@ -299,10 +299,16 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
 
   _aloam_odometry->setData(odometry_data);
 
-  // TODO: Publish debug visualization msg with extracted features
-  /* if (_pub_dbg.getNumSubscribers() > 0) { */
-  /*   _pub_dbg.publish(odometry_data->manager_surfs_less_flat->getUnorderedCloudPtr()); */
-  /* } */
+  // Publish debug visualization msg with extracted features
+  if (_pub_dbg.getNumSubscribers() > 0) {
+
+    feature_selection::PC_ptr cloud = odometry_data->manager_surfs_less_flat->getUnorderedCloudPtr();
+    *cloud += *odometry_data->manager_surfs_flat->getUnorderedCloudPtr();
+    *cloud += *odometry_data->manager_corners_sharp->getUnorderedCloudPtr();
+    *cloud += *odometry_data->manager_corners_less_sharp->getUnorderedCloudPtr();
+
+    _pub_dbg.publish(cloud);
+  }
 
   /* ROS_INFO_THROTTLE(1.0, "[AloamFeatureExtractor] Run time: %0.1f ms (%0.1f Hz)", time_whole, std::min(1.0f / _scan_period_sec, 1000.0f / time_whole)); */
   /* ROS_DEBUG_THROTTLE(1.0, "[AloamFeatureExtractor] points: %d; preparing data: %0.1f ms; q-sorting data: %0.1f ms; computing features: %0.1f ms",

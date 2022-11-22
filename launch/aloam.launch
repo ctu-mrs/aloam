@@ -59,6 +59,7 @@
       <remap from="~path_out" to="slam/path"/>
       <remap from="~map_out" to="slam/map"/>
       <remap from="~eigenvalues" to="slam/eigenvalues"/>
+      <remap from="~features_out" to="slam/features"/>
 
       <remap from="~odom_local_out" to="slam/odom_local" />
       <remap from="~odom_global_out" to="slam/odom" />

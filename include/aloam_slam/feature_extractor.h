@@ -49,7 +49,7 @@ private:
   // callbacks
   void callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs::PointCloud2> &laserCloudMsg);
 
-  /* ros::Publisher _pub_dbg; */
+  ros::Publisher _pub_dbg;
 };
 }  // namespace aloam_slam
 #endif
