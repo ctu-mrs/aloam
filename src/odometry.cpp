@@ -33,16 +33,19 @@ AloamOdometry::AloamOdometry(const std::shared_ptr<CommonHandlers_t> handlers, c
 
   /* _sub_handler_orientation = mrs_lib::SubscribeHandler<nav_msgs::Odometry>(shopts, "orientation_in", mrs_lib::no_timeout); */
 
-  _pub_odometry_local  = nh_.advertise<nav_msgs::Odometry>("odom_local_out", 1);
-  _timer_odometry_loop = nh_.createTimer(ros::Rate(_handlers->frequency), &AloamOdometry::timerOdometry, this, false, true);
+  _pub_odometry_local = nh_.advertise<nav_msgs::Odometry>("odom_local_out", 1);
+
+  if (!handlers->offline_run) {
+    _timer_odometry_loop = nh_.createTimer(ros::Rate(_handlers->frequency), &AloamOdometry::timerOdometry, this, false, true);
+  }
 }
 //}
 
-/*//{ timerOdometry() */
-void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event) {
-
+/*//{ computeOdometry() */
+bool AloamOdometry::computeOdometry() {
   if (!is_initialized) {
-    return;
+    ROS_WARN_THROTTLE(1.0, "[AloamOdometry] Calling uninitialized object.");
+    return false;
   }
 
   std::unique_ptr<mrs_lib::ScopeTimer> timer;
@@ -60,15 +63,24 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   {
     std::unique_lock lock(_mutex_odometry_data);
 
-    const std::chrono::duration<float> timeout(_scan_period_sec);
-    bool                               has_new_data = false;
+    bool has_new_data = false;
 
-    if (_cv_odometry_data.wait_for(lock, timeout) == std::cv_status::no_timeout) {
+    if (_handlers->offline_run) {
+
       has_new_data = _has_new_data;
+
+    } else {
+
+      const std::chrono::duration<float> timeout(_scan_period_sec);
+
+      if (_cv_odometry_data.wait_for(lock, timeout) == std::cv_status::no_timeout) {
+        has_new_data = _has_new_data;
+      }
     }
 
     if (!has_new_data) {
-      return;
+      ROS_WARN_THROTTLE(1.0, "[AloamOdometry] Waiting for data.");
+      return false;
     }
 
     timer = std::make_unique<mrs_lib::ScopeTimer>("ALOAM::FeatureExtraction::timerOdometry", _handlers->scope_timer_logger, _handlers->enable_scope_timer);
@@ -86,13 +98,15 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
         cloudPointOStoCloudPoint(_odometry_data->manager_surfs_less_flat->getCloudPtr(), _odometry_data->manager_surfs_less_flat->getIndicesPtr());
 
     diagnostics_fe = _odometry_data->diagnostics_fe;
+
+    _has_new_data = false;
   }
 
   /*//}*/
 
   if (proc_points_count == 0) {
     ROS_WARN_THROTTLE(1.0, "[AloamOdometry]: Received an empty input cloud, skipping!");
-    return;
+    return false;
   }
 
   const std::shared_ptr<MappingData> mapping_data = std::make_shared<MappingData>();
@@ -100,7 +114,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   timer->checkpoint("loading data");
   mapping_data->diagnostics_odometry.ms_loading_data = timer->getLifetime();
 
-  mrs_lib::Routine profiler_routine = _handlers->profiler->createRoutine("timerOdometry", 1.0f / _scan_period_sec, 0.05, event);
+  mrs_lib::Routine profiler_routine = _handlers->profiler->createRoutine("timerOdometry");
 
   /*//{ Find features correspondences and compute local odometry */
 
@@ -312,33 +326,6 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   geometry_msgs::Quaternion ori;
   tf::quaternionEigenToMsg(_q_w_curr, ori);
 
-  /*//{ Correct orientation using inertial measurements */
-
-  /* if (_sub_handler_orientation.hasMsg()) { */
-  /*   // Get orientation msg */
-  /*   auto odom_msg = _sub_handler_orientation.getMsg(); */
-
-  /*   // Convert orientation to the odometry frame */
-  /*   geometry_msgs::QuaternionStamped msg_ori; */
-  /*   msg_ori.header     = odom_msg->header; */
-  /*   msg_ori.quaternion = odom_msg->pose.pose.orientation; */
-  /*   auto ret           = _transformer->transformSingle(, msg_ori); */
-
-  /*   if (ret) { */
-  /*     // Set heading of odometry msg to be the aloam odometry estimated heading */
-  /*     mrs_lib::AttitudeConverter q_aloam = _q_w_curr; */
-  /*     mrs_lib::AttitudeConverter q_odom  = ret.value().quaternion; */
-  /*     mrs_lib::AttitudeConverter q_ret   = q_odom.setHeading(q_aloam.getHeading()); */
-  /*     tf::quaternionEigenToMsg(q_ret, ori); */
-
-  /*     /1* ROS_DEBUG("q_aloam: %0.2f %0.2f %0.2f", q_aloam.getRoll(), q_aloam.getPitch(), q_aloam.getHeading()); *1/ */
-  /*     /1* ROS_DEBUG("q_odom: %0.2f %0.2f %0.2f", q_odom.getRoll(), q_odom.getPitch(), q_odom.getHeading()); *1/ */
-  /*     /1* ROS_DEBUG("q_ret (q_aloam heading: %0.2f): %0.2f %0.2f %0.2f", q_aloam.getHeading(), q_ret.getRoll(), q_ret.getPitch(), q_ret.getHeading()); *1/ */
-  /*   } */
-  /* } */
-
-  /*//}*/
-
   // Transform odometry from lidar frame to fcu frame
   tf::Transform tf_lidar;
   tf_lidar.setOrigin(tf::Vector3(_t_w_curr.x(), _t_w_curr.y(), _t_w_curr.z()));
@@ -419,6 +406,14 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
    */
   /*                    time_data_association, time_solver, time_opt, t_pub.toc()); */
   /* ROS_WARN_COND(time_whole > _scan_period_sec * 1000.0f, "[AloamOdometry] Odometry process took over %0.2f ms", _scan_period_sec * 1000.0f); */
+
+  return true;
+}
+/*//}*/
+
+/*//{ timerOdometry() */
+void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event) {
+  computeOdometry();
 }
 /*//}*/
 

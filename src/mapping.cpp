@@ -40,12 +40,12 @@ AloamMapping::AloamMapping(const std::shared_ptr<CommonHandlers_t> handlers) : _
   _pub_path            = handlers->nh.advertise<nav_msgs::Path>("path_out", 1);
   _pub_eigenvalue      = handlers->nh.advertise<mrs_msgs::Float64ArrayStamped>("eigenvalues_out", 1);
 
-  if (_mapping_frequency > 0.0f) {
+  if (!handlers->offline_run && _mapping_frequency > 0.0f) {
+
     _timer_mapping_loop = handlers->nh.createTimer(ros::Rate(_mapping_frequency), &AloamMapping::timerMapping, this, false, true);
   }
 
-  _tf_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>();
-
+  _tf_broadcaster    = std::make_shared<tf2_ros::TransformBroadcaster>();
   _srv_reset_mapping = handlers->nh.advertiseService("srv_reset_mapping_in", &AloamMapping::callbackResetMapping, this);
 
   _time_last_map_publish = ros::Time::now();
@@ -67,12 +67,11 @@ void AloamMapping::setData(const std::shared_ptr<MappingData> data) {
 }
 /*//}*/
 
-/*//{ timerMapping() */
-void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
+/*//{ computeMapping() */
+bool AloamMapping::computeMapping() {
 
   if (!is_initialized) {
-    /* ros::Rate(_mapping_frequency).sleep(); */
-    return;
+    return false;
   }
 
   std::unique_ptr<mrs_lib::ScopeTimer> timer;
@@ -87,15 +86,22 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   {
     std::unique_lock lock(_mutex_mapping_data);
 
-    const std::chrono::duration<float> timeout(1.0 / _mapping_frequency);
-    bool                               has_new_data = false;
+    bool has_new_data = false;
 
-    if (_cv_mapping_data.wait_for(lock, timeout) == std::cv_status::no_timeout) {
+    if (_handlers->offline_run) {
+
       has_new_data = _has_new_data;
+
+    } else {
+
+      const std::chrono::duration<float> timeout(1.0 / _mapping_frequency);
+      if (_cv_mapping_data.wait_for(lock, timeout) == std::cv_status::no_timeout) {
+        has_new_data = _has_new_data;
+      }
     }
 
     if (!has_new_data) {
-      return;
+      return false;
     }
 
     timer = std::make_unique<mrs_lib::ScopeTimer>("ALOAM::FeatureExtraction::timerMapping", _handlers->scope_timer_logger, _handlers->enable_scope_timer);
@@ -110,13 +116,15 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     diag_msg                     = boost::make_shared<aloam_slam::AloamDiagnostics>();
     diag_msg->feature_extraction = _mapping_data->diagnostics_fe;
     diag_msg->odometry           = _mapping_data->diagnostics_odometry;
+
+    _has_new_data = false;
   }
   /*//}*/
 
   timer->checkpoint("loading data");
   diag_msg->mapping.ms_loading_data = timer->getLifetime();
 
-  mrs_lib::Routine profiler_routine = _handlers->profiler->createRoutine("timerMapping", _mapping_frequency, 0.1, event);
+  mrs_lib::Routine profiler_routine = _handlers->profiler->createRoutine("timerMapping");
 
   tf::vectorTFToEigen(aloam_odometry.getOrigin(), _t_wodom_curr);
   tf::quaternionTFToEigen(aloam_odometry.getRotation(), _q_wodom_curr);
@@ -692,6 +700,14 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   ROS_INFO_THROTTLE(1.0, "[Aloam] Run time: %.1f ms (FE: %.0f | FS: %.0f | O: %.0f | M: %.0f)", diag_msg->ms_total,
                     diag_msg->feature_extraction.extraction_processing_time_ms, diag_msg->feature_extraction.selection_processing_time_ms,
                     diag_msg->odometry.ms_total, diag_msg->mapping.ms_total);
+
+  return true;
+}
+/*//}*/
+
+/*//{ timerMapping() */
+void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
+  computeMapping();
 }
 /*//}*/
 

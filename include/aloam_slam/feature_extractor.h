@@ -13,6 +13,8 @@ class FeatureExtractor {
 public:
   FeatureExtractor(const std::shared_ptr<CommonHandlers_t> handlers, const std::shared_ptr<AloamOdometry> aloam_odometry);
 
+  bool extractFeatures(const sensor_msgs::PointCloud2::ConstPtr msg);
+
   std::atomic<bool> is_initialized = false;
 
 private:
@@ -22,7 +24,7 @@ private:
   bool _has_required_parameters = false;
 
   ros::Subscriber _sub_points_;
-  void            callbackPointCloud(const sensor_msgs::PointCloud2::ConstPtr &msg);
+  void            callbackPointCloud(const sensor_msgs::PointCloud2::ConstPtr msg);
 
   ros::Subscriber _sub_input_data_processing_diag;
   void            callbackInputDataProcDiag(const mrs_msgs::PclToolsDiagnosticsConstPtr &msg);

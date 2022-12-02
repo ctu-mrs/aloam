@@ -32,6 +32,8 @@ class AloamMapping {
 public:
   AloamMapping(const std::shared_ptr<CommonHandlers_t> handlers);
 
+  bool computeMapping();
+
   std::atomic<bool> is_initialized = false;
 
   void setData(const std::shared_ptr<MappingData> data);

@@ -14,7 +14,8 @@ FeatureExtractor::FeatureExtractor(const std::shared_ptr<CommonHandlers_t> handl
 
   if (_has_required_parameters) {
 
-    _initialization_frames_delay = int(1.0 / _scan_period_sec);
+    // 0.5 sec delay
+    _initialization_frames_delay = int(0.5 / _scan_period_sec);
 
     // Setup feature extraction library
     const std::shared_ptr<feature_selection::FeatureSelection> fs_ptr = std::make_shared<feature_selection::FeatureSelection>();
@@ -28,9 +29,12 @@ FeatureExtractor::FeatureExtractor(const std::shared_ptr<CommonHandlers_t> handl
         handlers->nh.subscribe("input_proc_diag_in", 1, &FeatureExtractor::callbackInputDataProcDiag, this, ros::TransportHints().tcpNoDelay());
   }
 
-  // Setup subsribers and publishers
-  _sub_points_ = handlers->nh.subscribe("laser_cloud_in", 1, &FeatureExtractor::callbackPointCloud, this, ros::TransportHints().tcpNoDelay());
+  // Subscribers
+  if (!handlers->offline_run) {
+    _sub_points_ = handlers->nh.subscribe("laser_cloud_in", 1, &FeatureExtractor::callbackPointCloud, this, ros::TransportHints().tcpNoDelay());
+  }
 
+  // Publishers
   _pub_points_finite_            = handlers->nh.advertise<sensor_msgs::PointCloud2>("points_out", 1);
   _pub_features_edges_           = handlers->nh.advertise<sensor_msgs::PointCloud2>("edges_out", 1);
   _pub_features_planes_          = handlers->nh.advertise<sensor_msgs::PointCloud2>("planes_out", 1);
@@ -41,17 +45,18 @@ FeatureExtractor::FeatureExtractor(const std::shared_ptr<CommonHandlers_t> handl
 }
 /*//}*/
 
-/*//{ callbackPointCloud() */
-void FeatureExtractor::callbackPointCloud(const sensor_msgs::PointCloud2::ConstPtr &msg) {
+/*//{ extractFeatures() */
+bool FeatureExtractor::extractFeatures(const sensor_msgs::PointCloud2::ConstPtr msg) {
 
   if (!is_initialized) {
-    return;
+    ROS_WARN_THROTTLE(1.0, "[AloamFeatureExtractor] Calling uninitialized object.");
+    return false;
   }
 
   if (!_has_required_parameters) {
     ROS_WARN("[AloamFeatureExtractor] Not all parameters loaded from config. Waiting for msg on topic (%s) to read them.",
              _sub_input_data_processing_diag.getTopic().c_str());
-    return;
+    return false;
   }
 
   ROS_INFO_ONCE("[AloamFeatureExtractor] Received first point cloud message.");
@@ -61,7 +66,7 @@ void FeatureExtractor::callbackPointCloud(const sensor_msgs::PointCloud2::ConstP
 
   if (msg->height == 0 || msg->width == 0) {
     ROS_WARN("[AloamFeatureExtractor]: Received empty laser cloud msg. Skipping frame.");
-    return;
+    return false;
   }
 
   // Skip 1 sec of valid data
@@ -75,7 +80,7 @@ void FeatureExtractor::callbackPointCloud(const sensor_msgs::PointCloud2::ConstP
         ros::shutdown();
       }
     }
-    return;
+    return false;
   }
 
   // Convert to PCL type
@@ -88,7 +93,7 @@ void FeatureExtractor::callbackPointCloud(const sensor_msgs::PointCloud2::ConstP
   if (!fe.success) {
 
     ROS_ERROR_THROTTLE(1.0, "%s", fe.error_msg.c_str());
-    return;
+    return false;
   }
 
   // Publish points/features if needed
@@ -126,6 +131,14 @@ void FeatureExtractor::callbackPointCloud(const sensor_msgs::PointCloud2::ConstP
   }
 
   _aloam_odometry->setData(odometry_data);
+
+  return true;
+}
+/*//}*/
+
+/*//{ callbackPointCloud() */
+void FeatureExtractor::callbackPointCloud(const sensor_msgs::PointCloud2::ConstPtr msg) {
+  extractFeatures(msg);
 }
 /*//}*/
 
@@ -139,7 +152,7 @@ void FeatureExtractor::callbackInputDataProcDiag(const mrs_msgs::PclToolsDiagnos
   _handlers->scan_lines = msg->rows_after;
   _scan_period_sec      = 1.0f / msg->frequency;
 
-  _initialization_frames_delay = int(msg->frequency);  // 1 second delay
+  _initialization_frames_delay = int(msg->frequency / 2.0);  // 0.5 second delay
   _has_required_parameters     = _scan_period_sec > 0.0f && _handlers->scan_lines > 0;
 
   if (_has_required_parameters) {

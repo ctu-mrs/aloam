@@ -28,6 +28,8 @@ public:
 
   std::atomic<bool> is_initialized = false;
 
+  bool computeOdometry();
+
   void setData(const std::shared_ptr<OdometryData> odometry_data);
   void setTransform(const Eigen::Vector3d &t, const Eigen::Quaterniond &q, const ros::Time &stamp);
   void setFrequency(const float frequency);

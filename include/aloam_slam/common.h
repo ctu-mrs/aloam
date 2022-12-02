@@ -109,6 +109,8 @@ struct CommonHandlers_t
   std::shared_ptr<mrs_lib::ParamLoader> param_loader;
   std::shared_ptr<mrs_lib::Profiler>    profiler;
 
+  bool offline_run = false;
+
   std::string uav_name;
   std::string frame_fcu;
   std::string frame_lidar;
