@@ -8,14 +8,13 @@ namespace aloam_slam
 
 struct OdometryData
 {
-  aloam_slam::FeatureExtractionDiagnostics::Ptr diagnostics_fe;
+  feature_extraction::FEDiagnostics diagnostics_fe;
 
   ros::Time     stamp_ros;
   std::uint64_t stamp_pcl;
 
   std::size_t finite_points_count;
 
-  pcl::PointCloud<PointType>::Ptr      cloud_raw;
   feature_selection::FSCloudManagerPtr manager_corners_sharp;
   feature_selection::FSCloudManagerPtr manager_corners_less_sharp;
   feature_selection::FSCloudManagerPtr manager_surfs_flat;
@@ -43,7 +42,6 @@ private:
   ros::Timer                                     _timer_odometry_loop;
 
   std::shared_ptr<mrs_lib::Transformer> _transformer;
-  /* mrs_lib::SubscribeHandler<nav_msgs::Odometry> _sub_handler_orientation; */
 
   std::mutex                      _mutex_odometry_process;
   pcl::PointCloud<PointType>::Ptr _features_corners_last;
@@ -78,6 +76,8 @@ private:
 
   // member methods
   void timerOdometry(const ros::TimerEvent &event);
+
+  pcl::PointCloud<PointType>::Ptr cloudPointOStoCloudPoint(const pcl::PointCloud<PointTypeOS>::Ptr cloud, const feature_selection::IndicesPtr_t indices);
 
   void TransformToStart(PointType const *const pi, PointType *const po);
   void TransformToEnd(PointType const *const pi, PointType *const po);

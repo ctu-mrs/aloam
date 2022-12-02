@@ -1,0 +1,8 @@
+# LiDAR scan parameters
+# by default, these obtained by subscribing to the
+# MRS PCL Filter diagnostics
+sensor:
+  lines: 32 # [-]
+  samples: 512 # [-]
+  vertical_fov: 90 # [deg]
+  frequency: 10 # [Hz]

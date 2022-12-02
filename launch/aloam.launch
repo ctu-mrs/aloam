@@ -1,10 +1,11 @@
 <launch>
+  
+  <arg name="UAV_NAME" default="$(optenv UAV_NAME)" />
 
-  <arg name="points_topic" default="os_cloud_nodelet/points_processed" />
-  <arg name="points_proc_diag_topic" default="pcl_filter/diagnostics" />
+  <arg name="points_topic" default="/$(arg UAV_NAME)/pcl_filter_ouster/points_processed" />
+  <arg name="points_proc_diag_topic" default="/$(arg UAV_NAME)/pcl_filter_ouster/diagnostics" />
 
   <!-- ENV VARS -->
-  <arg name="UAV_NAME" default="$(optenv UAV_NAME)" />
   <arg name="ENABLE_PROFILER" default="$(optenv PROFILER false)" />
 
   <arg name="standalone" default="true" />
@@ -32,8 +33,9 @@
 
     <node pkg="nodelet" type="nodelet" name="aloam" args="$(arg nodelet) aloam_slam/AloamSlam $(arg nodelet_manager)" output="screen" launch-prefix="bash -c 'sleep $(arg launch_delay); $0 $@'; $(arg launch_prefix)">
 
+      <rosparam file="$(find feature_extraction)/config/default.yaml" command="load" />
       <rosparam file="$(find aloam_slam)/config/aloam.yaml" command="load" />
-      <rosparam file="$(find aloam_slam)/config/feature_selection.yaml" command="load" />
+      <rosparam file="$(find aloam_slam)/config/sensor.yaml" command="load" />
       <rosparam if="$(eval not arg('custom_config') == '')" file="$(arg custom_config)" command="load" />
 
       <param name="enable_profiler" type="bool" value="$(arg ENABLE_PROFILER)" />
@@ -48,21 +50,27 @@
       <param name="offline/points_topic" type="string" value="$(arg points_topic)" />
 
       <!-- Subscribers -->
-      <remap from="~laser_cloud_in" to="$(arg points_topic)" />
-      <remap from="~orientation_in" to="odometry/orientation" />
-      <remap from="~init_odom_in" to="odometry/odom_main" />
+      <remap from="~laser_cloud_in"     to="$(arg points_topic)" />
+      <remap from="~orientation_in"     to="odometry/orientation" />
+      <remap from="~init_odom_in"       to="odometry/odom_main" />
       <remap from="~input_proc_diag_in" to="$(arg points_proc_diag_topic)" />
 
       <!-- Publishers -->
-      <remap from="~diag_out" to="slam/diagnostics"/>
-      <remap from="~fs_diag_out" to="slam/fs/diagnostics"/>
-      <remap from="~path_out" to="slam/path"/>
-      <remap from="~map_out" to="slam/map"/>
-      <remap from="~eigenvalues" to="slam/eigenvalues"/>
-      <remap from="~features_out" to="slam/features"/>
+      <remap from="~diag_out"        to="slam/diagnostics"/>
+      <remap from="~path_out"        to="slam/path"/>
+      <remap from="~map_out"         to="slam/map"/>
+      <remap from="~eigenvalues_out" to="slam/eigenvalues"/>
 
-      <remap from="~odom_local_out" to="slam/odom_local" />
+      <remap from="~odom_local_out"  to="slam/odom/local" />
       <remap from="~odom_global_out" to="slam/odom" />
+
+      <remap from="~points_out"          to="slam/points" />
+      <remap from="~edges_out"           to="slam/features/edges/raw" />
+      <remap from="~planes_out"          to="slam/features/planes/raw" />
+      <remap from="~edges_salient_out"   to="slam/features/edges/salient" />
+      <remap from="~planes_salient_out"  to="slam/features/planes/salient" />
+      <remap from="~edges_selected_out"  to="slam/features/edges/selected" />
+      <remap from="~planes_selected_out" to="slam/features/planes/selected" />
 
       <!-- Service servers -->
       <remap from="~srv_reset_mapping_in" to="~reset_mapping" />

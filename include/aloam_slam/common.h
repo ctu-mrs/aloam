@@ -90,7 +90,10 @@
 
 #include <pcl/point_types.h>
 
-typedef pcl::PointXYZI PointType;
+#include <feature_extraction/lidar_extraction_edge_plane.h>
+
+typedef ouster_ros::Point PointTypeOS;
+typedef pcl::PointXYZI    PointType;
 
 inline double rad2deg(double radians) {
   return radians * 180.0 / M_PI;
@@ -114,7 +117,10 @@ struct CommonHandlers_t
 
   tf::Transform tf_lidar_in_fcu_frame;
 
+  // Sensor parameters
   int   scan_lines;
+  int   samples_per_row;
+  float vfov;
   float frequency;
 
   bool                                       enable_scope_timer;

@@ -16,61 +16,8 @@ AloamOdometry::AloamOdometry(const std::shared_ptr<CommonHandlers_t> handlers, c
 
   ros::Time::waitForValid();
 
-  /*//{ Load feature selection parameters */
-
-  feature_selection::FSOptionsMap_t          fs_options_map;
-  feature_selection::FSLookUpTableParameters fs_lut_parameters;
-
-  const bool fs_enabled = _handlers->param_loader->loadParamReusable<bool>("feature_selection/enabled");
-
-  if (fs_enabled) {
-
-    const std::vector<std::string> fs_types = _handlers->param_loader->loadParamReusable<std::vector<std::string>>("feature_selection/types", {});
-
-    if (!fs_types.empty()) {
-
-      // Load defaults
-      const std::string fs_default_method           = _handlers->param_loader->loadParamReusable<std::string>("feature_selection/method");
-      const bool        fs_default_keep_standalones = _handlers->param_loader->loadParamReusable<bool>("feature_selection/keep_standalone_features");
-      const double      fs_default_resolution       = _handlers->param_loader->loadParamReusable<double>("feature_selection/resolution");
-      const double      fs_default_keep_percentile  = _handlers->param_loader->loadParamReusable<double>("feature_selection/keep_percentile");
-      const int         fs_default_segment_count    = _handlers->param_loader->loadParamReusable<int>("feature_selection/segment_count");
-
-      // Load type-specifics
-      for (const auto &type : fs_types) {
-
-        feature_selection::FSOptions fs_options;
-
-        _handlers->param_loader->loadParam<std::string>("feature_selection/" + type + "/method", fs_options.method, fs_default_method);
-        _handlers->param_loader->loadParam<bool>("feature_selection/" + type + "/enabled", fs_options.enabled, fs_enabled);
-        _handlers->param_loader->loadParam<bool>("feature_selection/" + type + "/keep_standalone_features", fs_options.keep_standalone_features,
-                                                 fs_default_keep_standalones);
-        _handlers->param_loader->loadParam<double>("feature_selection/" + type + "/resolution", fs_options.resolution, fs_default_resolution);
-        _handlers->param_loader->loadParam<double>("feature_selection/" + type + "/keep_percentile", fs_options.keep_percentile, fs_default_keep_percentile);
-        _handlers->param_loader->loadParam<int>("feature_selection/" + type + "/segment_count", fs_options.segment_count, fs_default_segment_count);
-
-        fs_options_map.insert({type, fs_options});
-      }
-    }
-
-    // Look Up Table parameters
-    _handlers->param_loader->loadParam<int>("sensor/samples", fs_lut_parameters.width);
-    _handlers->param_loader->loadParam<double>("sensor/vertical_fov", fs_lut_parameters.vfov);
-    _handlers->param_loader->loadParam<double>("feature_selection/lut/resolution/radius", fs_lut_parameters.radius_resolution);
-    _handlers->param_loader->loadParam<double>("feature_selection/lut/resolution/range", fs_lut_parameters.range_resolution);
-    _handlers->param_loader->loadParam<double>("feature_selection/lut/max/radius", fs_lut_parameters.max_radius);
-    _handlers->param_loader->loadParam<double>("feature_selection/lut/max/range", fs_lut_parameters.max_range);
-
-    fs_lut_parameters.height = _handlers->scan_lines;
-    fs_lut_parameters.vfov *= M_PI / 180.0;  // To radians
-    fs_lut_parameters.hfov = 2.0 * M_PI;
-  }
-
-  /*//}*/
-
   // Objects initialization
-  _feature_selection = std::make_shared<feature_selection::FeatureSelection>(fs_enabled, _handlers->nh, fs_options_map, fs_lut_parameters);
-  _tf_broadcaster    = std::make_shared<tf2_ros::TransformBroadcaster>();
+  _tf_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>();
 
   {
     std::scoped_lock lock(_mutex_odometry_process);
@@ -105,9 +52,9 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   pcl::PointCloud<PointType>::Ptr      surf_points_less_flat;
   unsigned int                         proc_points_count;
 
-  ros::Time                                     stamp;
-  std::uint64_t                                 stamp_pcl;
-  aloam_slam::FeatureExtractionDiagnostics::Ptr diagnostics_fe;
+  ros::Time                         stamp;
+  std::uint64_t                     stamp_pcl;
+  feature_extraction::FEDiagnostics diagnostics_fe;
 
   /*//{ Load latest features */
   {
@@ -130,11 +77,15 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     stamp             = _odometry_data->stamp_ros;
     stamp_pcl         = _odometry_data->stamp_pcl;
 
-    corner_points_sharp      = _odometry_data->manager_corners_sharp->getUnorderedCloudPtr();
-    corner_points_less_sharp = _odometry_data->manager_corners_less_sharp->getUnorderedCloudPtr();
-    surf_points_flat         = _odometry_data->manager_surfs_flat->getUnorderedCloudPtr();
-    surf_points_less_flat    = _odometry_data->manager_surfs_less_flat->getUnorderedCloudPtr();
-    diagnostics_fe           = _odometry_data->diagnostics_fe;
+    corner_points_sharp =
+        cloudPointOStoCloudPoint(_odometry_data->manager_corners_sharp->getCloudPtr(), _odometry_data->manager_corners_sharp->getIndicesPtr());
+    corner_points_less_sharp =
+        cloudPointOStoCloudPoint(_odometry_data->manager_corners_less_sharp->getCloudPtr(), _odometry_data->manager_corners_less_sharp->getIndicesPtr());
+    surf_points_flat = cloudPointOStoCloudPoint(_odometry_data->manager_surfs_flat->getCloudPtr(), _odometry_data->manager_surfs_flat->getIndicesPtr());
+    surf_points_less_flat =
+        cloudPointOStoCloudPoint(_odometry_data->manager_surfs_less_flat->getCloudPtr(), _odometry_data->manager_surfs_less_flat->getIndicesPtr());
+
+    diagnostics_fe = _odometry_data->diagnostics_fe;
   }
 
   /*//}*/
@@ -145,15 +96,9 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   }
 
   const std::shared_ptr<MappingData> mapping_data = std::make_shared<MappingData>();
-  mapping_data->diagnostics_odometry              = boost::make_shared<aloam_slam::OdometryDiagnostics>();
-
-  // TODO: FSData objects
-  /* feature_selection::FSData    fs_data; */
-  /* feature_selection::Indices_t feature_indices_in_raw; */
-  /* fs_data.setCloud(cloud_raw, feature_indices_in_raw); */
 
   timer->checkpoint("loading data");
-  mapping_data->diagnostics_odometry->ms_loading_data = timer->getLifetime();
+  mapping_data->diagnostics_odometry.ms_loading_data = timer->getLifetime();
 
   mrs_lib::Routine profiler_routine = _handlers->profiler->createRoutine("timerOdometry", 1.0f / _scan_period_sec, 0.05, event);
 
@@ -362,7 +307,7 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
   /*//}*/
 
   timer->checkpoint("computing local odometry");
-  mapping_data->diagnostics_odometry->ms_optimization = timer->getLifetime();
+  mapping_data->diagnostics_odometry.ms_optimization = timer->getLifetime();
 
   geometry_msgs::Quaternion ori;
   tf::quaternionEigenToMsg(_q_w_curr, ori);
@@ -418,8 +363,8 @@ void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event)
     mapping_data->cloud_corners_last = _features_corners_last;
     mapping_data->cloud_surfs_last   = _features_surfs_last;
 
-    mapping_data->diagnostics_fe                 = diagnostics_fe;
-    mapping_data->diagnostics_odometry->ms_total = timer->getLifetime();
+    mapping_data->diagnostics_fe                = diagnostics_fe;
+    mapping_data->diagnostics_odometry.ms_total = timer->getLifetime();
 
     _aloam_mapping->setData(mapping_data);
   }
@@ -570,6 +515,41 @@ void AloamOdometry::TransformToStart(PointType const *const pi, PointType *const
 /*//{ setFrequency() */
 void AloamOdometry::setFrequency(const float frequency) {
   _scan_period_sec = 1.0f / frequency;
+}
+/*//}*/
+
+/*//{ cloudPointOStoCloudPoint() */
+pcl::PointCloud<PointType>::Ptr AloamOdometry::cloudPointOStoCloudPoint(const pcl::PointCloud<PointTypeOS>::Ptr cloud_in,
+                                                                        const feature_selection::IndicesPtr_t   indices) {
+
+  if (!cloud_in || !indices) {
+    ROS_ERROR("[AloamOdometry::cloudPointOStoCloudPoint]: Null pointer to input cloud or input indices given, returning nullptr.");
+    return nullptr;
+  } else if (!cloud_in->isOrganized()) {
+    ROS_ERROR("[AloamOdometry::cloudPointOStoCloudPoint]: Input cloud is NOT organized, returning nullptr.");
+    return nullptr;
+  }
+
+  const pcl::PointCloud<PointType>::Ptr cloud_out = boost::make_shared<pcl::PointCloud<PointType>>();
+  cloud_out->header                               = cloud_in->header;
+  cloud_out->width                                = indices->size();
+  cloud_out->height                               = 1;
+  cloud_out->is_dense                             = true;
+
+  cloud_out->reserve(cloud_out->width);
+  for (const auto &idx : *indices) {
+    const auto &point_os = cloud_in->at(idx.col, idx.row);
+
+    PointType point;
+    point.x         = point_os.x;
+    point.y         = point_os.y;
+    point.z         = point_os.z;
+    point.intensity = float(point_os.ring) + _scan_period_sec * (float(idx.col) / float(cloud_in->width));
+
+    cloud_out->push_back(point);
+  }
+
+  return cloud_out;
 }
 /*//}*/
 

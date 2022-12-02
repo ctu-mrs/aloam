@@ -4,15 +4,6 @@ scope_timer:
   enable: false
   log_filename: "" # used, if not empty
 
-# LiDAR scan parameters
-# by default, these obtained by subscribing to the
-# MRS PCL Filter diagnostics
-sensor:
-  lines: 128 # [-]
-  samples: 1024 # [-]
-  vertical_fov: 90 # [deg]
-  frequency: 10 # [Hz]
-
 initialize_from_odom: false
 
 mapping:
@@ -25,5 +16,5 @@ mapping:
 # Parameters for offline processing (data read from rosbag)
 offline:
   run: true
-  rosbag: "/home/pavel/bag_files/subt_finals/44/44.bag"
+  rosbag: "/home/pavel/bag_files/DRONUMENT/NOVY_MALIN/2022_june/leader/3_2022_06_06_14_50_39_oltar/ouster_data.bag"
   timeout: 0.2

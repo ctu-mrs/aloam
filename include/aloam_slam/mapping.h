@@ -8,23 +8,18 @@
 #include "aloam_slam/lidarFactor.hpp"
 
 #include "aloam_slam/AloamDiagnostics.h"
-#include "aloam_slam/FeatureExtractionDiagnostics.h"
 #include "aloam_slam/OdometryDiagnostics.h"
 #include "aloam_slam/MappingDiagnostics.h"
 
-#include <feature_selection/feature_selection.h>
-
 //}
-
-using IndicesPtr = feature_selection::IndicesPtr_t;
 
 namespace aloam_slam
 {
 
 struct MappingData
 {
-  aloam_slam::FeatureExtractionDiagnostics::Ptr diagnostics_fe;
-  aloam_slam::OdometryDiagnostics::Ptr          diagnostics_odometry;
+  feature_extraction::FEDiagnostics diagnostics_fe;
+  aloam_slam::OdometryDiagnostics   diagnostics_odometry;
 
   ros::Time                       stamp_ros;
   tf::Transform                   odometry;

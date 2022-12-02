@@ -69,8 +69,8 @@ private:
 /* //{ onInit() */
 
 void AloamSlam::onInit() {
-  ros::NodeHandle nh_ = nodelet::Nodelet::getMTPrivateNodeHandle();
 
+  ros::NodeHandle nh_ = nodelet::Nodelet::getMTPrivateNodeHandle();
   ros::Time::waitForValid();
 
   ROS_INFO("[Aloam]: initializing");
@@ -98,6 +98,8 @@ void AloamSlam::onInit() {
   handlers->param_loader->loadParam("init_frame", frame_init, {});
   handlers->param_loader->loadParam("sensor/lines", handlers->scan_lines);
   handlers->param_loader->loadParam("sensor/frequency", handlers->frequency, -1.0f);
+  handlers->param_loader->loadParam("sensor/samples", handlers->samples_per_row);
+  handlers->param_loader->loadParam("sensor/vertical_fov", handlers->vfov);
   handlers->param_loader->loadParam("verbose", verbose, false);
   handlers->param_loader->loadParam("enable_profiler", enable_profiler, false);
   handlers->param_loader->loadParam("scope_timer/enable", handlers->enable_scope_timer, false);
@@ -115,11 +117,11 @@ void AloamSlam::onInit() {
   /*//{ Open rosbag */
   if (offline_run) {
     try {
-      ROS_INFO("[AloamSlam] Opening rosbag: %s", offline_rosbag.c_str());
+      ROS_INFO("[Aloam] Opening rosbag: %s", offline_rosbag.c_str());
       _bag.open(offline_rosbag, rosbag::bagmode::Read);
     }
     catch (...) {
-      ROS_ERROR("[AloamSlam] Couldn't open rosbag: %s", offline_rosbag.c_str());
+      ROS_ERROR("[Aloam] Couldn't open rosbag: %s", offline_rosbag.c_str());
       ros::shutdown();
       return;
     }
@@ -201,7 +203,7 @@ tf::Transform AloamSlam::getStaticTf(const std::string &frame_from, const std::s
 
   ROS_INFO_ONCE("[Aloam]: Looking for transform from %s to %s", frame_from.c_str(), frame_to.c_str());
   geometry_msgs::TransformStamped tf_lidar_fcu;
-  bool found = false;
+  bool                            found = false;
 
   if (custom_buffer) {
 
@@ -209,13 +211,14 @@ tf::Transform AloamSlam::getStaticTf(const std::string &frame_from, const std::s
       try {
         tf_lidar_fcu = tf_buffer->lookupTransform(frame_to, frame_from, ros::Time(0));
         found        = true;
-      } catch (...) {
+      }
+      catch (...) {
         ros::Duration(0.1).sleep();
       }
     }
-    
+
   } else {
-  
+
     mrs_lib::Transformer transformer("Aloam");
     transformer.setLookupTimeout(ros::Duration(0.1));
 
@@ -265,7 +268,7 @@ void AloamSlam::initOdom() {
       ROS_INFO("[Aloam]: \033[1;32minitialized\033[0m");
     } else {
       ROS_WARN_STREAM_THROTTLE(1.0,
-                               "[AloamSlam]: Did not get odometry initialization transform between " << handlers->frame_lidar << " and " << frame_init << ".");
+                               "[Aloam]: Did not get odometry initialization transform between " << handlers->frame_lidar << " and " << frame_init << ".");
       ros::Duration(0.1).sleep();
     }
   }

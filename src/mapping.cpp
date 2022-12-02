@@ -8,8 +8,6 @@ AloamMapping::AloamMapping(const std::shared_ptr<CommonHandlers_t> handlers) : _
 
   _handlers = handlers;
 
-  ros::NodeHandle nh_(handlers->nh);
-
   ros::Time::waitForValid();
 
   _handlers->param_loader->loadParam("mapping/remap_tf", _remap_tf, false);
@@ -36,19 +34,19 @@ AloamMapping::AloamMapping(const std::shared_ptr<CommonHandlers_t> handlers) : _
     }
   }
 
-  _pub_diag            = nh_.advertise<aloam_slam::AloamDiagnostics>("diag_out", 1);
-  _pub_laser_cloud_map = nh_.advertise<sensor_msgs::PointCloud2>("map_out", 1);
-  _pub_odom_global     = nh_.advertise<nav_msgs::Odometry>("odom_global_out", 1);
-  _pub_path            = nh_.advertise<nav_msgs::Path>("path_out", 1);
-  _pub_eigenvalue      = nh_.advertise<mrs_msgs::Float64ArrayStamped>("eigenvalues", 1);
+  _pub_diag            = handlers->nh.advertise<aloam_slam::AloamDiagnostics>("diag_out", 1);
+  _pub_laser_cloud_map = handlers->nh.advertise<sensor_msgs::PointCloud2>("map_out", 1);
+  _pub_odom_global     = handlers->nh.advertise<nav_msgs::Odometry>("odom_global_out", 1);
+  _pub_path            = handlers->nh.advertise<nav_msgs::Path>("path_out", 1);
+  _pub_eigenvalue      = handlers->nh.advertise<mrs_msgs::Float64ArrayStamped>("eigenvalues_out", 1);
 
   if (_mapping_frequency > 0.0f) {
-    _timer_mapping_loop = nh_.createTimer(ros::Rate(_mapping_frequency), &AloamMapping::timerMapping, this, false, true);
+    _timer_mapping_loop = handlers->nh.createTimer(ros::Rate(_mapping_frequency), &AloamMapping::timerMapping, this, false, true);
   }
 
   _tf_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>();
 
-  _srv_reset_mapping = nh_.advertiseService("srv_reset_mapping_in", &AloamMapping::callbackResetMapping, this);
+  _srv_reset_mapping = handlers->nh.advertiseService("srv_reset_mapping_in", &AloamMapping::callbackResetMapping, this);
 
   _time_last_map_publish = ros::Time::now();
 }
@@ -110,8 +108,8 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     features_surfs_last   = _mapping_data->cloud_surfs_last;
 
     diag_msg                     = boost::make_shared<aloam_slam::AloamDiagnostics>();
-    diag_msg->feature_extraction = *_mapping_data->diagnostics_fe;
-    diag_msg->odometry           = *_mapping_data->diagnostics_odometry;
+    diag_msg->feature_extraction = _mapping_data->diagnostics_fe;
+    diag_msg->odometry           = _mapping_data->diagnostics_odometry;
   }
   /*//}*/
 
@@ -676,7 +674,7 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 
   diag_msg->frame            = ++_frame_count;
   diag_msg->mapping.ms_total = timer->getLifetime();
-  diag_msg->ms_total         = diag_msg->feature_extraction.ms_total + diag_msg->odometry.ms_total + diag_msg->mapping.ms_total;
+  diag_msg->ms_total         = diag_msg->feature_extraction.total_processing_time_ms + diag_msg->odometry.ms_total + diag_msg->mapping.ms_total;
 
   // Publish diagnostics
   if (_pub_diag.getNumSubscribers() > 0) {
@@ -691,7 +689,8 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     }
   }
 
-  ROS_INFO_THROTTLE(1.0, "[Aloam] Run time: %.1f ms (FE: %.0f | O: %.0f | M: %.0f)", diag_msg->ms_total, diag_msg->feature_extraction.ms_total,
+  ROS_INFO_THROTTLE(1.0, "[Aloam] Run time: %.1f ms (FE: %.0f | FS: %.0f | O: %.0f | M: %.0f)", diag_msg->ms_total,
+                    diag_msg->feature_extraction.extraction_processing_time_ms, diag_msg->feature_extraction.selection_processing_time_ms,
                     diag_msg->odometry.ms_total, diag_msg->mapping.ms_total);
 }
 /*//}*/
