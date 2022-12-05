@@ -7,9 +7,6 @@
 #include <tf2_eigen/tf2_eigen.h>
 #include <tf2_ros/static_transform_broadcaster.h>
 
-#include <rosbag/bag.h>
-#include <rosbag/view.h>
-
 //}
 
 namespace aloam_slam
@@ -22,7 +19,7 @@ class AloamSlam : public nodelet::Nodelet {
 public:
   virtual void onInit();
 
-  tf::Transform getStaticTf(const std::string &frame_from, const std::string &frame_to, const bool custom_buffer);
+  tf::Transform getStaticTf(const std::string &frame_from, const std::string &frame_to);
 
   void initOdom();
 
@@ -35,15 +32,6 @@ private:
 
   std::string frame_init;
   std::thread t_odom_init;
-
-
-  /* Offline processing */
-  rosbag::Bag _bag;
-
-  std::unique_ptr<tf2_ros::Buffer>            tf_buffer;
-  std::unique_ptr<tf2_ros::TransformListener> tf_listener;
-
-  void offlineProcessing(const std::string &offline_points_topic);
 };
 
 //}
@@ -65,8 +53,6 @@ void AloamSlam::onInit() {
   handlers->param_loader = std::make_shared<mrs_lib::ParamLoader>(nh_, "Aloam");
 
   std::string time_logger_filepath;
-  std::string offline_rosbag;
-  std::string offline_points_topic;
   bool        verbose;
   bool        enable_profiler;
   bool        enable_scope_timer;
@@ -85,55 +71,16 @@ void AloamSlam::onInit() {
   handlers->param_loader->loadParam("enable_profiler", enable_profiler, false);
   handlers->param_loader->loadParam("scope_timer/enable", handlers->enable_scope_timer, false);
   handlers->param_loader->loadParam("scope_timer/log_filename", time_logger_filepath, std::string(""));
-  handlers->param_loader->loadParam("offline/run", handlers->offline_run, false);
-  handlers->param_loader->loadParam("offline/rosbag", offline_rosbag);
-  handlers->param_loader->loadParam("offline/points_topic", offline_points_topic);
   const auto initialize_from_odom = handlers->param_loader->loadParam2<bool>("initialize_from_odom", false);
+
+  handlers->offline_run = false;
 
   if (verbose && ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Debug)) {
     ros::console::notifyLoggerLevelsChanged();
   }
 
-  /*//{ Open rosbag and setup static TFs */
-  if (handlers->offline_run) {
-    try {
-      ROS_INFO("[Aloam] Opening rosbag: %s", offline_rosbag.c_str());
-      _bag.open(offline_rosbag, rosbag::bagmode::Read);
-    }
-    catch (...) {
-      ROS_ERROR("[Aloam] Couldn't open rosbag: %s", offline_rosbag.c_str());
-      ros::shutdown();
-      return;
-    }
-
-    tf_buffer   = std::make_unique<tf2_ros::Buffer>();
-    tf_listener = std::make_unique<tf2_ros::TransformListener>(*tf_buffer);
-
-    // Fill TF buffer with static TFs
-    rosbag::View tf_static = rosbag::View(_bag, rosbag::TopicQuery("/tf_static"));
-    for (const rosbag::MessageInstance &msg : tf_static) {
-
-      if (!ros::ok()) {
-        ros::shutdown();
-        _bag.close();
-        return;
-      }
-
-      const tf2_msgs::TFMessage::ConstPtr tf_msg = msg.instantiate<tf2_msgs::TFMessage>();
-      if (tf_msg) {
-        for (const auto &transform : tf_msg->transforms) {
-          tf_buffer->setTransform(transform, "default_authority", true);
-
-          static tf2_ros::StaticTransformBroadcaster static_broadcaster;
-          static_broadcaster.sendTransform(transform);
-        }
-      }
-    }
-  }
-  /*//}*/
-
   // | ---------------------- TF lidar->fcu --------------------- |
-  handlers->tf_lidar_in_fcu_frame = getStaticTf(handlers->frame_fcu, handlers->frame_lidar, handlers->offline_run);
+  handlers->tf_lidar_in_fcu_frame = getStaticTf(handlers->frame_fcu, handlers->frame_lidar);
 
   // | ------------------------ profiler ------------------------ |
   handlers->profiler = std::make_shared<mrs_lib::Profiler>(nh_, "Aloam", enable_profiler);
@@ -163,44 +110,25 @@ void AloamSlam::onInit() {
     aloam_mapping->is_initialized     = true;
     ROS_INFO("[Aloam]: \033[1;32minitialized\033[0m");
   }
-
-  if (handlers->offline_run) {
-    offlineProcessing(offline_points_topic);
-  }
 }
 
 //}
 
 /*//{ getStaticTf() */
-tf::Transform AloamSlam::getStaticTf(const std::string &frame_from, const std::string &frame_to, const bool custom_buffer) {
+tf::Transform AloamSlam::getStaticTf(const std::string &frame_from, const std::string &frame_to) {
 
   ROS_INFO_ONCE("[Aloam]: Looking for transform from %s to %s", frame_from.c_str(), frame_to.c_str());
   geometry_msgs::TransformStamped tf_lidar_fcu;
   bool                            found = false;
 
-  if (custom_buffer) {
+  mrs_lib::Transformer transformer("Aloam");
+  transformer.setLookupTimeout(ros::Duration(0.1));
 
-    while (ros::ok() && !found) {
-      try {
-        tf_lidar_fcu = tf_buffer->lookupTransform(frame_to, frame_from, ros::Time(0));
-        found        = true;
-      }
-      catch (...) {
-        ros::Duration(0.1).sleep();
-      }
-    }
-
-  } else {
-
-    mrs_lib::Transformer transformer("Aloam");
-    transformer.setLookupTimeout(ros::Duration(0.1));
-
-    while (ros::ok() && !found) {
-      const auto ret = transformer.getTransform(frame_from, frame_to, ros::Time(0));
-      if (ret.has_value()) {
-        found        = true;
-        tf_lidar_fcu = ret.value();
-      }
+  while (ros::ok() && !found) {
+    const auto ret = transformer.getTransform(frame_from, frame_to, ros::Time(0));
+    if (ret.has_value()) {
+      found        = true;
+      tf_lidar_fcu = ret.value();
     }
   }
 
@@ -246,78 +174,6 @@ void AloamSlam::initOdom() {
   }
 }
 
-//}
-
-/* offlineProcessing() //{ */
-void AloamSlam::offlineProcessing(const std::string &offline_points_topic) {
-
-  // Wait for initialization
-  bool initialized = feature_extractor->is_initialized && aloam_odometry->is_initialized && aloam_mapping->is_initialized;
-  while (!initialized) {
-    ROS_INFO_THROTTLE(1.0, "[Aloam] Offline processing is waiting for initialization.");
-
-    ros::Duration(0.1).sleep();
-    initialized = feature_extractor->is_initialized && aloam_odometry->is_initialized && aloam_mapping->is_initialized;
-  }
-
-  const std::unique_ptr<rosbag::View> bag_view = std::make_unique<rosbag::View>(_bag, rosbag::TopicQuery(offline_points_topic));
-
-  const size_t frame_total_count   = bag_view->size();
-  int          frame_valid_count   = 0;
-  int          frame_invalid_count = 0;
-
-  for (auto it = bag_view->begin(); it != bag_view->end(); it++) {
-
-    if (!ros::ok()) {
-      break;
-    }
-
-    const int frame = frame_valid_count + frame_invalid_count + 1;
-
-    // | ---------------- Read message from rosbag ---------------- |
-    const sensor_msgs::PointCloud2::Ptr cloud_msg = it->instantiate<sensor_msgs::PointCloud2>();
-    if (!cloud_msg) {
-      ROS_WARN("[Aloam] Failed to instantiate frame: %d/%ld", frame, frame_total_count);
-
-      frame_invalid_count++;
-      continue;
-    }
-
-    // | -------------------- Extract features -------------------- |
-    const bool fe_succ = feature_extractor->extractFeatures(cloud_msg);
-
-    if (!fe_succ) {
-      ROS_WARN("[Aloam] Feature extraction failed for frame: %d/%ld.", frame, frame_total_count);
-
-      frame_invalid_count++;
-      continue;
-    }
-
-    // | ---------------------- Call odometry --------------------- |
-    const bool odom_succ = aloam_odometry->computeOdometry();
-
-    if (!odom_succ) {
-      ROS_WARN("[Aloam] Odometry failed for frame: %d/%ld.", frame, frame_total_count);
-
-      frame_invalid_count++;
-      continue;
-    }
-
-    // | ---------------------- Call mapping ---------------------- |
-    const bool mapping_succ = aloam_mapping->computeMapping();
-
-    if (!mapping_succ) {
-      ROS_WARN("[Aloam] Mapping failed for frame: %d/%ld.", frame, frame_total_count);
-
-      frame_invalid_count++;
-      continue;
-    }
-
-    frame_valid_count++;
-  }
-
-  _bag.close();
-}
 //}
 
 }  // namespace aloam_slam

@@ -65,7 +65,7 @@ generate_messages(DEPENDENCIES
 )
 
 set(LIBRARIES
-  AloamSlam
+  AloamSlam AloamSlamRosbag
   )
 
 catkin_package(
@@ -108,6 +108,23 @@ target_link_libraries(AloamSlam
   ${Eigen_LIBRARIES}
   ${CERES_LIBRARIES}
   )
+
+add_library(AloamSlamRosbag
+  src/aloam_rosbag.cpp
+  src/odometry.cpp
+  src/mapping.cpp
+  src/feature_extractor.cpp
+)
+add_dependencies(AloamSlamRosbag 
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+)
+target_link_libraries(AloamSlamRosbag
+  ${catkin_LIBRARIES}
+  ${PCL_LIBRARIES}
+  ${Eigen_LIBRARIES}
+  ${CERES_LIBRARIES}
+)
 
 ## --------------------------------------------------------------
 ## |                           Install                          |

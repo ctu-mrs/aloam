@@ -12,8 +12,3 @@ mapping:
   publish_rate: 0.5 # [Hz]
   line_resolution: 0.2
   plane_resolution: 0.4
-
-# Parameters for offline processing (data read from rosbag)
-offline:
-  run: true
-  rosbag: "/home/pavel/bag_files/DRONUMENT/NOVY_MALIN/2022_june/leader/3_2022_06_06_14_50_39_oltar/ouster_data.bag"

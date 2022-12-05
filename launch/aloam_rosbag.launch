@@ -17,7 +17,6 @@
   <arg name="lidar_frame" default="$(arg UAV_NAME)/os_sensor" />
   <arg name="odom_frame" default="$(arg UAV_NAME)/slam_odom_origin" />
   <arg name="map_frame" default="$(arg UAV_NAME)/slam_origin" />
-  <arg name="init_frame" default="$(arg UAV_NAME)/gps_origin" />
 
   <arg     if="$(arg debug)" name="launch_prefix" value="debug_roslaunch" />
   <arg unless="$(arg debug)" name="launch_prefix" value="" />
@@ -31,11 +30,13 @@
 
   <group ns="$(arg UAV_NAME)">
 
-    <node pkg="nodelet" type="nodelet" name="aloam" args="$(arg nodelet) aloam_slam/AloamSlam $(arg nodelet_manager)" output="screen" launch-prefix="bash -c 'sleep $(arg launch_delay); $0 $@'; $(arg launch_prefix)">
+    <node pkg="nodelet" type="nodelet" name="aloam" args="$(arg nodelet) aloam_slam/AloamSlamRosbag $(arg nodelet_manager)" output="screen" launch-prefix="bash -c 'sleep $(arg launch_delay); $0 $@'; $(arg launch_prefix)">
 
       <rosparam file="$(find feature_extraction)/config/default.yaml" command="load" />
       <rosparam file="$(find aloam_slam)/config/aloam.yaml" command="load" />
+      <rosparam file="$(find aloam_slam)/config/aloam_rosbag.yaml" command="load" />
       <rosparam file="$(find aloam_slam)/config/sensor.yaml" command="load" />
+
       <rosparam if="$(eval not arg('custom_config') == '')" file="$(arg custom_config)" command="load" />
 
       <param name="enable_profiler" type="bool" value="$(arg ENABLE_PROFILER)" />
@@ -45,12 +46,12 @@
       <param name="odom_frame" type="string" value="$(arg odom_frame)" />
       <param name="map_frame" type="string" value="$(arg map_frame)" />
       <param name="lidar_frame" type="string" value="$(arg lidar_frame)" />
-      <param name="init_frame" type="string" value="$(arg init_frame)" />
+
+      <param name="rosbag/points_topic" type="string" value="$(arg points_topic)" />
 
       <!-- Subscribers -->
       <remap from="~laser_cloud_in"     to="$(arg points_topic)" />
       <remap from="~orientation_in"     to="odometry/orientation" />
-      <remap from="~init_odom_in"       to="odometry/odom_main" />
       <remap from="~input_proc_diag_in" to="$(arg points_proc_diag_topic)" />
 
       <!-- Publishers -->

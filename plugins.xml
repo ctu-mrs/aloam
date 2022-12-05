@@ -3,3 +3,9 @@
     <description>AloamSlam nodelet</description>
   </class>
 </library>
+
+<library path="lib/libAloamSlamRosbag">
+  <class name="aloam_slam/AloamSlamRosbag" type="aloam_slam::AloamSlamRosbag" base_class_type="nodelet::Nodelet">
+    <description>AloamSlamRosbag nodelet</description>
+  </class>
+</library>
