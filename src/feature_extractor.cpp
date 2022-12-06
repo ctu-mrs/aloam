@@ -46,7 +46,7 @@ FeatureExtractor::FeatureExtractor(const std::shared_ptr<CommonHandlers_t> handl
 /*//}*/
 
 /*//{ extractFeatures() */
-bool FeatureExtractor::extractFeatures(const sensor_msgs::PointCloud2::ConstPtr msg) {
+bool FeatureExtractor::extractFeatures(const sensor_msgs::PointCloud2::ConstPtr msg, const bool return_cloud_managers, FECloudManagersOut_t &managers) {
 
   if (!is_initialized) {
     ROS_WARN_THROTTLE(1.0, "[AloamFeatureExtractor] Calling uninitialized object.");
@@ -96,18 +96,6 @@ bool FeatureExtractor::extractFeatures(const sensor_msgs::PointCloud2::ConstPtr 
     return false;
   }
 
-  // Publish points/features if needed
-  publishCloud(_pub_points_finite_, cloud, fe.indices_finite);
-  publishCloud(_pub_features_edges_, cloud, fe.indices_edges);
-  publishCloud(_pub_features_planes_, cloud, fe.indices_planes);
-  publishCloud(_pub_features_edges_salient_, cloud, fe.indices_edges_salient);
-  publishCloud(_pub_features_planes_salient_, cloud, fe.indices_planes_salient);
-
-  if (fe.selection_enabled && fe.selection_success) {
-    publishCloud(_pub_features_edges_selected_, cloud, fe.indices_edges_selected);
-    publishCloud(_pub_features_planes_selected_, cloud, fe.indices_planes_selected);
-  }
-
   const std::shared_ptr<OdometryData> odometry_data = std::make_shared<OdometryData>();
 
   odometry_data->diagnostics_fe = fe.fe_diag_msg;
@@ -122,12 +110,50 @@ bool FeatureExtractor::extractFeatures(const sensor_msgs::PointCloud2::ConstPtr 
   odometry_data->manager_corners_sharp = std::make_shared<feature_selection::FSCloudManager>(cloud, fe.indices_edges_salient);
   odometry_data->manager_surfs_flat    = std::make_shared<feature_selection::FSCloudManager>(cloud, fe.indices_planes_salient);
 
+  if (return_cloud_managers) {
+    managers.man_edges_salient  = odometry_data->manager_corners_sharp;
+    managers.man_planes_salient = odometry_data->manager_surfs_flat;
+  }
+
+  // Publish points/features if needed
+  publishCloud(_pub_points_finite_, cloud, fe.indices_finite);
+  publishCloud(_pub_features_edges_salient_, odometry_data->manager_corners_sharp);
+  publishCloud(_pub_features_planes_salient_, odometry_data->manager_surfs_flat);
+
   if (fe.selection_enabled && fe.selection_success) {
+
     odometry_data->manager_corners_less_sharp = std::make_shared<feature_selection::FSCloudManager>(cloud, fe.indices_edges_selected);
     odometry_data->manager_surfs_less_flat    = std::make_shared<feature_selection::FSCloudManager>(cloud, fe.indices_planes_selected);
+
+    const auto man_edges  = std::make_shared<feature_selection::FSCloudManager>(cloud, fe.indices_edges);
+    const auto man_planes = std::make_shared<feature_selection::FSCloudManager>(cloud, fe.indices_planes);
+
+    if (return_cloud_managers) {
+      managers.man_edges_extracted  = man_edges;
+      managers.man_edges_selected   = odometry_data->manager_corners_less_sharp;
+      managers.man_planes_extracted = man_planes;
+      managers.man_planes_selected  = odometry_data->manager_surfs_less_flat;
+    }
+
+    // Publish features if needed
+    publishCloud(_pub_features_edges_, man_edges);
+    publishCloud(_pub_features_planes_, man_planes);
+    publishCloud(_pub_features_edges_selected_, odometry_data->manager_corners_less_sharp);
+    publishCloud(_pub_features_planes_selected_, odometry_data->manager_surfs_less_flat);
+
   } else {
+
     odometry_data->manager_corners_less_sharp = std::make_shared<feature_selection::FSCloudManager>(cloud, fe.indices_edges);
     odometry_data->manager_surfs_less_flat    = std::make_shared<feature_selection::FSCloudManager>(cloud, fe.indices_planes);
+
+    if (return_cloud_managers) {
+      managers.man_edges_extracted  = odometry_data->manager_corners_less_sharp;
+      managers.man_planes_extracted = odometry_data->manager_surfs_less_flat;
+    }
+
+    // Publish features if needed
+    publishCloud(_pub_features_edges_, odometry_data->manager_corners_less_sharp);
+    publishCloud(_pub_features_planes_, odometry_data->manager_surfs_less_flat);
   }
 
   _aloam_odometry->setData(odometry_data);
@@ -138,7 +164,8 @@ bool FeatureExtractor::extractFeatures(const sensor_msgs::PointCloud2::ConstPtr 
 
 /*//{ callbackPointCloud() */
 void FeatureExtractor::callbackPointCloud(const sensor_msgs::PointCloud2::ConstPtr msg) {
-  extractFeatures(msg);
+  FECloudManagersOut_t managers;
+  extractFeatures(msg, false, managers);
 }
 /*//}*/
 
@@ -183,26 +210,29 @@ bool FeatureExtractor::hasField(const std::string field, const sensor_msgs::Poin
 /*//}*/
 
 /*//{ publishCloud() */
-void FeatureExtractor::publishCloud(const ros::Publisher &pub, const pcl::PointCloud<PointTypeOS>::Ptr cloud, const feature_extraction::indices_ptr_t indices) {
-  if (cloud && pub.getNumSubscribers() > 0) {
+void FeatureExtractor::publishCloud(const ros::Publisher &pub, const feature_selection::FSCloudManagerPtr cloud_manager) {
+  if (pub.getNumSubscribers() > 0) {
+
+    const auto cloud = cloud_manager->getUnorderedCloudPtr();
 
     const sensor_msgs::PointCloud2::Ptr msg = boost::make_shared<sensor_msgs::PointCloud2>();
-
-    if (indices) {
-
-      const auto subcloud = _fe_edge_plane_->toCloud(cloud, indices);
-      pcl::toROSMsg(*subcloud, *msg);
-
-    } else {
-
-      pcl::toROSMsg(*cloud, *msg);
-    }
+    pcl::toROSMsg(*cloud, *msg);
 
     try {
       pub.publish(msg);
     }
     catch (...) {
     }
+  }
+}
+/*//}*/
+
+/*//{ publishCloud() */
+void FeatureExtractor::publishCloud(const ros::Publisher &pub, const pcl::PointCloud<PointTypeOS>::Ptr cloud, const feature_extraction::indices_ptr_t indices) {
+  if (cloud && pub.getNumSubscribers() > 0) {
+
+    const auto manager = std::make_shared<feature_selection::FSCloudManager>(cloud, indices);
+    publishCloud(pub, manager);
   }
 }
 /*//}*/

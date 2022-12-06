@@ -1,8 +1,10 @@
 # Parameters for rosbag processing (data read/write from/to rosbag)
 rosbag:
-  run: true
-  write_out: true
-  file:
-    directory:    "/home/pavel/bag_files/DRONUMENT/NOVY_MALIN/2022_june/leader/3_2022_06_06_14_50_39_oltar"
-    filename_in:  "ouster_data.bag"
-    filename_out: "aloam_out.bag"
+  directory: "/home/pavel/bag_files/DRONUMENT/NOVY_MALIN/2022_june/leader/3_2022_06_06_14_50_39_oltar"
+  filename:  "ouster_data.bag"
+  write_out:
+    enable: true
+    filename: "aloam_out.bag"
+    input_points: true
+    pointclouds: true
+  shutdown_ros: true

@@ -42,7 +42,7 @@ AloamOdometry::AloamOdometry(const std::shared_ptr<CommonHandlers_t> handlers, c
 //}
 
 /*//{ computeOdometry() */
-bool AloamOdometry::computeOdometry() {
+bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out) {
   if (!is_initialized) {
     ROS_WARN_THROTTLE(1.0, "[AloamOdometry] Calling uninitialized object.");
     return false;
@@ -361,19 +361,18 @@ bool AloamOdometry::computeOdometry() {
 
   if (_frame_count > 0) {
     // Publish inverse TF transform (lidar -> odom)
-    tf::Transform tf_fcu = tf_lidar * _handlers->tf_lidar_in_fcu_frame;
+    const tf::Transform tf_fcu = tf_lidar * _handlers->tf_lidar_in_fcu_frame;
 
-    geometry_msgs::TransformStamped tf_msg;
-    tf_msg.header.stamp    = stamp;
-    tf_msg.header.frame_id = _handlers->frame_fcu;
-    tf_msg.child_frame_id  = _handlers->frame_odom;
-    tf::transformTFToMsg(tf_fcu.inverse(), tf_msg.transform);
+    tf_msg_out.header.stamp    = stamp;
+    tf_msg_out.header.frame_id = _handlers->frame_fcu;
+    tf_msg_out.child_frame_id  = _handlers->frame_odom;
+    tf::transformTFToMsg(tf_fcu.inverse(), tf_msg_out.transform);
 
     try {
-      _tf_broadcaster->sendTransform(tf_msg);
+      _tf_broadcaster->sendTransform(tf_msg_out);
     }
     catch (...) {
-      ROS_ERROR("[AloamOdometry]: Exception caught during publishing TF: %s - %s.", tf_msg.child_frame_id.c_str(), tf_msg.header.frame_id.c_str());
+      ROS_ERROR("[AloamOdometry]: Exception caught during publishing TF: %s - %s.", tf_msg_out.child_frame_id.c_str(), tf_msg_out.header.frame_id.c_str());
     }
 
     // Publish nav_msgs::Odometry msg in odom frame
@@ -413,7 +412,8 @@ bool AloamOdometry::computeOdometry() {
 
 /*//{ timerOdometry() */
 void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event) {
-  computeOdometry();
+  geometry_msgs::TransformStamped tf_msg;
+  computeOdometry(tf_msg);
 }
 /*//}*/
 

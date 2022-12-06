@@ -68,7 +68,7 @@ void AloamMapping::setData(const std::shared_ptr<MappingData> data) {
 /*//}*/
 
 /*//{ computeMapping() */
-bool AloamMapping::computeMapping() {
+bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, aloam_slam::AloamDiagnostics::Ptr &diag_msg_out) {
 
   if (!is_initialized) {
     return false;
@@ -77,11 +77,10 @@ bool AloamMapping::computeMapping() {
   std::unique_ptr<mrs_lib::ScopeTimer> timer;
 
   /*//{ Load latest odometry data (blocks for _cv_mapping_data and timeouts if blocking takes longer than 1.0/_mapping_frequency) */
-  aloam_slam::AloamDiagnostics::Ptr diag_msg;
-  ros::Time                         time_aloam_odometry;
-  tf::Transform                     aloam_odometry;
-  pcl::PointCloud<PointType>::Ptr   features_corners_last;
-  pcl::PointCloud<PointType>::Ptr   features_surfs_last;
+  ros::Time                       time_aloam_odometry;
+  tf::Transform                   aloam_odometry;
+  pcl::PointCloud<PointType>::Ptr features_corners_last;
+  pcl::PointCloud<PointType>::Ptr features_surfs_last;
 
   {
     std::unique_lock lock(_mutex_mapping_data);
@@ -113,16 +112,16 @@ bool AloamMapping::computeMapping() {
     features_corners_last = _mapping_data->cloud_corners_last;
     features_surfs_last   = _mapping_data->cloud_surfs_last;
 
-    diag_msg                     = boost::make_shared<aloam_slam::AloamDiagnostics>();
-    diag_msg->feature_extraction = _mapping_data->diagnostics_fe;
-    diag_msg->odometry           = _mapping_data->diagnostics_odometry;
+    diag_msg_out                     = boost::make_shared<aloam_slam::AloamDiagnostics>();
+    diag_msg_out->feature_extraction = _mapping_data->diagnostics_fe;
+    diag_msg_out->odometry           = _mapping_data->diagnostics_odometry;
 
     _has_new_data = false;
   }
   /*//}*/
 
   timer->checkpoint("loading data");
-  diag_msg->mapping.ms_loading_data = timer->getLifetime();
+  diag_msg_out->mapping.ms_loading_data = timer->getLifetime();
 
   mrs_lib::Routine profiler_routine = _handlers->profiler->createRoutine("timerMapping");
 
@@ -511,7 +510,7 @@ bool AloamMapping::computeMapping() {
   /*//}*/
 
   timer->checkpoint("associating features with map");
-  diag_msg->mapping.ms_associating_features = timer->getLifetime();
+  diag_msg_out->mapping.ms_associating_features = timer->getLifetime();
 
   {
     std::scoped_lock lock(_mutex_cloud_features);
@@ -582,7 +581,7 @@ bool AloamMapping::computeMapping() {
   }
 
   timer->checkpoint("adding features to map");
-  diag_msg->mapping.ms_adding_features_to_map = timer->getLifetime();
+  diag_msg_out->mapping.ms_adding_features_to_map = timer->getLifetime();
 
   /*//{ Publish data */
 
@@ -596,21 +595,20 @@ bool AloamMapping::computeMapping() {
 
   const tf::Transform tf_fcu = tf_lidar * _handlers->tf_lidar_in_fcu_frame;
 
-  geometry_msgs::TransformStamped tf_msg;
-  tf_msg.header.stamp    = time_aloam_odometry;
-  tf_msg.header.frame_id = _handlers->frame_fcu;
+  tf_msg_out.header.stamp    = time_aloam_odometry;
+  tf_msg_out.header.frame_id = _handlers->frame_fcu;
   if (_remap_tf) {
-    tf_msg.child_frame_id = _handlers->frame_map + "_orig";
+    tf_msg_out.child_frame_id = _handlers->frame_map + "_orig";
   } else {
-    tf_msg.child_frame_id = _handlers->frame_map;
+    tf_msg_out.child_frame_id = _handlers->frame_map;
   }
-  tf::transformTFToMsg(tf_fcu.inverse(), tf_msg.transform);
+  tf::transformTFToMsg(tf_fcu.inverse(), tf_msg_out.transform);
 
   try {
-    _tf_broadcaster->sendTransform(tf_msg);
+    _tf_broadcaster->sendTransform(tf_msg_out);
   }
   catch (...) {
-    ROS_ERROR("[AloamMapping]: Exception caught during publishing TF: %s - %s.", tf_msg.child_frame_id.c_str(), tf_msg.header.frame_id.c_str());
+    ROS_ERROR("[AloamMapping]: Exception caught during publishing TF: %s - %s.", tf_msg_out.child_frame_id.c_str(), tf_msg_out.header.frame_id.c_str());
   }
 
   // Create nav_msgs::Odometry msg
@@ -680,26 +678,26 @@ bool AloamMapping::computeMapping() {
 
   /*//}*/
 
-  diag_msg->frame            = ++_frame_count;
-  diag_msg->mapping.ms_total = timer->getLifetime();
-  diag_msg->ms_total         = diag_msg->feature_extraction.total_processing_time_ms + diag_msg->odometry.ms_total + diag_msg->mapping.ms_total;
+  diag_msg_out->frame            = ++_frame_count;
+  diag_msg_out->mapping.ms_total = timer->getLifetime();
+  diag_msg_out->ms_total         = diag_msg_out->feature_extraction.total_processing_time_ms + diag_msg_out->odometry.ms_total + diag_msg_out->mapping.ms_total;
 
   // Publish diagnostics
   if (_pub_diag.getNumSubscribers() > 0) {
 
-    diag_msg->data_stamp = time_aloam_odometry;
+    diag_msg_out->data_stamp = time_aloam_odometry;
 
     try {
-      _pub_diag.publish(diag_msg);
+      _pub_diag.publish(diag_msg_out);
     }
     catch (...) {
       ROS_ERROR("[AloamMapping]: Exception caught during publishing topic: %s.", _pub_diag.getTopic().c_str());
     }
   }
 
-  ROS_INFO_THROTTLE(1.0, "[Aloam] Run time: %.1f ms (FE: %.0f | FS: %.0f | O: %.0f | M: %.0f)", diag_msg->ms_total,
-                    diag_msg->feature_extraction.extraction_processing_time_ms, diag_msg->feature_extraction.selection_processing_time_ms,
-                    diag_msg->odometry.ms_total, diag_msg->mapping.ms_total);
+  ROS_INFO_THROTTLE(1.0, "[Aloam] Run time: %.1f ms (FE: %.0f | FS: %.0f | O: %.0f | M: %.0f)", diag_msg_out->ms_total,
+                    diag_msg_out->feature_extraction.extraction_processing_time_ms, diag_msg_out->feature_extraction.selection_processing_time_ms,
+                    diag_msg_out->odometry.ms_total, diag_msg_out->mapping.ms_total);
 
   return true;
 }
@@ -707,7 +705,10 @@ bool AloamMapping::computeMapping() {
 
 /*//{ timerMapping() */
 void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
-  computeMapping();
+  geometry_msgs::TransformStamped   tf_msg;
+  aloam_slam::AloamDiagnostics::Ptr diag_msg;
+
+  computeMapping(tf_msg, diag_msg);
 }
 /*//}*/
 

@@ -32,7 +32,7 @@ class AloamMapping {
 public:
   AloamMapping(const std::shared_ptr<CommonHandlers_t> handlers);
 
-  bool computeMapping();
+  bool computeMapping(geometry_msgs::TransformStamped &tf_msg_out, aloam_slam::AloamDiagnostics::Ptr &diag_msg_out);
 
   std::atomic<bool> is_initialized = false;
 

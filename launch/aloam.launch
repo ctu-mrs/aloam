@@ -63,8 +63,8 @@
       <remap from="~odom_global_out" to="slam/odom" />
 
       <remap from="~points_out"          to="slam/points" />
-      <remap from="~edges_out"           to="slam/features/edges/raw" />
-      <remap from="~planes_out"          to="slam/features/planes/raw" />
+      <remap from="~edges_out"           to="slam/features/edges/extracted" />
+      <remap from="~planes_out"          to="slam/features/planes/extracted" />
       <remap from="~edges_salient_out"   to="slam/features/edges/salient" />
       <remap from="~planes_salient_out"  to="slam/features/planes/salient" />
       <remap from="~edges_selected_out"  to="slam/features/edges/selected" />
