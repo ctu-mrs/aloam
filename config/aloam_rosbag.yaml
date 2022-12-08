@@ -1,7 +1,5 @@
 # Parameters for rosbag processing (data read/write from/to rosbag)
 rosbag:
-  directory: "/home/pavel/bag_files/DRONUMENT/NOVY_MALIN/2022_june/leader/3_2022_06_06_14_50_39_oltar"
-  filename:  "ouster_data.bag"
   write_out:
     enable: true
     filename: "aloam_out.bag"
