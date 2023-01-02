@@ -681,11 +681,10 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
   diag_msg_out->frame            = ++_frame_count;
   diag_msg_out->mapping.ms_total = timer->getLifetime();
   diag_msg_out->ms_total         = diag_msg_out->feature_extraction.total_processing_time_ms + diag_msg_out->odometry.ms_total + diag_msg_out->mapping.ms_total;
+  diag_msg_out->data_stamp       = time_aloam_odometry;
 
   // Publish diagnostics
   if (_pub_diag.getNumSubscribers() > 0) {
-
-    diag_msg_out->data_stamp = time_aloam_odometry;
 
     try {
       _pub_diag.publish(diag_msg_out);

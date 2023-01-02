@@ -194,7 +194,10 @@ void AloamSlamRosbag::onInit() {
   readWriteRosbag(rosbag_points_topic, write_bag_out, write_input_points, write_pointclouds);
 
   if (shutdown_ros) {
+    ROS_INFO("[AloamRosbag]: Shutting down ROS.");
     ros::shutdown();
+    ros::requestShutdown();
+    nh_.shutdown();
   }
 }
 
