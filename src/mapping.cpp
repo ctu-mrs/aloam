@@ -495,10 +495,56 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
         // Publish eigenvalues
         _pub_eigenvalue.publish(msg_eigenvalue);
 
-        float time_eigenvalues = t_eigenvalues.toc();
+        // find the corresponding covariance matrix using the jacobian
+        Eigen::Matrix<double, 6, 6> covariance = eigen_matrix.inverse();
+        Eigen::Matrix<double, 6, 6> covariance_rearranged;
+        const std::array<int, 6> rowcol_map = {3, 4, 5, 0, 1, 2};
+        for (int r = 0; r < 6; r++)
+        {
+          for (int c = 0; c < 6; c++)
+          {
+            const auto row = rowcol_map[r];
+            const auto col = rowcol_map[c];
+            covariance_rearranged(row, col) = covariance(r, c);
+          }
+        }
+        _cov_w_curr = covariance_rearranged;
+
+        /* float time_eigenvalues = t_eigenvalues.toc(); */
         /* ROS_INFO("[AloamMapping] Eigenvalue calculation took %.3f ms.", time_eigenvalues); */
         /*//}*/
         ceres::Solve(options, &problem, &summary);
+
+        /* ceres::Covariance::Options cov_options; */
+        /* ceres::Covariance ceres_cov(cov_options); */
+
+        /* std::vector<std::pair<const double*, const double*> > covariance_blocks; */
+        /* const double* q = _parameters; */
+        /* const double* x = _parameters + 4; */
+        /* covariance_blocks.push_back(std::make_pair(q, q)); */
+        /* covariance_blocks.push_back(std::make_pair(q, x)); */
+        /* covariance_blocks.push_back(std::make_pair(x, x)); */
+
+        /* CHECK(ceres_cov.Compute(covariance_blocks, &problem)); */
+
+        /* double covariance_xx[3 * 3]; */
+        /* double covariance_xq[3 * 3]; */
+        /* double covariance_qq[3 * 3]; */
+
+        /* Eigen::Map<Eigen::Matrix<double, 3, 3>> cov_xx(covariance_xx), cov_xq(covariance_xq), cov_qq(covariance_qq); */
+
+        /* ceres_cov.GetCovarianceBlock(x, x, covariance_xx); */
+        /* ceres_cov.GetCovarianceBlockInTangentSpace(x, q, covariance_xq); */
+        /* ceres_cov.GetCovarianceBlockInTangentSpace(q, q, covariance_qq); */
+
+        /* _cov_w_curr.block<3, 3>(0, 0) = cov_xx; */
+        /* _cov_w_curr.block<3, 3>(3, 0) = cov_xq; */
+        /* _cov_w_curr.block<3, 3>(0, 3) = cov_xq.transpose(); */
+        /* _cov_w_curr.block<3, 3>(3, 3) = cov_qq; */
+        /* const Eigen::Matrix<double, 6, 6> diff = covariance_rearranged - _cov_w_curr; */
+        /* std::cout << "cov Eigen:\n" << covariance_rearranged << std::endl; */
+        /* std::cout << "cov Ceres:\n" << _cov_w_curr << std::endl; */
+        /* std::cout << "cov diff:\n" << diff << " (norm: " << diff.norm() << ")" << std::endl; */
       }
     } else {
       ROS_WARN("[AloamMapping] Not enough map correspondences. Skipping mapping frame.");
@@ -606,6 +652,16 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
     fcu_odom_msg->header.stamp           = time_aloam_odometry;
     tf::pointTFToMsg(tf_fcu.getOrigin(), fcu_odom_msg->pose.pose.position);
     tf::quaternionTFToMsg(tf_fcu.getRotation(), fcu_odom_msg->pose.pose.orientation);
+    for (int row = 0; row < 6; row++)
+      for (int col = 0; col < 6; col++)
+        fcu_odom_msg->pose.covariance.at(row * 6 + col) = _cov_w_curr(row, col);
+    // apply the transform betwenn the lidar and the FCU to the covariance
+    // why the fuck do we still use tf instead of tf2 here??
+    geometry_msgs::Transform tf_lidar_to_fcu_msg;
+    tf::transformTFToMsg(_tf_lidar_to_fcu, tf_lidar_to_fcu_msg);
+    tf2::Transform tf_lidar_to_fcu_tf2;
+    tf2::fromMsg(tf_lidar_to_fcu_msg, tf_lidar_to_fcu_tf2);
+    fcu_odom_msg->pose.covariance = tf2::transformCovariance(fcu_odom_msg->pose.covariance, tf_lidar_to_fcu_tf2);
 
 
     // add points distant only 10cm (idea: throttle bandwidth)

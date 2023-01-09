@@ -138,6 +138,7 @@ private:
   double                         _parameters[7] = {0, 0, 0, 1, 0, 0, 0};
   Eigen::Map<Eigen::Quaterniond> _q_w_curr;
   Eigen::Map<Eigen::Vector3d>    _t_w_curr;
+  Eigen::Matrix<double, 6, 6>    _cov_w_curr;
 
   // wmap_T_odom * odom_T_curr = wmap_T_curr;
   // transformation between odom's world and map's world frame
