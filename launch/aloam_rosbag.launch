@@ -1,20 +1,25 @@
 <launch>
   
-  <arg name="UAV_NAME" default="$(optenv UAV_NAME)" />
-
-  <arg name="points_topic" default="/$(arg UAV_NAME)/pcl_filter_ouster/points_processed" />
-  <arg name="points_proc_diag_topic" default="/$(arg UAV_NAME)/pcl_filter_ouster/diagnostics" />
+  <arg name="UAV_NAME" />
+  <arg name="rosbag/topic/points" />
+  <arg name="rosbag/directory" />
+  <arg name="rosbag/filename" />
 
   <!-- ENV VARS -->
-  <arg name="ENABLE_PROFILER" default="$(optenv PROFILER false)" />
+  <arg name="ENABLE_PROFILER" default="false" />
 
   <arg name="standalone" default="true" />
   <arg name="debug" default="false" />
-  <arg name="custom_config" default="" />
+  
+  <!-- CUSTOM CONFIGS -->
+  <arg name="config/feature_extraction" default="" />
+  <arg name="config/aloam" default="" />
+  <arg name="config/aloam/rosbag" default="" />
+  <arg name="config/aloam/sensor" default="" />
 
   <!-- DEFAULT PARAMETERS AND FRAMES -->
   <arg name="fcu_frame" default="$(arg UAV_NAME)/fcu" />
-  <arg name="lidar_frame" default="$(arg UAV_NAME)/os_sensor" />
+  <arg name="lidar_frame" default="$(arg UAV_NAME)/os_lidar" />
   <arg name="odom_frame" default="$(arg UAV_NAME)/slam_odom_origin" />
   <arg name="map_frame" default="$(arg UAV_NAME)/slam_origin" />
 
@@ -37,7 +42,10 @@
       <rosparam file="$(find aloam_slam)/config/aloam_rosbag.yaml" command="load" />
       <rosparam file="$(find aloam_slam)/config/sensor.yaml" command="load" />
 
-      <rosparam if="$(eval not arg('custom_config') == '')" file="$(arg custom_config)" command="load" />
+      <rosparam if="$(eval arg('config/feature_extraction') != '')" file="$(arg config/feature_extraction)" command="load" />
+      <rosparam if="$(eval arg('config/aloam') != '')" file="$(arg config/aloam)" command="load" />
+      <rosparam if="$(eval arg('config/aloam/rosbag') != '')" file="$(arg config/aloam/rosbag)" command="load" />
+      <rosparam if="$(eval arg('config/aloam/sensor') != '')" file="$(arg config/aloam/sensor)" command="load" />
 
       <param name="enable_profiler" type="bool" value="$(arg ENABLE_PROFILER)" />
 
@@ -47,12 +55,9 @@
       <param name="map_frame" type="string" value="$(arg map_frame)" />
       <param name="lidar_frame" type="string" value="$(arg lidar_frame)" />
 
-      <param name="rosbag/points_topic" type="string" value="$(arg points_topic)" />
-
-      <!-- Subscribers -->
-      <remap from="~laser_cloud_in"     to="$(arg points_topic)" />
-      <remap from="~orientation_in"     to="odometry/orientation" />
-      <remap from="~input_proc_diag_in" to="$(arg points_proc_diag_topic)" />
+      <param name="rosbag/points_topic" type="string" value="$(arg rosbag/topic/points)" />
+      <param name="rosbag/directory" type="string" value="$(arg rosbag/directory)" />
+      <param name="rosbag/filename" type="string" value="$(arg rosbag/filename)" />
 
       <!-- Publishers -->
       <remap from="~diag_out"        to="slam/diagnostics"/>
@@ -70,9 +75,6 @@
       <remap from="~planes_salient_out"  to="slam/features/planes/salient" />
       <remap from="~edges_selected_out"  to="slam/features/edges/selected" />
       <remap from="~planes_selected_out" to="slam/features/planes/selected" />
-
-      <!-- Service servers -->
-      <remap from="~srv_reset_mapping_in" to="~reset_mapping" />
 
     </node>
 
