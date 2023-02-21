@@ -15,10 +15,13 @@ struct OdometryData
 
   std::size_t finite_points_count;
 
-  feature_selection::FSCloudManagerPtr manager_corners_sharp;
-  feature_selection::FSCloudManagerPtr manager_corners_less_sharp;
-  feature_selection::FSCloudManagerPtr manager_surfs_flat;
-  feature_selection::FSCloudManagerPtr manager_surfs_less_flat;
+  feature_selection::FSCloudManagerPtr manager_corners_salient;
+  feature_selection::FSCloudManagerPtr manager_corners_extracted;
+  feature_selection::FSCloudManagerPtr manager_surfs_salient;
+  feature_selection::FSCloudManagerPtr manager_surfs_extracted;
+  
+  feature_selection::FSCloudManagerPtr manager_corners_for_mapping;
+  feature_selection::FSCloudManagerPtr manager_surfs_for_mapping;
 };
 
 class AloamOdometry {
@@ -78,8 +81,6 @@ private:
 
   // member methods
   void timerOdometry(const ros::TimerEvent &event);
-
-  pcl::PointCloud<PointType>::Ptr cloudPointOStoCloudPoint(const pcl::PointCloud<PointTypeOS>::Ptr cloud, const feature_selection::IndicesPtr_t indices);
 
   void TransformToStart(PointType const *const pi, PointType *const po);
   void TransformToEnd(PointType const *const pi, PointType *const po);

@@ -1,5 +1,4 @@
 #include "aloam_slam/odometry.h"
-#include "aloam_slam/mapping.h"
 
 namespace aloam_slam
 {
@@ -55,6 +54,9 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
   pcl::PointCloud<PointType>::Ptr      surf_points_less_flat;
   unsigned int                         proc_points_count;
 
+  feature_selection::FSCloudManagerPtr manager_corners_for_mapping;
+  feature_selection::FSCloudManagerPtr manager_surfs_for_mapping;
+
   ros::Time                         stamp;
   std::uint64_t                     stamp_pcl;
   feature_extraction::FEDiagnostics diagnostics_fe;
@@ -89,13 +91,17 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
     stamp             = _odometry_data->stamp_ros;
     stamp_pcl         = _odometry_data->stamp_pcl;
 
-    corner_points_sharp =
-        cloudPointOStoCloudPoint(_odometry_data->manager_corners_sharp->getCloudPtr(), _odometry_data->manager_corners_sharp->getIndicesPtr());
-    corner_points_less_sharp =
-        cloudPointOStoCloudPoint(_odometry_data->manager_corners_less_sharp->getCloudPtr(), _odometry_data->manager_corners_less_sharp->getIndicesPtr());
-    surf_points_flat = cloudPointOStoCloudPoint(_odometry_data->manager_surfs_flat->getCloudPtr(), _odometry_data->manager_surfs_flat->getIndicesPtr());
-    surf_points_less_flat =
-        cloudPointOStoCloudPoint(_odometry_data->manager_surfs_less_flat->getCloudPtr(), _odometry_data->manager_surfs_less_flat->getIndicesPtr());
+    corner_points_sharp      = cloudPointOStoCloudPoint(_odometry_data->manager_corners_salient->getCloudPtr(),
+                                                   _odometry_data->manager_corners_salient->getIndicesPtr(), _scan_period_sec);
+    corner_points_less_sharp = cloudPointOStoCloudPoint(_odometry_data->manager_corners_extracted->getCloudPtr(),
+                                                        _odometry_data->manager_corners_extracted->getIndicesPtr(), _scan_period_sec);
+    surf_points_flat = cloudPointOStoCloudPoint(_odometry_data->manager_surfs_salient->getCloudPtr(), _odometry_data->manager_surfs_salient->getIndicesPtr(),
+                                                _scan_period_sec);
+    surf_points_less_flat = cloudPointOStoCloudPoint(_odometry_data->manager_surfs_extracted->getCloudPtr(),
+                                                     _odometry_data->manager_surfs_extracted->getIndicesPtr(), _scan_period_sec);
+
+    manager_corners_for_mapping = _odometry_data->manager_corners_for_mapping;
+    manager_surfs_for_mapping   = _odometry_data->manager_surfs_for_mapping;
 
     diagnostics_fe = _odometry_data->diagnostics_fe;
 
@@ -345,10 +351,10 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
     _features_corners_last->header.frame_id = _handlers->frame_lidar;
     _features_surfs_last->header.frame_id   = _handlers->frame_lidar;
 
-    mapping_data->stamp_ros          = stamp;
-    mapping_data->odometry           = tf_lidar;
-    mapping_data->cloud_corners_last = _features_corners_last;
-    mapping_data->cloud_surfs_last   = _features_surfs_last;
+    mapping_data->stamp_ros       = stamp;
+    mapping_data->odometry        = tf_lidar;
+    mapping_data->manager_corners = manager_corners_for_mapping;
+    mapping_data->manager_surfs   = manager_surfs_for_mapping;
 
     mapping_data->diagnostics_fe                = diagnostics_fe;
     mapping_data->diagnostics_odometry.ms_total = timer->getLifetime();
@@ -510,41 +516,6 @@ void AloamOdometry::TransformToStart(PointType const *const pi, PointType *const
 /*//{ setFrequency() */
 void AloamOdometry::setFrequency(const float frequency) {
   _scan_period_sec = 1.0f / frequency;
-}
-/*//}*/
-
-/*//{ cloudPointOStoCloudPoint() */
-pcl::PointCloud<PointType>::Ptr AloamOdometry::cloudPointOStoCloudPoint(const pcl::PointCloud<PointTypeOS>::Ptr cloud_in,
-                                                                        const feature_selection::IndicesPtr_t   indices) {
-
-  if (!cloud_in || !indices) {
-    ROS_ERROR("[AloamOdometry::cloudPointOStoCloudPoint]: Null pointer to input cloud or input indices given, returning nullptr.");
-    return nullptr;
-  } else if (!cloud_in->isOrganized()) {
-    ROS_ERROR("[AloamOdometry::cloudPointOStoCloudPoint]: Input cloud is NOT organized, returning nullptr.");
-    return nullptr;
-  }
-
-  const pcl::PointCloud<PointType>::Ptr cloud_out = boost::make_shared<pcl::PointCloud<PointType>>();
-  cloud_out->header                               = cloud_in->header;
-  cloud_out->width                                = indices->size();
-  cloud_out->height                               = 1;
-  cloud_out->is_dense                             = true;
-
-  cloud_out->reserve(cloud_out->width);
-  for (const auto &idx : *indices) {
-    const auto &point_os = cloud_in->at(idx.col, idx.row);
-
-    PointType point;
-    point.x         = point_os.x;
-    point.y         = point_os.y;
-    point.z         = point_os.z;
-    point.intensity = float(point_os.ring) + _scan_period_sec * (float(idx.col) / float(cloud_in->width));
-
-    cloud_out->push_back(point);
-  }
-
-  return cloud_out;
 }
 /*//}*/
 

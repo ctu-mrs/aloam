@@ -21,10 +21,12 @@ struct MappingData
   feature_extraction::FEDiagnostics diagnostics_fe;
   aloam_slam::OdometryDiagnostics   diagnostics_odometry;
 
-  ros::Time                       stamp_ros;
-  tf::Transform                   odometry;
-  pcl::PointCloud<PointType>::Ptr cloud_corners_last;
-  pcl::PointCloud<PointType>::Ptr cloud_surfs_last;
+  ros::Time     stamp_ros;
+  tf::Transform odometry;
+  /* pcl::PointCloud<PointType>::Ptr cloud_corners_last; */
+  /* pcl::PointCloud<PointType>::Ptr cloud_surfs_last; */
+  feature_selection::FSCloudManagerPtr manager_corners;
+  feature_selection::FSCloudManagerPtr manager_surfs;
 };
 
 class AloamMapping {
@@ -73,7 +75,7 @@ private:
   Eigen::Vector3d     _path_last_added_pos = Eigen::Vector3d::Identity();
 
   // member variables
-
+  float _scan_period_sec;
   float _mapping_frequency;
   float _map_publish_period;
   bool  _remap_tf;

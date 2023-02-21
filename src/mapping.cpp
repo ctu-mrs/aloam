@@ -6,7 +6,8 @@ namespace aloam_slam
 /*//{ AloamMapping() */
 AloamMapping::AloamMapping(const std::shared_ptr<CommonHandlers_t> handlers) : _q_w_curr(_parameters), _t_w_curr(_parameters + 4) {
 
-  _handlers = handlers;
+  _handlers        = handlers;
+  _scan_period_sec = 1.0f / handlers->frequency;
 
   ros::Time::waitForValid();
 
@@ -106,11 +107,10 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
     timer = std::make_unique<mrs_lib::ScopeTimer>("ALOAM::FeatureExtraction::timerMapping", _handlers->scope_timer_logger, _handlers->enable_scope_timer);
     const float t_start = timer->getLifetime();
 
-    _has_new_data         = false;
     time_aloam_odometry   = _mapping_data->stamp_ros;
     aloam_odometry        = _mapping_data->odometry;
-    features_corners_last = _mapping_data->cloud_corners_last;
-    features_surfs_last   = _mapping_data->cloud_surfs_last;
+    features_corners_last = cloudPointOStoCloudPoint(_mapping_data->manager_corners->getCloudPtr(), _mapping_data->manager_corners->getIndicesPtr(), _scan_period_sec);
+    features_surfs_last   = cloudPointOStoCloudPoint(_mapping_data->manager_surfs->getCloudPtr(), _mapping_data->manager_surfs->getIndicesPtr(), _scan_period_sec);
 
     diag_msg_out                     = boost::make_shared<aloam_slam::AloamDiagnostics>();
     diag_msg_out->feature_extraction = _mapping_data->diagnostics_fe;
@@ -157,9 +157,9 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
     while (center_cube_I < 3) {
       for (int j = 0; j < _cloud_height; j++) {
         for (int k = 0; k < _cloud_depth; k++) {
-          int                             i             = _cloud_width - 1;
-          pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-          pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          int                                   i             = _cloud_width - 1;
+          const pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          const pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
           for (; i >= 1; i--) {
             _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
                 _cloud_corners.at(i - 1 + _cloud_width * j + _cloud_width * _cloud_height * k);
@@ -180,9 +180,9 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
     while (center_cube_I >= _cloud_width - 3) {
       for (int j = 0; j < _cloud_height; j++) {
         for (int k = 0; k < _cloud_depth; k++) {
-          int                             i             = 0;
-          pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-          pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          int                                   i             = 0;
+          const pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          const pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
           for (; i < _cloud_width - 1; i++) {
             _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
                 _cloud_corners.at(i + 1 + _cloud_width * j + _cloud_width * _cloud_height * k);
@@ -203,9 +203,9 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
     while (center_cube_J < 3) {
       for (int i = 0; i < _cloud_width; i++) {
         for (int k = 0; k < _cloud_depth; k++) {
-          int                             j             = _cloud_height - 1;
-          pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-          pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          int                                   j             = _cloud_height - 1;
+          const pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          const pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
           for (; j >= 1; j--) {
             _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
                 _cloud_corners.at(i + _cloud_width * (j - 1) + _cloud_width * _cloud_height * k);
@@ -226,9 +226,9 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
     while (center_cube_J >= _cloud_height - 3) {
       for (int i = 0; i < _cloud_width; i++) {
         for (int k = 0; k < _cloud_depth; k++) {
-          int                             j             = 0;
-          pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-          pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          int                                   j             = 0;
+          const pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          const pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
           for (; j < _cloud_height - 1; j++) {
             _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
                 _cloud_corners.at(i + _cloud_width * (j + 1) + _cloud_width * _cloud_height * k);
@@ -249,9 +249,9 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
     while (center_cube_K < 3) {
       for (int i = 0; i < _cloud_width; i++) {
         for (int j = 0; j < _cloud_height; j++) {
-          int                             k             = _cloud_depth - 1;
-          pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-          pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          int                                   k             = _cloud_depth - 1;
+          const pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          const pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
           for (; k >= 1; k--) {
             _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
                 _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * (k - 1));
@@ -272,9 +272,9 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
     while (center_cube_K >= _cloud_depth - 3) {
       for (int i = 0; i < _cloud_width; i++) {
         for (int j = 0; j < _cloud_height; j++) {
-          int                             k             = 0;
-          pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-          pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          int                                   k             = 0;
+          const pcl::PointCloud<PointType>::Ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          const pcl::PointCloud<PointType>::Ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
           for (; k < _cloud_depth - 1; k++) {
             _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
                 _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * (k + 1));
@@ -315,11 +315,11 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
   filter_downsize_surfs.setLeafSize(_resolution_plane, _resolution_plane, _resolution_plane);
 
   /*//{*/
-  pcl::PointCloud<PointType>::Ptr features_corners_stack = boost::make_shared<pcl::PointCloud<PointType>>();
+  const pcl::PointCloud<PointType>::Ptr features_corners_stack = boost::make_shared<pcl::PointCloud<PointType>>();
   filter_downsize_corners.setInputCloud(features_corners_last);
   filter_downsize_corners.filter(*features_corners_stack);
 
-  pcl::PointCloud<PointType>::Ptr features_surfs_stack = boost::make_shared<pcl::PointCloud<PointType>>();
+  const pcl::PointCloud<PointType>::Ptr features_surfs_stack = boost::make_shared<pcl::PointCloud<PointType>>();
   filter_downsize_surfs.setInputCloud(features_surfs_last);
   filter_downsize_surfs.filter(*features_surfs_stack);
 

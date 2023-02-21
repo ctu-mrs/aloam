@@ -128,3 +128,38 @@ struct CommonHandlers_t
   bool                                       enable_scope_timer;
   std::shared_ptr<mrs_lib::ScopeTimerLogger> scope_timer_logger = nullptr;
 };
+
+/*//{ cloudPointOStoCloudPoint() */
+inline pcl::PointCloud<PointType>::Ptr cloudPointOStoCloudPoint(const pcl::PointCloud<PointTypeOS>::Ptr cloud_in, const feature_selection::IndicesPtr_t indices,
+                                                                const float scan_period_sec) {
+
+  if (!cloud_in || !indices) {
+    ROS_ERROR("[cloudPointOStoCloudPoint]: Null pointer to input cloud or input indices given, returning nullptr.");
+    return nullptr;
+  } else if (!cloud_in->isOrganized()) {
+    ROS_ERROR("[cloudPointOStoCloudPoint]: Input cloud is NOT organized, returning nullptr.");
+    return nullptr;
+  }
+
+  const pcl::PointCloud<PointType>::Ptr cloud_out = boost::make_shared<pcl::PointCloud<PointType>>();
+  cloud_out->header                               = cloud_in->header;
+  cloud_out->width                                = indices->size();
+  cloud_out->height                               = 1;
+  cloud_out->is_dense                             = true;
+
+  cloud_out->reserve(cloud_out->width);
+  for (const auto &idx : *indices) {
+    const auto &point_os = cloud_in->at(idx.col, idx.row);
+
+    PointType point;
+    point.x         = point_os.x;
+    point.y         = point_os.y;
+    point.z         = point_os.z;
+    point.intensity = float(point_os.ring) + scan_period_sec * (float(idx.col) / float(cloud_in->width));
+
+    cloud_out->push_back(point);
+  }
+
+  return cloud_out;
+}
+/*//}*/
