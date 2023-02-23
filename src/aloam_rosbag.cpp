@@ -193,9 +193,8 @@ void AloamSlamRosbag::onInit() {
 
   if (shutdown_ros) {
     ROS_INFO("[AloamRosbag]: Shutting down ROS.");
-    ros::shutdown();
-    ros::requestShutdown();
     nh_.shutdown();
+    ros::shutdown();
   }
 }
 
