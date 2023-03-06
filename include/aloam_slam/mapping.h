@@ -54,6 +54,10 @@ private:
   std::vector<pcl::PointCloud<PointType>::Ptr> _cloud_corners;
   std::vector<pcl::PointCloud<PointType>::Ptr> _cloud_surfs;
 
+  // Voxel filters
+  pcl::VoxelGrid<PointType> _filter_downsize_corners;
+  pcl::VoxelGrid<PointType> _filter_downsize_surfs;
+
   // Feature extractor newest data
   std::condition_variable      _cv_mapping_data;
   std::mutex                   _mutex_mapping_data;

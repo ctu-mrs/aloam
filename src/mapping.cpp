@@ -17,6 +17,9 @@ AloamMapping::AloamMapping(const std::shared_ptr<CommonHandlers_t> handlers) : _
   _handlers->param_loader->loadParam("mapping/rate", _mapping_frequency, 5.0f);
   _handlers->param_loader->loadParam("mapping/publish_rate", _map_publish_period, 0.5f);
 
+  _filter_downsize_corners.setLeafSize(_resolution_line, _resolution_line, _resolution_line);
+  _filter_downsize_surfs.setLeafSize(_resolution_plane, _resolution_plane, _resolution_plane);
+
   _map_publish_period = 1.0f / _map_publish_period;
 
   _q_wmap_wodom = Eigen::Quaterniond::Identity();
@@ -107,10 +110,12 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
     timer = std::make_unique<mrs_lib::ScopeTimer>("ALOAM::FeatureExtraction::timerMapping", _handlers->scope_timer_logger, _handlers->enable_scope_timer);
     const float t_start = timer->getLifetime();
 
-    time_aloam_odometry   = _mapping_data->stamp_ros;
-    aloam_odometry        = _mapping_data->odometry;
-    features_corners_last = cloudPointOStoCloudPoint(_mapping_data->manager_corners->getCloudPtr(), _mapping_data->manager_corners->getIndicesPtr(), _scan_period_sec);
-    features_surfs_last   = cloudPointOStoCloudPoint(_mapping_data->manager_surfs->getCloudPtr(), _mapping_data->manager_surfs->getIndicesPtr(), _scan_period_sec);
+    time_aloam_odometry = _mapping_data->stamp_ros;
+    aloam_odometry      = _mapping_data->odometry;
+    features_corners_last =
+        cloudPointOStoCloudPoint(_mapping_data->manager_corners->getCloudPtr(), _mapping_data->manager_corners->getIndicesPtr(), _scan_period_sec);
+    features_surfs_last =
+        cloudPointOStoCloudPoint(_mapping_data->manager_surfs->getCloudPtr(), _mapping_data->manager_surfs->getIndicesPtr(), _scan_period_sec);
 
     diag_msg_out                     = boost::make_shared<aloam_slam::AloamDiagnostics>();
     diag_msg_out->feature_extraction = _mapping_data->diagnostics_fe;
@@ -309,19 +314,14 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
   }
   /*//}*/
 
-  pcl::VoxelGrid<PointType> filter_downsize_corners;
-  pcl::VoxelGrid<PointType> filter_downsize_surfs;
-  filter_downsize_corners.setLeafSize(_resolution_line, _resolution_line, _resolution_line);
-  filter_downsize_surfs.setLeafSize(_resolution_plane, _resolution_plane, _resolution_plane);
-
   /*//{*/
   const pcl::PointCloud<PointType>::Ptr features_corners_stack = boost::make_shared<pcl::PointCloud<PointType>>();
-  filter_downsize_corners.setInputCloud(features_corners_last);
-  filter_downsize_corners.filter(*features_corners_stack);
+  _filter_downsize_corners.setInputCloud(features_corners_last);
+  _filter_downsize_corners.filter(*features_corners_stack);
 
   const pcl::PointCloud<PointType>::Ptr features_surfs_stack = boost::make_shared<pcl::PointCloud<PointType>>();
-  filter_downsize_surfs.setInputCloud(features_surfs_last);
-  filter_downsize_surfs.filter(*features_surfs_stack);
+  _filter_downsize_surfs.setInputCloud(features_surfs_last);
+  _filter_downsize_surfs.filter(*features_surfs_stack);
 
   /* printf("map prepare time %f ms\n", t_shift.toc()); */
   /* printf("map corner num %d  surf num %d \n", laserCloudCornerFromMapNum, laserCloudSurfFromMapNum); */
@@ -569,13 +569,13 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
       const int ind = cloud_valid_indices.at(i);
 
       const pcl::PointCloud<PointType>::Ptr tmpCorner = boost::make_shared<pcl::PointCloud<PointType>>();
-      filter_downsize_corners.setInputCloud(_cloud_corners.at(ind));
-      filter_downsize_corners.filter(*tmpCorner);
+      _filter_downsize_corners.setInputCloud(_cloud_corners.at(ind));
+      _filter_downsize_corners.filter(*tmpCorner);
       _cloud_corners.at(ind) = tmpCorner;
 
       const pcl::PointCloud<PointType>::Ptr tmpSurf = boost::make_shared<pcl::PointCloud<PointType>>();
-      filter_downsize_surfs.setInputCloud(_cloud_surfs.at(ind));
-      filter_downsize_surfs.filter(*tmpSurf);
+      _filter_downsize_surfs.setInputCloud(_cloud_surfs.at(ind));
+      _filter_downsize_surfs.filter(*tmpSurf);
       _cloud_surfs.at(ind) = tmpSurf;
     }
   }
