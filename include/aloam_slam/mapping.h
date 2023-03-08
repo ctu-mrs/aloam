@@ -116,6 +116,13 @@ private:
   void transformAssociateToMap();
   void transformUpdate();
   void pointAssociateToMap(PointType const *const pi, PointType *const po);
+
+  std::vector<ceres::CostFunction *> selectFactors(const pcl::KdTreeFLANN<PointType>::Ptr kdtree_map_corners,
+                                                   const pcl::KdTreeFLANN<PointType>::Ptr kdtree_map_surfs,
+                                                   const pcl::PointCloud<PointType>::Ptr  features_corners_stack,
+                                                   const pcl::PointCloud<PointType>::Ptr  features_surfs_stack,
+                                                   const pcl::PointCloud<PointType>::Ptr  map_features_corners,
+                                                   const pcl::PointCloud<PointType>::Ptr  map_features_surfs);
 };
 }  // namespace aloam_slam
 #endif

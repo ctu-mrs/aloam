@@ -315,6 +315,7 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
   /*//}*/
 
   /*//{*/
+  // TODO: test voxelization with custom filter
   const pcl::PointCloud<PointType>::Ptr features_corners_stack = boost::make_shared<pcl::PointCloud<PointType>>();
   _filter_downsize_corners.setInputCloud(features_corners_last);
   _filter_downsize_corners.filter(*features_corners_stack);
@@ -326,13 +327,10 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
   /* printf("map prepare time %f ms\n", t_shift.toc()); */
   /* printf("map corner num %d  surf num %d \n", laserCloudCornerFromMapNum, laserCloudSurfFromMapNum); */
   if (map_features_corners->points.size() > 10 && map_features_surfs->points.size() > 50) {
-    pcl::KdTreeFLANN<PointType>::Ptr kdtree_map_corners(new pcl::KdTreeFLANN<PointType>());
-    pcl::KdTreeFLANN<PointType>::Ptr kdtree_map_surfs(new pcl::KdTreeFLANN<PointType>());
+    const pcl::KdTreeFLANN<PointType>::Ptr kdtree_map_corners(new pcl::KdTreeFLANN<PointType>());
+    const pcl::KdTreeFLANN<PointType>::Ptr kdtree_map_surfs(new pcl::KdTreeFLANN<PointType>());
     kdtree_map_corners->setInputCloud(map_features_corners);
     kdtree_map_surfs->setInputCloud(map_features_surfs);
-
-    std::vector<int>   point_search_indices;
-    std::vector<float> point_search_sq_dist;
 
     for (int iterCount = 0; iterCount < 2; iterCount++) {
       // ceres::LossFunction *loss_function = NULL;
@@ -344,89 +342,11 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
       problem.AddParameterBlock(_parameters, 4, q_parameterization);
       problem.AddParameterBlock(_parameters + 4, 3);
 
-      int corner_num = 0;
+      const auto &cost_functions =
+          selectFactors(kdtree_map_corners, kdtree_map_surfs, features_corners_stack, features_surfs_stack, map_features_corners, map_features_surfs);
 
-      for (unsigned int i = 0; i < features_corners_stack->points.size(); i++) {
-        const PointType point_ori = features_corners_stack->points.at(i);
-        PointType       point_sel;
-        // double sqrtDis = point_ori.x * point_ori.x + point_ori.y * point_ori.y + point_ori.z * point_ori.z;
-        pointAssociateToMap(&point_ori, &point_sel);
-        kdtree_map_corners->nearestKSearch(point_sel, 5, point_search_indices, point_search_sq_dist);
-
-        if (point_search_sq_dist.at(4) < 1.0) {
-          std::vector<Eigen::Vector3d> nearCorners;
-          Eigen::Vector3d              center(0, 0, 0);
-          for (int j = 0; j < 5; j++) {
-            const Eigen::Vector3d tmp(map_features_corners->points.at(point_search_indices.at(j)).x,
-                                      map_features_corners->points.at(point_search_indices.at(j)).y,
-                                      map_features_corners->points.at(point_search_indices.at(j)).z);
-            center = center + tmp;
-            nearCorners.push_back(tmp);
-          }
-          center = center / 5.0;
-
-          Eigen::Matrix3d covMat = Eigen::Matrix3d::Zero();
-          for (int j = 0; j < 5; j++) {
-            const Eigen::Matrix<double, 3, 1> tmpZeroMean = nearCorners.at(j) - center;
-            covMat                                        = covMat + tmpZeroMean * tmpZeroMean.transpose();
-          }
-
-          Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> saes(covMat);
-
-          // if is indeed line feature
-          // note Eigen library sort eigenvalues in increasing order
-          if (saes.eigenvalues()[2] > 3 * saes.eigenvalues()[1]) {
-            const Eigen::Vector3d unit_direction = saes.eigenvectors().col(2);
-            const Eigen::Vector3d curr_point(point_ori.x, point_ori.y, point_ori.z);
-            const Eigen::Vector3d point_a = 0.1 * unit_direction + center;
-            const Eigen::Vector3d point_b = -0.1 * unit_direction + center;
-
-            ceres::CostFunction *cost_function = LidarEdgeFactor::Create(curr_point, point_a, point_b, 1.0);
-            problem.AddResidualBlock(cost_function, loss_function, _parameters, _parameters + 4);
-            corner_num++;
-          }
-        }
-      }
-
-      int surf_num = 0;
-      for (unsigned int i = 0; i < features_surfs_stack->points.size(); i++) {
-        const PointType point_ori = features_surfs_stack->points.at(i);
-        PointType       point_sel;
-        pointAssociateToMap(&point_ori, &point_sel);
-        kdtree_map_surfs->nearestKSearch(point_sel, 5, point_search_indices, point_search_sq_dist);
-
-        Eigen::Matrix<double, 5, 3> matA0;
-        Eigen::Matrix<double, 5, 1> matB0 = -1 * Eigen::Matrix<double, 5, 1>::Ones();
-        if (point_search_sq_dist.at(4) < 1.0) {
-          for (int j = 0; j < 5; j++) {
-            matA0(j, 0) = map_features_surfs->points.at(point_search_indices.at(j)).x;
-            matA0(j, 1) = map_features_surfs->points.at(point_search_indices.at(j)).y;
-            matA0(j, 2) = map_features_surfs->points.at(point_search_indices.at(j)).z;
-            // printf(" pts %f %f %f ", matA0(j, 0), matA0(j, 1), matA0(j, 2));
-          }
-          // find the norm of plane
-          Eigen::Vector3d norm                 = matA0.colPivHouseholderQr().solve(matB0);
-          const double    negative_OA_dot_norm = 1 / norm.norm();
-          norm.normalize();
-
-          // Here n(pa, pb, pc) is unit norm of plane
-          bool planeValid = true;
-          for (int j = 0; j < 5; j++) {
-            // if OX * n > 0.2, then plane is not fit well
-            if (fabs(norm(0) * map_features_surfs->points.at(point_search_indices.at(j)).x +
-                     norm(1) * map_features_surfs->points.at(point_search_indices.at(j)).y +
-                     norm(2) * map_features_surfs->points.at(point_search_indices.at(j)).z + negative_OA_dot_norm) > 0.2) {
-              planeValid = false;
-              break;
-            }
-          }
-          if (planeValid) {
-            const Eigen::Vector3d curr_point(point_ori.x, point_ori.y, point_ori.z);
-            ceres::CostFunction * cost_function = LidarPlaneNormFactor::Create(curr_point, norm, negative_OA_dot_norm);
-            problem.AddResidualBlock(cost_function, loss_function, _parameters, _parameters + 4);
-            surf_num++;
-          }
-        }
+      for (auto &cost_function : cost_functions) {
+        problem.AddResidualBlock(cost_function, loss_function, _parameters, _parameters + 4);
       }
 
       ceres::Solver::Options options;
@@ -831,6 +751,107 @@ void AloamMapping::setTransform(const Eigen::Vector3d &t, const Eigen::Quaternio
   }
 }
 
+//}
+
+/* selectFactors() //{ */
+std::vector<ceres::CostFunction *> AloamMapping::selectFactors(const pcl::KdTreeFLANN<PointType>::Ptr kdtree_map_corners,
+                                                               const pcl::KdTreeFLANN<PointType>::Ptr kdtree_map_surfs,
+                                                               const pcl::PointCloud<PointType>::Ptr  features_corners_stack,
+                                                               const pcl::PointCloud<PointType>::Ptr  features_surfs_stack,
+                                                               const pcl::PointCloud<PointType>::Ptr  map_features_corners,
+                                                               const pcl::PointCloud<PointType>::Ptr  map_features_surfs) {
+
+  std::vector<LidarEdgeFactor>      factors_corners;
+  std::vector<LidarPlaneNormFactor> factors_surfs;
+
+  std::vector<ceres::CostFunction *> costs;
+
+  // Greedy-based: TODO
+  for (unsigned int i = 0; i < features_corners_stack->points.size(); i++) {
+    std::vector<int>   point_search_indices;
+    std::vector<float> point_search_sq_dist;
+
+    const PointType point_ori = features_corners_stack->points.at(i);
+    PointType       point_sel;
+    pointAssociateToMap(&point_ori, &point_sel);
+    kdtree_map_corners->nearestKSearch(point_sel, 5, point_search_indices, point_search_sq_dist);
+
+    // If the correspondence is found
+    if (point_search_sq_dist.at(4) < 1.0) {
+      std::vector<Eigen::Vector3d> nearCorners;
+      Eigen::Vector3d              center(0, 0, 0);
+      for (int j = 0; j < 5; j++) {
+        const Eigen::Vector3d tmp(map_features_corners->points.at(point_search_indices.at(j)).x, map_features_corners->points.at(point_search_indices.at(j)).y,
+                                  map_features_corners->points.at(point_search_indices.at(j)).z);
+        center = center + tmp;
+        nearCorners.push_back(tmp);
+      }
+      center = center / 5.0;
+
+      Eigen::Matrix3d covMat = Eigen::Matrix3d::Zero();
+      for (int j = 0; j < 5; j++) {
+        const Eigen::Matrix<double, 3, 1> tmpZeroMean = nearCorners.at(j) - center;
+        covMat                                        = covMat + tmpZeroMean * tmpZeroMean.transpose();
+      }
+
+      Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> saes(covMat);
+
+      // if is indeed line feature
+      // note Eigen library sort eigenvalues in increasing order
+      if (saes.eigenvalues()[2] > 3 * saes.eigenvalues()[1]) {
+        const Eigen::Vector3d unit_direction = saes.eigenvectors().col(2);
+        const Eigen::Vector3d curr_point(point_ori.x, point_ori.y, point_ori.z);
+        const Eigen::Vector3d point_a = 0.1 * unit_direction + center;
+        const Eigen::Vector3d point_b = -0.1 * unit_direction + center;
+
+        // Compute the residual
+        costs.push_back(LidarEdgeFactor::Create(curr_point, point_a, point_b, 1.0));
+      }
+    }
+  }
+
+  for (unsigned int i = 0; i < features_surfs_stack->points.size(); i++) {
+    std::vector<int>   point_search_indices;
+    std::vector<float> point_search_sq_dist;
+
+    const PointType point_ori = features_surfs_stack->points.at(i);
+    PointType       point_sel;
+    pointAssociateToMap(&point_ori, &point_sel);
+    kdtree_map_surfs->nearestKSearch(point_sel, 5, point_search_indices, point_search_sq_dist);
+
+    Eigen::Matrix<double, 5, 3> matA0;
+    Eigen::Matrix<double, 5, 1> matB0 = -1 * Eigen::Matrix<double, 5, 1>::Ones();
+    if (point_search_sq_dist.at(4) < 1.0) {
+      for (int j = 0; j < 5; j++) {
+        matA0(j, 0) = map_features_surfs->points.at(point_search_indices.at(j)).x;
+        matA0(j, 1) = map_features_surfs->points.at(point_search_indices.at(j)).y;
+        matA0(j, 2) = map_features_surfs->points.at(point_search_indices.at(j)).z;
+        // printf(" pts %f %f %f ", matA0(j, 0), matA0(j, 1), matA0(j, 2));
+      }
+      // find the norm of plane
+      Eigen::Vector3d norm                 = matA0.colPivHouseholderQr().solve(matB0);
+      const double    negative_OA_dot_norm = 1 / norm.norm();
+      norm.normalize();
+
+      // Here n(pa, pb, pc) is unit norm of plane
+      bool planeValid = true;
+      for (int j = 0; j < 5; j++) {
+        // if OX * n > 0.2, then plane is not fit well
+        if (std::fabs(norm(0) * map_features_surfs->points.at(point_search_indices.at(j)).x + norm(1) * map_features_surfs->points.at(point_search_indices.at(j)).y +
+                 norm(2) * map_features_surfs->points.at(point_search_indices.at(j)).z + negative_OA_dot_norm) > 0.2) {
+          planeValid = false;
+          break;
+        }
+      }
+      if (planeValid) {
+        const Eigen::Vector3d curr_point(point_ori.x, point_ori.y, point_ori.z);
+        costs.push_back(LidarPlaneNormFactor::Create(curr_point, norm, negative_OA_dot_norm));
+      }
+    }
+  }
+
+  return costs;
+}
 //}
 
 }  // namespace aloam_slam
