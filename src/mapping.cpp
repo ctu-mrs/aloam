@@ -334,7 +334,7 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
 
     for (int iterCount = 0; iterCount < 2; iterCount++) {
       // ceres::LossFunction *loss_function = NULL;
-      ceres::LossFunction *         loss_function      = new ceres::HuberLoss(0.1);
+      ceres::LossFunction          *loss_function      = new ceres::HuberLoss(0.1);
       ceres::LocalParameterization *q_parameterization = new ceres::EigenQuaternionParameterization();
       ceres::Problem::Options       problem_options;
 
@@ -342,12 +342,24 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
       problem.AddParameterBlock(_parameters, 4, q_parameterization);
       problem.AddParameterBlock(_parameters + 4, 3);
 
-      const auto &cost_functions =
-          selectFactors(kdtree_map_corners, kdtree_map_surfs, features_corners_stack, features_surfs_stack, map_features_corners, map_features_surfs);
 
-      for (auto &cost_function : cost_functions) {
-        problem.AddResidualBlock(cost_function, loss_function, _parameters, _parameters + 4);
+      /* mrs_lib::ScopeTimer timer("finding factors", nullptr, true); */
+      auto factors = findFactors(kdtree_map_corners, kdtree_map_surfs, features_corners_stack, features_surfs_stack, map_features_corners, map_features_surfs);
+      /* timer.checkpoint("found"); */
+
+      /* if (false) { */
+      /* factors = selectFactorsGreedy(factors); */
+      /* } */
+
+      /* ROS_ERROR("After selectFactorsGreedy()"); */
+
+      for (const auto &factor : factors.first) {
+        problem.AddResidualBlock(LidarEdgeFactor::Create(factor), loss_function, _parameters, _parameters + 4);
       }
+      for (const auto &factor : factors.second) {
+        problem.AddResidualBlock(LidarPlaneFactor::Create(factor), loss_function, _parameters, _parameters + 4);
+      }
+      /* ROS_ERROR("After adding blocks to problem."); */
 
       ceres::Solver::Options options;
       options.linear_solver_type                = ceres::DENSE_QR;
@@ -392,6 +404,9 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
         const Eigen::VectorXd eigen_values  = eigensolver.eigenvalues().real();
         const Eigen::MatrixXd eigen_vectors = eigensolver.eigenvectors().real();
 
+        std::cout << "\n" << eigen_values << std::endl;
+        std::cout << eigen_vectors << "\n" << std::endl;
+
         const mrs_msgs::Float64ArrayStamped::Ptr msg_eigenvalue = boost::make_shared<mrs_msgs::Float64ArrayStamped>();
         msg_eigenvalue->header.stamp                            = time_aloam_odometry;
         msg_eigenvalue->values.resize(6, 0.0);
@@ -422,7 +437,9 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
       /* ROS_INFO("[AloamMapping] Eigenvalue calculation took %.3f ms.", time_eigenvalues); */
       /*//}*/
 
+      /* ROS_ERROR("Before solving"); */
       ceres::Solve(options, &problem, &summary);
+      /* ROS_ERROR("After solving"); */
     }
   } else {
     ROS_WARN("[AloamMapping] Not enough map correspondences. Skipping mapping frame.");
@@ -649,11 +666,10 @@ void AloamMapping::transformUpdate() {
 void AloamMapping::pointAssociateToMap(PointType const *const pi, PointType *const po) {
   const Eigen::Vector3d point_curr(pi->x, pi->y, pi->z);
   const Eigen::Vector3d point_w = _q_w_curr * point_curr + _t_w_curr;
-  po->x                         = point_w.x();
-  po->y                         = point_w.y();
-  po->z                         = point_w.z();
+  po->x                         = float(point_w.x());
+  po->y                         = float(point_w.y());
+  po->z                         = float(point_w.z());
   po->intensity                 = pi->intensity;
-  // po->intensity = 1.0;
 }
 /*//}*/
 
@@ -753,20 +769,16 @@ void AloamMapping::setTransform(const Eigen::Vector3d &t, const Eigen::Quaternio
 
 //}
 
-/* selectFactors() //{ */
-std::vector<ceres::CostFunction *> AloamMapping::selectFactors(const pcl::KdTreeFLANN<PointType>::Ptr kdtree_map_corners,
-                                                               const pcl::KdTreeFLANN<PointType>::Ptr kdtree_map_surfs,
-                                                               const pcl::PointCloud<PointType>::Ptr  features_corners_stack,
-                                                               const pcl::PointCloud<PointType>::Ptr  features_surfs_stack,
-                                                               const pcl::PointCloud<PointType>::Ptr  map_features_corners,
-                                                               const pcl::PointCloud<PointType>::Ptr  map_features_surfs) {
+/* findFactors() //{ */
+std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> AloamMapping::findFactors(
+    const pcl::KdTreeFLANN<PointType>::Ptr kdtree_map_corners, const pcl::KdTreeFLANN<PointType>::Ptr kdtree_map_surfs,
+    const pcl::PointCloud<PointType>::Ptr features_corners_stack, const pcl::PointCloud<PointType>::Ptr features_surfs_stack,
+    const pcl::PointCloud<PointType>::Ptr map_features_corners, const pcl::PointCloud<PointType>::Ptr map_features_surfs) {
 
-  std::vector<LidarEdgeFactor>      factors_corners;
-  std::vector<LidarPlaneNormFactor> factors_surfs;
+  std::vector<LidarEdgeFactor *>  factors_corners;
+  std::vector<LidarPlaneFactor *> factors_surfs;
 
-  std::vector<ceres::CostFunction *> costs;
-
-  // Greedy-based: TODO
+  /*//{ Corners */
   for (unsigned int i = 0; i < features_corners_stack->points.size(); i++) {
     std::vector<int>   point_search_indices;
     std::vector<float> point_search_sq_dist;
@@ -778,38 +790,41 @@ std::vector<ceres::CostFunction *> AloamMapping::selectFactors(const pcl::KdTree
 
     // If the correspondence is found
     if (point_search_sq_dist.at(4) < 1.0) {
-      std::vector<Eigen::Vector3d> nearCorners;
       Eigen::Vector3d              center(0, 0, 0);
+      std::vector<Eigen::Vector3d> nearCorners;
+      nearCorners.reserve(5);
       for (int j = 0; j < 5; j++) {
-        const Eigen::Vector3d tmp(map_features_corners->points.at(point_search_indices.at(j)).x, map_features_corners->points.at(point_search_indices.at(j)).y,
-                                  map_features_corners->points.at(point_search_indices.at(j)).z);
-        center = center + tmp;
-        nearCorners.push_back(tmp);
+        const auto &point = map_features_corners->points.at(point_search_indices.at(j));
+
+        const Eigen::Vector3d corner(point.x, point.y, point.z);
+        center += corner;
+        nearCorners.push_back(corner);
       }
       center = center / 5.0;
 
       Eigen::Matrix3d covMat = Eigen::Matrix3d::Zero();
-      for (int j = 0; j < 5; j++) {
-        const Eigen::Matrix<double, 3, 1> tmpZeroMean = nearCorners.at(j) - center;
-        covMat                                        = covMat + tmpZeroMean * tmpZeroMean.transpose();
+      for (auto &corner : nearCorners) {
+        const auto tmpZeroMean = corner - center;
+        covMat += tmpZeroMean * tmpZeroMean.transpose();
       }
-
-      Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> saes(covMat);
 
       // if is indeed line feature
       // note Eigen library sort eigenvalues in increasing order
+      const Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> saes(covMat);
       if (saes.eigenvalues()[2] > 3 * saes.eigenvalues()[1]) {
         const Eigen::Vector3d unit_direction = saes.eigenvectors().col(2);
         const Eigen::Vector3d curr_point(point_ori.x, point_ori.y, point_ori.z);
-        const Eigen::Vector3d point_a = 0.1 * unit_direction + center;
-        const Eigen::Vector3d point_b = -0.1 * unit_direction + center;
+        const Eigen::Vector3d point_a = center + unit_direction;
+        const Eigen::Vector3d point_b = center - unit_direction;
 
-        // Compute the residual
-        costs.push_back(LidarEdgeFactor::Create(curr_point, point_a, point_b, 1.0));
+        LidarEdgeFactor *factor = new LidarEdgeFactor(curr_point, point_a, point_b, 1.0);
+        factors_corners.push_back(factor);
       }
     }
   }
+  /*//}*/
 
+  /*//{ Surfs */
   for (unsigned int i = 0; i < features_surfs_stack->points.size(); i++) {
     std::vector<int>   point_search_indices;
     std::vector<float> point_search_sq_dist;
@@ -823,34 +838,198 @@ std::vector<ceres::CostFunction *> AloamMapping::selectFactors(const pcl::KdTree
     Eigen::Matrix<double, 5, 1> matB0 = -1 * Eigen::Matrix<double, 5, 1>::Ones();
     if (point_search_sq_dist.at(4) < 1.0) {
       for (int j = 0; j < 5; j++) {
-        matA0(j, 0) = map_features_surfs->points.at(point_search_indices.at(j)).x;
-        matA0(j, 1) = map_features_surfs->points.at(point_search_indices.at(j)).y;
-        matA0(j, 2) = map_features_surfs->points.at(point_search_indices.at(j)).z;
+        const auto &point = map_features_surfs->points.at(point_search_indices.at(j));
+        matA0(j, 0)       = point.x;
+        matA0(j, 1)       = point.y;
+        matA0(j, 2)       = point.z;
         // printf(" pts %f %f %f ", matA0(j, 0), matA0(j, 1), matA0(j, 2));
       }
       // find the norm of plane
-      Eigen::Vector3d norm                 = matA0.colPivHouseholderQr().solve(matB0);
-      const double    negative_OA_dot_norm = 1 / norm.norm();
-      norm.normalize();
+      Eigen::Vector3d n = matA0.colPivHouseholderQr().solve(matB0);
+      const double    d = 1 / n.norm();
+      n.normalize();
 
       // Here n(pa, pb, pc) is unit norm of plane
       bool planeValid = true;
       for (int j = 0; j < 5; j++) {
+        const auto &point = map_features_surfs->points.at(point_search_indices.at(j));
         // if OX * n > 0.2, then plane is not fit well
-        if (std::fabs(norm(0) * map_features_surfs->points.at(point_search_indices.at(j)).x + norm(1) * map_features_surfs->points.at(point_search_indices.at(j)).y +
-                 norm(2) * map_features_surfs->points.at(point_search_indices.at(j)).z + negative_OA_dot_norm) > 0.2) {
+        if (std::fabs(n(0) * point.x + n(1) * point.y + n(2) * point.z + d) > 0.2) {
           planeValid = false;
           break;
         }
       }
       if (planeValid) {
         const Eigen::Vector3d curr_point(point_ori.x, point_ori.y, point_ori.z);
-        costs.push_back(LidarPlaneNormFactor::Create(curr_point, norm, negative_OA_dot_norm));
+
+        LidarPlaneFactor *factor = new LidarPlaneFactor(curr_point, n, d);
+        factors_surfs.push_back(factor);
       }
     }
   }
+  /*//}*/
 
-  return costs;
+  return {factors_corners, factors_surfs};
+}
+//}
+
+/* selectFactorsGreedy() //{ */
+std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> AloamMapping::selectFactorsGreedy(
+    const std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> &factors) {
+
+  // TODO: Integrate into findFactors() so not all feature correspondences have to be found. This is for debugging.
+
+  const auto &factors_corners = factors.first;
+  const auto &factors_surfs   = factors.second;
+
+  std::vector<LidarEdgeFactor *>  factors_corners_sel;
+  std::vector<LidarPlaneFactor *> factors_surfs_sel;
+  factors_corners_sel.reserve(factors_corners.size());
+  factors_surfs_sel.reserve(factors_surfs.size());
+
+  const size_t N_corners = factors_corners.size();
+  const size_t N         = N_corners + factors_surfs.size();
+  const size_t M         = 0.3 * N;
+  const double eps       = 0.05;
+
+  struct point_t
+  {
+    /* double                      residual[3]; */
+    bool                        has_data = false;
+    Eigen::Matrix<double, 3, 1> residual;
+    Eigen::Matrix<double, 3, 6> jacobian;
+    Eigen::Matrix<double, 6, 6> inf_mat;
+  };
+  std::vector<point_t> points(N);
+
+  std::vector<size_t> indices(N);
+  std::iota(std::begin(indices), std::end(indices), 0);  // Fill with 0 to N in increasing order
+
+  double Q[4];
+  double t[3];
+
+  Q[0] = _q_w_curr.x();
+  Q[1] = _q_w_curr.y();
+  Q[2] = _q_w_curr.z();
+  Q[3] = _q_w_curr.w();
+  t[0] = _t_w_curr.x();
+  t[1] = _t_w_curr.y();
+  t[2] = _t_w_curr.z();
+
+  Eigen::Matrix<double, 6, 6> inf_mat = Eigen::Matrix<double, 6, 6>::Zero();
+
+  /* ROS_ERROR("Initialized. M=%ld, N=%ld; corners: %ld, surfs: %ld", M, N, factors_corners.size(), factors_surfs.size()); */
+
+  size_t it = 0;
+
+  const size_t R_card = (double(N) / double(M)) * std::log(1.0 / eps);
+  /* const size_t R_card = double(N) / double(M); */
+  while (factors_corners_sel.size() + factors_surfs_sel.size() < M) {
+
+    const unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+    std::shuffle(indices.begin(), indices.end(), std::default_random_engine(seed));
+
+    bool   best_is_surf = false;
+    int    best_idx     = -1;
+    size_t best_idx_raw = 0;
+    double best_log_det = -std::numeric_limits<double>::max();
+
+    ++it;
+    /* ROS_ERROR("[%ld] R=%ld", it, R_card); */
+
+    size_t i        = 0;
+    size_t i_finite = 0;
+    while (i_finite != R_card) {
+      bool   is_surf  = false;
+      size_t idx_feat = indices.at(i);
+
+      // Ensure we index surfs from 0
+      if (idx_feat >= N_corners) {
+        idx_feat -= N_corners;
+        is_surf = true;
+      }
+      /* ROS_ERROR("   [%ld::%ld] idx_feat=%ld, indices.at(i)=%ld, (%s)", it, i, idx_feat, indices.at(i), (is_surf) ? "surf" : "corner"); */
+
+      // If not computed yet: compute residual and jacobian
+      auto &point = points.at(idx_feat);
+      if (!point.has_data) {
+
+        /* ROS_ERROR("   [%ld::%ld] computing data for the point", it, i); */
+
+        double res[3];
+
+        if (is_surf) {
+
+          factors_surfs.at(idx_feat)->getResidual(Q, t, res);
+          factors_surfs.at(idx_feat)->getJacobian(Q, point.jacobian);
+
+        } else {
+
+          factors_corners.at(idx_feat)->getResidual(Q, t, res);
+          factors_corners.at(idx_feat)->getJacobian(Q, point.jacobian);
+          /* std::cout << point.jacobian << std::endl; */
+        }
+
+        point.residual[0] = res[0];
+        point.residual[1] = res[1];
+        point.residual[2] = res[2];
+        /* ROS_ERROR(" [%ld] point %d jacobian:", it, indices.at(i)); */
+        /* std::cout << point->jacobian << std::endl; */
+
+        point.inf_mat = point.jacobian.transpose() * point.jacobian;
+
+        /* ROS_ERROR(" [%ld] point %d information matrix:", it, indices.at(i)); */
+        /* std::cout << point->inf_mat << std::endl; */
+        point.has_data = true;
+      }
+
+      // Compute log det and store max
+      /* ROS_ERROR("   [%ld::%ld] computing logdet for the point", it, i); */
+      const double log_det = std::log((inf_mat + point.inf_mat).determinant());
+      /* ROS_ERROR("   [%ld::%ld] det=%.3f, logdet=%.3f", it, i, (inf_mat + point.inf_mat).determinant(), log_det); */
+
+      // TODO: debug why such feature is infinite
+      if (std::isfinite(log_det)) {
+        /* std::cout << "inf_mat:\n" << std::endl; */
+        /* std::cout << inf_mat << std::endl; */
+        /* std::cout << "point.inf_mat:\n" << std::endl; */
+        /* std::cout << point.inf_mat << std::endl; */
+        /* std::cout << "point.inf_mat.det:\n" << std::endl; */
+        /* std::cout << point.inf_mat.determinant() << std::endl; */
+        if (log_det > best_log_det) {
+          best_is_surf = is_surf;
+          best_idx     = idx_feat;
+          best_idx_raw = indices.at(i);
+          best_log_det = log_det;
+        }
+        i_finite++;
+      }
+      /* std::cout << inf_mat + point->inf_mat << std::endl; */
+
+      i++;
+    }
+
+    inf_mat += points.at(best_idx_raw).inf_mat;
+
+    if (best_is_surf) {
+      factors_surfs_sel.push_back(factors_surfs.at(best_idx));
+    } else {
+      factors_corners_sel.push_back(factors_corners.at(best_idx));
+    }
+
+    /* ROS_ERROR("   [%ld] best_idx=%d, best_idx_raw=%ld, (%s) => logdet=%.1f", it, best_idx, best_idx_raw, (best_is_surf) ? "surf" : "corner", best_log_det);
+     */
+
+    /* ROS_ERROR(" [%ld] logdet=%.8f", it, std::log(inf_mat.determinant())); */
+
+    // Do not select the same index again
+    indices.erase(std::remove(indices.begin(), indices.end(), best_idx_raw), indices.end());
+  }
+
+  /* ROS_ERROR("  - selected %ld (%ld corners, %ld surfs)", factors_corners_sel.size() + factors_surfs_sel.size(), factors_corners_sel.size(), */
+  /*           factors_surfs_sel.size()); */
+
+  return {factors_corners_sel, factors_surfs_sel};
 }
 //}
 

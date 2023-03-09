@@ -3,6 +3,9 @@
 
 /* includes //{ */
 
+#include <random>
+#include <algorithm>
+
 #include "aloam_slam/common.h"
 #include "aloam_slam/tic_toc.h"
 #include "aloam_slam/lidarFactor.hpp"
@@ -117,12 +120,13 @@ private:
   void transformUpdate();
   void pointAssociateToMap(PointType const *const pi, PointType *const po);
 
-  std::vector<ceres::CostFunction *> selectFactors(const pcl::KdTreeFLANN<PointType>::Ptr kdtree_map_corners,
-                                                   const pcl::KdTreeFLANN<PointType>::Ptr kdtree_map_surfs,
-                                                   const pcl::PointCloud<PointType>::Ptr  features_corners_stack,
-                                                   const pcl::PointCloud<PointType>::Ptr  features_surfs_stack,
-                                                   const pcl::PointCloud<PointType>::Ptr  map_features_corners,
-                                                   const pcl::PointCloud<PointType>::Ptr  map_features_surfs);
+  std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> findFactors(
+      const pcl::KdTreeFLANN<PointType>::Ptr kdtree_map_corners, const pcl::KdTreeFLANN<PointType>::Ptr kdtree_map_surfs,
+      const pcl::PointCloud<PointType>::Ptr features_corners_stack, const pcl::PointCloud<PointType>::Ptr features_surfs_stack,
+      const pcl::PointCloud<PointType>::Ptr map_features_corners, const pcl::PointCloud<PointType>::Ptr map_features_surfs);
+
+  std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> selectFactorsGreedy(
+      const std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> &factors);
 };
 }  // namespace aloam_slam
 #endif

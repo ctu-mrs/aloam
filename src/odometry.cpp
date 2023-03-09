@@ -92,7 +92,7 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
     stamp_pcl         = _odometry_data->stamp_pcl;
 
     corner_points_sharp      = cloudPointOStoCloudPoint(_odometry_data->manager_corners_salient->getCloudPtr(),
-                                                   _odometry_data->manager_corners_salient->getIndicesPtr(), _scan_period_sec);
+                                                        _odometry_data->manager_corners_salient->getIndicesPtr(), _scan_period_sec);
     corner_points_less_sharp = cloudPointOStoCloudPoint(_odometry_data->manager_corners_extracted->getCloudPtr(),
                                                         _odometry_data->manager_corners_extracted->getIndicesPtr(), _scan_period_sec);
     surf_points_flat = cloudPointOStoCloudPoint(_odometry_data->manager_surfs_salient->getCloudPtr(), _odometry_data->manager_surfs_salient->getIndicesPtr(),
@@ -141,7 +141,7 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
       int plane_correspondence  = 0;
 
       // ceres::LossFunction *loss_function = NULL;
-      ceres::LossFunction *         loss_function      = new ceres::HuberLoss(0.1);
+      ceres::LossFunction          *loss_function      = new ceres::HuberLoss(0.1);
       ceres::LocalParameterization *q_parameterization = new ceres::EigenQuaternionParameterization();
       ceres::Problem::Options       problem_options;
 
@@ -222,7 +222,8 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
           if (DISTORTION) {
             s = (corner_points_sharp->points.at(i).intensity - int(corner_points_sharp->points.at(i).intensity)) / _scan_period_sec;
           }
-          ceres::CostFunction *cost_function = LidarEdgeFactor::Create(curr_point, last_point_a, last_point_b, s);
+          LidarEdgeFactor     *factor        = new LidarEdgeFactor(curr_point, last_point_a, last_point_b, s);
+          ceres::CostFunction *cost_function = LidarEdgeFactor::Create(factor);
           problem.AddResidualBlock(cost_function, loss_function, _para_q, _para_t);
           corner_correspondence++;
         }
@@ -288,19 +289,22 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
 
           if (minPointInd2 >= 0 && minPointInd3 >= 0) {
 
-            const Eigen::Vector3d curr_point(surf_points_flat->points.at(i).x, surf_points_flat->points.at(i).y, surf_points_flat->points.at(i).z);
-            const Eigen::Vector3d last_point_a(_features_surfs_last->points.at(closestPointInd).x, _features_surfs_last->points.at(closestPointInd).y,
-                                               _features_surfs_last->points.at(closestPointInd).z);
-            const Eigen::Vector3d last_point_b(_features_surfs_last->points.at(minPointInd2).x, _features_surfs_last->points.at(minPointInd2).y,
-                                               _features_surfs_last->points.at(minPointInd2).z);
-            const Eigen::Vector3d last_point_c(_features_surfs_last->points.at(minPointInd3).x, _features_surfs_last->points.at(minPointInd3).y,
-                                               _features_surfs_last->points.at(minPointInd3).z);
+            const auto &sp   = surf_points_flat->points.at(i);
+            const auto &fp_a = _features_surfs_last->points.at(closestPointInd);
+            const auto &fp_b = _features_surfs_last->points.at(minPointInd2);
+            const auto &fp_c = _features_surfs_last->points.at(minPointInd3);
+
+            const Eigen::Vector3d curr_point(sp.x, sp.y, sp.z);
+            const Eigen::Vector3d last_point_a(fp_a.x, fp_a.y, fp_a.z);
+            const Eigen::Vector3d last_point_b(fp_b.x, fp_b.y, fp_b.z);
+            const Eigen::Vector3d last_point_c(fp_c.x, fp_c.y, fp_c.z);
 
             double s = 1.0;
             if (DISTORTION) {
               s = (surf_points_flat->points.at(i).intensity - int(surf_points_flat->points.at(i).intensity)) / _scan_period_sec;
             }
-            ceres::CostFunction *cost_function = LidarPlaneFactor::Create(curr_point, last_point_a, last_point_b, last_point_c, s);
+            LidarPlaneNormFactorFromPoints *factor        = new LidarPlaneNormFactorFromPoints(curr_point, last_point_a, last_point_b, last_point_c, s);
+            ceres::CostFunction            *cost_function = LidarPlaneNormFactorFromPoints::Create(factor);
             problem.AddResidualBlock(cost_function, loss_function, _para_q, _para_t);
             plane_correspondence++;
           }
