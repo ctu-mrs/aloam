@@ -59,8 +59,10 @@ struct LidarEdgeFactor
     const Eigen::Matrix<T, 3, 1> v_{T(v.x()), T(v.y()), T(v.z())};
     const Eigen::Matrix<T, 3, 3> I = Eigen::Matrix<T, 3, 3>::Identity();
 
+    const Eigen::Quaternion<T> R{q[3], q[0], q[1], q[2]};
+
     const Eigen::Matrix<T, 3, 3> dr_dt = I - v_ * v_.transpose();
-    const Eigen::Matrix<T, 3, 3> dr_dR = dr_dt * skewSymmetric(p_);
+    const Eigen::Matrix<T, 3, 3> dr_dR = -dr_dt * R * skewSymmetric(p_);
 
     jacobian.block(0, 0, 3, 3) = dr_dt;
     jacobian.block(0, 3, 3, 3) = dr_dR;
@@ -167,8 +169,10 @@ struct LidarPlaneFactor
     const Eigen::Matrix<T, 3, 1> p_{T(p.x()), T(p.y()), T(p.z())};
     const Eigen::Matrix<T, 3, 1> n_{T(n.x()), T(n.y()), T(n.z())};
 
+    const Eigen::Quaternion<T> R{q[3], q[0], q[1], q[2]};
+
     const Eigen::Matrix<T, 3, 3> dr_dt = n_ * n_.transpose();
-    const Eigen::Matrix<T, 3, 3> dr_dR = dr_dt * skewSymmetric(p_);
+    const Eigen::Matrix<T, 3, 3> dr_dR = -dr_dt * R * skewSymmetric(p_);
 
     jacobian.block(0, 0, 3, 3) = dr_dt;
     jacobian.block(0, 3, 3, 3) = dr_dR;
