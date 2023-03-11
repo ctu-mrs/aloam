@@ -20,8 +20,8 @@ AloamOdometry::AloamOdometry(const std::shared_ptr<CommonHandlers_t> handlers, c
 
   {
     std::scoped_lock lock(_mutex_odometry_process);
-    _features_corners_last = boost::make_shared<pcl::PointCloud<PointType>>();
-    _features_surfs_last   = boost::make_shared<pcl::PointCloud<PointType>>();
+    _features_corners_last = boost::make_shared<pcl::PointCloud<pt_I_t>>();
+    _features_surfs_last   = boost::make_shared<pcl::PointCloud<pt_I_t>>();
   }
 
   _q_w_curr = Eigen::Quaterniond::Identity();  // eigen has qw, qx, qy, qz notation
@@ -48,14 +48,13 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
   }
 
   std::unique_ptr<mrs_lib::ScopeTimer> timer;
-  pcl::PointCloud<PointType>::Ptr      corner_points_sharp;
-  pcl::PointCloud<PointType>::Ptr      corner_points_less_sharp;
-  pcl::PointCloud<PointType>::Ptr      surf_points_flat;
-  pcl::PointCloud<PointType>::Ptr      surf_points_less_flat;
+  pcl::PointCloud<pt_I_t>::Ptr         corner_points_sharp;
+  pcl::PointCloud<pt_I_t>::Ptr         surf_points_flat;
   unsigned int                         proc_points_count;
+  size_t                               cloud_width;
 
-  feature_selection::FSCloudManagerPtr manager_corners_for_mapping;
-  feature_selection::FSCloudManagerPtr manager_surfs_for_mapping;
+  feature_selection::FSCloudManagerPtr manager_corners_extracted;
+  feature_selection::FSCloudManagerPtr manager_surfs_extracted;
 
   ros::Time                         stamp;
   std::uint64_t                     stamp_pcl;
@@ -91,17 +90,16 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
     stamp             = _odometry_data->stamp_ros;
     stamp_pcl         = _odometry_data->stamp_pcl;
 
-    corner_points_sharp      = cloudPointOStoCloudPoint(_odometry_data->manager_corners_salient->getCloudPtr(),
-                                                        _odometry_data->manager_corners_salient->getIndicesPtr(), _scan_period_sec);
-    corner_points_less_sharp = cloudPointOStoCloudPoint(_odometry_data->manager_corners_extracted->getCloudPtr(),
-                                                        _odometry_data->manager_corners_extracted->getIndicesPtr(), _scan_period_sec);
-    surf_points_flat = cloudPointOStoCloudPoint(_odometry_data->manager_surfs_salient->getCloudPtr(), _odometry_data->manager_surfs_salient->getIndicesPtr(),
-                                                _scan_period_sec);
-    surf_points_less_flat = cloudPointOStoCloudPoint(_odometry_data->manager_surfs_extracted->getCloudPtr(),
-                                                     _odometry_data->manager_surfs_extracted->getIndicesPtr(), _scan_period_sec);
+    manager_corners_extracted = _odometry_data->manager_corners_extracted;
+    manager_surfs_extracted   = _odometry_data->manager_surfs_extracted;
 
-    manager_corners_for_mapping = _odometry_data->manager_corners_for_mapping;
-    manager_surfs_for_mapping   = _odometry_data->manager_surfs_for_mapping;
+    cloud_width = manager_corners_extracted->getCloudPtr()->width;
+
+    // We have to convert because we use the intensity field in searching for associations
+    corner_points_sharp = cloudPointOStoCloudPoint(_odometry_data->manager_corners_salient->getUnorderedCloudPtr(),
+                                                   _odometry_data->manager_corners_salient->getIndicesPtr(), cloud_width, _scan_period_sec);
+    surf_points_flat    = cloudPointOStoCloudPoint(_odometry_data->manager_surfs_salient->getUnorderedCloudPtr(),
+                                                   _odometry_data->manager_surfs_salient->getIndicesPtr(), cloud_width, _scan_period_sec);
 
     diagnostics_fe = _odometry_data->diagnostics_fe;
 
@@ -346,8 +344,10 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
   /*//{ Save odometry data to AloamMapping */
   {
     std::scoped_lock lock(_mutex_odometry_process);
-    _features_corners_last = corner_points_less_sharp;
-    _features_surfs_last   = surf_points_less_flat;
+    _features_corners_last =
+        cloudPointOStoCloudPoint(manager_corners_extracted->getUnorderedCloudPtr(), manager_corners_extracted->getIndicesPtr(), cloud_width, _scan_period_sec);
+    _features_surfs_last =
+        cloudPointOStoCloudPoint(manager_surfs_extracted->getUnorderedCloudPtr(), manager_surfs_extracted->getIndicesPtr(), cloud_width, _scan_period_sec);
 
     _features_corners_last->header.stamp = stamp_pcl;
     _features_surfs_last->header.stamp   = stamp_pcl;
@@ -357,8 +357,8 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
 
     mapping_data->stamp_ros       = stamp;
     mapping_data->odometry        = tf_lidar;
-    mapping_data->manager_corners = manager_corners_for_mapping;
-    mapping_data->manager_surfs   = manager_surfs_for_mapping;
+    mapping_data->manager_corners = manager_corners_extracted;
+    mapping_data->manager_surfs   = manager_surfs_extracted;
 
     mapping_data->diagnostics_fe                = diagnostics_fe;
     mapping_data->diagnostics_odometry.ms_total = timer->getLifetime();
@@ -499,7 +499,7 @@ void AloamOdometry::setTransform(const Eigen::Vector3d &t, const Eigen::Quaterni
 //}
 
 /*//{ TransformToStart() */
-void AloamOdometry::TransformToStart(PointType const *const pi, PointType *const po) {
+void AloamOdometry::TransformToStart(pt_I_t const *const pi, pt_I_t *const po) {
   // interpolation ratio
   double s = 1.0;
   if (DISTORTION) {

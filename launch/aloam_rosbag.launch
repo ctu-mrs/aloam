@@ -13,6 +13,7 @@
   
   <!-- CUSTOM CONFIGS -->
   <arg name="config/feature_extraction" default="" />
+  <arg name="config/feature_selection" default="" />
   <arg name="config/aloam" default="" />
   <arg name="config/aloam/rosbag" default="" />
   <arg name="config/aloam/sensor" default="" />
@@ -38,11 +39,13 @@
     <node pkg="nodelet" type="nodelet" name="aloam" args="$(arg nodelet) aloam_slam/AloamSlamRosbag $(arg nodelet_manager)" output="screen" launch-prefix="bash -c 'sleep $(arg launch_delay); $0 $@'; $(arg launch_prefix)">
 
       <rosparam file="$(find feature_extraction)/config/default.yaml" command="load" />
+      <rosparam file="$(find feature_selection)/config/default.yaml" command="load" />
       <rosparam file="$(find aloam_slam)/config/aloam.yaml" command="load" />
       <rosparam file="$(find aloam_slam)/config/aloam_rosbag.yaml" command="load" />
       <rosparam file="$(find aloam_slam)/config/sensor.yaml" command="load" />
 
       <rosparam if="$(eval arg('config/feature_extraction') != '')" file="$(arg config/feature_extraction)" command="load" />
+      <rosparam if="$(eval arg('config/feature_selection') != '')" file="$(arg config/feature_selection)" command="load" />
       <rosparam if="$(eval arg('config/aloam') != '')" file="$(arg config/aloam)" command="load" />
       <rosparam if="$(eval arg('config/aloam/rosbag') != '')" file="$(arg config/aloam/rosbag)" command="load" />
       <rosparam if="$(eval arg('config/aloam/sensor') != '')" file="$(arg config/aloam/sensor)" command="load" />

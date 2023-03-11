@@ -18,10 +18,7 @@ FeatureExtractor::FeatureExtractor(const std::shared_ptr<CommonHandlers_t> handl
     _initialization_frames_delay = int(0.5 / _scan_period_sec);
 
     // Setup feature extraction library
-    const std::shared_ptr<feature_selection::FeatureSelection> fs_ptr = std::make_shared<feature_selection::FeatureSelection>();
-    fs_ptr->initialize(*handlers->param_loader, handlers->scan_lines, handlers->samples_per_row, handlers->vfov);
-
-    _fe_edge_plane_ = std::make_unique<feature_extraction::LidarExtractionEdgePlane>(*handlers->param_loader, fs_ptr);
+    _fe_edge_plane_ = std::make_unique<feature_extraction::LidarExtractionEdgePlane>(*handlers->param_loader, handlers->overwrite_intensity_with_curvature);
 
   } else {
 
@@ -35,18 +32,16 @@ FeatureExtractor::FeatureExtractor(const std::shared_ptr<CommonHandlers_t> handl
   }
 
   // Publishers
-  _pub_points_finite_            = handlers->nh.advertise<sensor_msgs::PointCloud2>("points_out", 1);
-  _pub_features_edges_           = handlers->nh.advertise<sensor_msgs::PointCloud2>("edges_out", 1);
-  _pub_features_planes_          = handlers->nh.advertise<sensor_msgs::PointCloud2>("planes_out", 1);
-  _pub_features_edges_salient_   = handlers->nh.advertise<sensor_msgs::PointCloud2>("edges_salient_out", 1);
-  _pub_features_planes_salient_  = handlers->nh.advertise<sensor_msgs::PointCloud2>("planes_salient_out", 1);
-  _pub_features_edges_selected_  = handlers->nh.advertise<sensor_msgs::PointCloud2>("edges_selected_out", 1);
-  _pub_features_planes_selected_ = handlers->nh.advertise<sensor_msgs::PointCloud2>("planes_selected_out", 1);
+  _pub_points_finite_           = handlers->nh.advertise<sensor_msgs::PointCloud2>("points_out", 1);
+  _pub_features_edges_          = handlers->nh.advertise<sensor_msgs::PointCloud2>("edges_out", 1);
+  _pub_features_planes_         = handlers->nh.advertise<sensor_msgs::PointCloud2>("planes_out", 1);
+  _pub_features_edges_salient_  = handlers->nh.advertise<sensor_msgs::PointCloud2>("edges_salient_out", 1);
+  _pub_features_planes_salient_ = handlers->nh.advertise<sensor_msgs::PointCloud2>("planes_salient_out", 1);
 }
 /*//}*/
 
 /*//{ extractFeatures() */
-bool FeatureExtractor::extractFeatures(const sensor_msgs::PointCloud2::ConstPtr msg, const bool return_cloud_managers, FECloudManagersOut_t &managers) {
+bool FeatureExtractor::extractFeatures(const sensor_msgs::PointCloud2::ConstPtr msg, const std::shared_ptr<FECloudManagersOut_t> managers) {
 
   if (!is_initialized) {
     ROS_WARN_THROTTLE(1.0, "[AloamFeatureExtractor] Calling uninitialized object.");
@@ -84,7 +79,7 @@ bool FeatureExtractor::extractFeatures(const sensor_msgs::PointCloud2::ConstPtr 
   }
 
   // Convert to PCL type
-  const pcl::PointCloud<PointTypeOS>::Ptr cloud = boost::make_shared<pcl::PointCloud<PointTypeOS>>();
+  const PC_ptr cloud = boost::make_shared<PC>();
   pcl::fromROSMsg(*msg, *cloud);
 
   // Extract features from the given cloud
@@ -113,11 +108,11 @@ bool FeatureExtractor::extractFeatures(const sensor_msgs::PointCloud2::ConstPtr 
   odometry_data->manager_corners_salient = std::make_shared<feature_selection::FSCloudManager>(cloud, fe.indices_edges_salient);
   odometry_data->manager_surfs_salient   = std::make_shared<feature_selection::FSCloudManager>(cloud, fe.indices_planes_salient);
 
-  if (return_cloud_managers) {
-    managers.man_edges_salient    = odometry_data->manager_corners_salient;
-    managers.man_planes_salient   = odometry_data->manager_surfs_salient;
-    managers.man_edges_extracted  = odometry_data->manager_corners_extracted;
-    managers.man_planes_extracted = odometry_data->manager_surfs_extracted;
+  if (managers) {
+    managers->man_edges_salient    = odometry_data->manager_corners_salient;
+    managers->man_planes_salient   = odometry_data->manager_surfs_salient;
+    managers->man_edges_extracted  = odometry_data->manager_corners_extracted;
+    managers->man_planes_extracted = odometry_data->manager_surfs_extracted;
   }
 
   // Publish points/features if needed
@@ -127,24 +122,6 @@ bool FeatureExtractor::extractFeatures(const sensor_msgs::PointCloud2::ConstPtr 
   publishCloud(_pub_features_edges_salient_, odometry_data->manager_corners_salient);
   publishCloud(_pub_features_planes_salient_, odometry_data->manager_surfs_salient);
 
-  if (fe.selection_enabled && fe.selection_success) {
-
-    odometry_data->manager_corners_for_mapping = std::make_shared<feature_selection::FSCloudManager>(cloud, fe.indices_edges_selected);
-    odometry_data->manager_surfs_for_mapping   = std::make_shared<feature_selection::FSCloudManager>(cloud, fe.indices_planes_selected);
-
-    if (return_cloud_managers) {
-      managers.man_edges_selected  = odometry_data->manager_corners_for_mapping;
-      managers.man_planes_selected = odometry_data->manager_surfs_for_mapping;
-    }
-
-    publishCloud(_pub_features_edges_selected_, odometry_data->manager_corners_for_mapping);
-    publishCloud(_pub_features_planes_selected_, odometry_data->manager_surfs_for_mapping);
-
-  } else {
-
-    odometry_data->manager_corners_for_mapping = odometry_data->manager_corners_extracted;
-    odometry_data->manager_surfs_for_mapping = odometry_data->manager_surfs_extracted;
-  }
 
   _aloam_odometry->setData(odometry_data);
 
@@ -154,8 +131,7 @@ bool FeatureExtractor::extractFeatures(const sensor_msgs::PointCloud2::ConstPtr 
 
 /*//{ callbackPointCloud() */
 void FeatureExtractor::callbackPointCloud(const sensor_msgs::PointCloud2::ConstPtr msg) {
-  FECloudManagersOut_t managers;
-  extractFeatures(msg, false, managers);
+  extractFeatures(msg, nullptr);
 }
 /*//}*/
 
@@ -175,10 +151,10 @@ void FeatureExtractor::callbackInputDataProcDiag(const mrs_msgs::PclToolsDiagnos
   if (_has_required_parameters) {
     _aloam_odometry->setFrequency(msg->frequency);
 
-    const std::shared_ptr<feature_selection::FeatureSelection> fs_ptr = std::make_shared<feature_selection::FeatureSelection>();
-    fs_ptr->initialize(*_handlers->param_loader, msg->rows_after, msg->cols_after, msg->vfov);
+    _handlers->feature_selection = std::make_shared<feature_selection::FeatureSelection>();
+    _handlers->feature_selection->initialize(*_handlers->param_loader, msg->rows_after, msg->cols_after, msg->vfov);
 
-    _fe_edge_plane_ = std::make_unique<feature_extraction::LidarExtractionEdgePlane>(*_handlers->param_loader, fs_ptr);
+    _fe_edge_plane_ = std::make_unique<feature_extraction::LidarExtractionEdgePlane>(*_handlers->param_loader, _handlers->overwrite_intensity_with_curvature);
 
     _sub_input_data_processing_diag.shutdown();
   }
@@ -199,32 +175,5 @@ bool FeatureExtractor::hasField(const std::string field, const sensor_msgs::Poin
 }
 /*//}*/
 
-/*//{ publishCloud() */
-void FeatureExtractor::publishCloud(const ros::Publisher &pub, const feature_selection::FSCloudManagerPtr cloud_manager) {
-  if (pub.getNumSubscribers() > 0) {
-
-    const auto cloud = cloud_manager->getUnorderedCloudPtr();
-
-    const sensor_msgs::PointCloud2::Ptr msg = boost::make_shared<sensor_msgs::PointCloud2>();
-    pcl::toROSMsg(*cloud, *msg);
-
-    try {
-      pub.publish(msg);
-    }
-    catch (...) {
-    }
-  }
-}
-/*//}*/
-
-/*//{ publishCloud() */
-void FeatureExtractor::publishCloud(const ros::Publisher &pub, const pcl::PointCloud<PointTypeOS>::Ptr cloud, const feature_extraction::indices_ptr_t indices) {
-  if (cloud && pub.getNumSubscribers() > 0) {
-
-    const auto manager = std::make_shared<feature_selection::FSCloudManager>(cloud, indices);
-    publishCloud(pub, manager);
-  }
-}
-/*//}*/
 
 }  // namespace aloam_slam

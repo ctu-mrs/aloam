@@ -1,6 +1,4 @@
-#ifndef ALOAM_ODOMETRY_H
-#define ALOAM_ODOMETRY_H
-
+#pragma once
 #include "aloam_slam/mapping.h"
 
 namespace aloam_slam
@@ -19,9 +17,6 @@ struct OdometryData
   feature_selection::FSCloudManagerPtr manager_corners_extracted;
   feature_selection::FSCloudManagerPtr manager_surfs_salient;
   feature_selection::FSCloudManagerPtr manager_surfs_extracted;
-  
-  feature_selection::FSCloudManagerPtr manager_corners_for_mapping;
-  feature_selection::FSCloudManagerPtr manager_surfs_for_mapping;
 };
 
 class AloamOdometry {
@@ -48,9 +43,9 @@ private:
 
   std::shared_ptr<mrs_lib::Transformer> _transformer;
 
-  std::mutex                      _mutex_odometry_process;
-  pcl::PointCloud<PointType>::Ptr _features_corners_last;
-  pcl::PointCloud<PointType>::Ptr _features_surfs_last;
+  std::mutex                   _mutex_odometry_process;
+  pcl::PointCloud<pt_I_t>::Ptr _features_corners_last;
+  pcl::PointCloud<pt_I_t>::Ptr _features_surfs_last;
 
   Eigen::Quaterniond _q_w_curr;
   Eigen::Vector3d    _t_w_curr;
@@ -82,8 +77,7 @@ private:
   // member methods
   void timerOdometry(const ros::TimerEvent &event);
 
-  void TransformToStart(PointType const *const pi, PointType *const po);
-  void TransformToEnd(PointType const *const pi, PointType *const po);
+  void TransformToStart(pt_I_t const *const pi, pt_I_t *const po);
+  void TransformToEnd(pt_I_t const *const pi, pt_I_t *const po);
 };
 }  // namespace aloam_slam
-#endif

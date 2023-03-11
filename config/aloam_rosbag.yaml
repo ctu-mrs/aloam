@@ -3,6 +3,6 @@ rosbag:
   write_out:
     enable: true
     filename: "aloam_out.bag"
-    input_points: true
-    pointclouds: true
+    input_points: false
+    pointclouds: false
   shutdown_ros: true

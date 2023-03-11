@@ -38,6 +38,7 @@
   <depend>pcl_msgs</depend>
   <depend>ouster_ros</depend>
   <depend>feature_extraction</depend>
+  <depend>feature_selection</depend>
 
   <export>
     <nodelet plugin="${prefix}/plugins.xml" />

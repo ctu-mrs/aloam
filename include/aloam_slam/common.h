@@ -35,25 +35,22 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
+#define PCL_NO_PRECOMPILE  // !! BEFORE ANY PCL INCLUDE!!
 
 #include <ros/ros.h>
 #include <nodelet/nodelet.h>
 
+#include <feature_selection/data_structures.h>
+#include <feature_selection/feature_selection.h>
+
+#include <feature_extraction/lidar_extraction_edge_plane.h>
+
 #include <math.h>
 #include <cmath>
-#include <vector>
-#include <string>
 #include <thread>
 #include <iostream>
 #include <mutex>
 #include <condition_variable>
-#include <queue>
-
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
-#include <pcl/filters/voxel_grid.h>
-#include <pcl/kdtree/kdtree_flann.h>
-#include <pcl_conversions/pcl_conversions.h>
 
 #include <tf/transform_datatypes.h>
 #include <tf/transform_broadcaster.h>
@@ -65,49 +62,24 @@
 #include <eigen_conversions/eigen_msg.h>
 
 #include <ceres/ceres.h>
-/* #include <opencv/cv.h> */
-
-#include <std_srvs/SetBool.h>
-#include <std_srvs/Trigger.h>
-
-#include <std_msgs/String.h>
 
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
 
-#include <geometry_msgs/PoseStamped.h>
-
-#include <sensor_msgs/PointCloud2.h>
-
 #include <mrs_lib/profiler.h>
-#include <mrs_lib/param_loader.h>
-#include <mrs_lib/mutex.h>
 #include <mrs_lib/transformer.h>
-#include <mrs_lib/attitude_converter.h>
-#include <mrs_lib/scope_timer.h>
 #include <mrs_msgs/Float64ArrayStamped.h>
 #include <mrs_msgs/PclToolsDiagnostics.h>
 
-#include <pcl/point_types.h>
-
-#include <feature_extraction/lidar_extraction_edge_plane.h>
-
-typedef ouster_ros::Point PointTypeOS;
-typedef pcl::PointXYZI    PointType;
-
-inline double rad2deg(double radians) {
-  return radians * 180.0 / M_PI;
-}
-
-inline double deg2rad(double degrees) {
-  return degrees * M_PI / 180.0;
-}
+typedef pcl::PointXYZI pt_I_t;
 
 struct CommonHandlers_t
 {
   ros::NodeHandle                       nh;
   std::shared_ptr<mrs_lib::ParamLoader> param_loader;
   std::shared_ptr<mrs_lib::Profiler>    profiler;
+
+  std::shared_ptr<feature_selection::FeatureSelection> feature_selection;
 
   bool offline_run = false;
 
@@ -125,41 +97,79 @@ struct CommonHandlers_t
   float vfov;
   float frequency;
 
+  // Scope timer
   bool                                       enable_scope_timer;
   std::shared_ptr<mrs_lib::ScopeTimerLogger> scope_timer_logger = nullptr;
+
+  // Feature extraction
+  bool overwrite_intensity_with_curvature = false;
 };
 
 /*//{ cloudPointOStoCloudPoint() */
-inline pcl::PointCloud<PointType>::Ptr cloudPointOStoCloudPoint(const pcl::PointCloud<PointTypeOS>::Ptr cloud_in, const feature_selection::IndicesPtr_t indices,
-                                                                const float scan_period_sec) {
+inline pcl::PointCloud<pt_I_t>::Ptr cloudPointOStoCloudPoint(const PC_ptr cloud_unordered_in, const feature_selection::IndicesPtr_t indices,
+                                                             const size_t cloud_width, const float scan_period_sec) {
 
-  if (!cloud_in || !indices) {
+  if (!cloud_unordered_in || !indices) {
     ROS_ERROR("[cloudPointOStoCloudPoint]: Null pointer to input cloud or input indices given, returning nullptr.");
     return nullptr;
-  } else if (!cloud_in->isOrganized()) {
-    ROS_ERROR("[cloudPointOStoCloudPoint]: Input cloud is NOT organized, returning nullptr.");
+  } else if (!cloud_unordered_in->is_dense) {
+    ROS_ERROR("[cloudPointOStoCloudPoint]: Input cloud is NOT dense (is organized), returning nullptr.");
+    return nullptr;
+  } else if (cloud_unordered_in->size() != indices->size()) {
+    ROS_ERROR("[cloudPointOStoCloudPoint]: Size of input dense cloud and respective point indices do not match, returning nullptr.");
     return nullptr;
   }
 
-  const pcl::PointCloud<PointType>::Ptr cloud_out = boost::make_shared<pcl::PointCloud<PointType>>();
-  cloud_out->header                               = cloud_in->header;
-  cloud_out->width                                = indices->size();
-  cloud_out->height                               = 1;
-  cloud_out->is_dense                             = true;
+  const float cloud_width_flt = cloud_width;
+
+  const pcl::PointCloud<pt_I_t>::Ptr cloud_out = boost::make_shared<pcl::PointCloud<pt_I_t>>();
+  cloud_out->header                            = cloud_unordered_in->header;
+  cloud_out->width                             = cloud_unordered_in->width;
+  cloud_out->height                            = 1;
+  cloud_out->is_dense                          = true;
 
   cloud_out->reserve(cloud_out->width);
-  for (const auto &idx : *indices) {
-    const auto &point_os = cloud_in->at(idx.col, idx.row);
+  for (size_t i = 0; i < cloud_unordered_in->size(); i++) {
+    const auto &point_os = cloud_unordered_in->at(i);
+    const auto &idx      = indices->at(i);
 
-    PointType point;
+    pt_I_t point;
     point.x         = point_os.x;
     point.y         = point_os.y;
     point.z         = point_os.z;
-    point.intensity = float(point_os.ring) + scan_period_sec * (float(idx.col) / float(cloud_in->width));
+    point.intensity = float(point_os.ring) + scan_period_sec * (float(idx.col) / cloud_width_flt);
 
     cloud_out->push_back(point);
   }
 
   return cloud_out;
 }
+/*//}*/
+
+/*//{ publishCloud() */
+
+inline void publishCloud(const ros::Publisher &pub, const feature_selection::FSCloudManagerPtr cloud_manager) {
+  if (cloud_manager && pub.getNumSubscribers() > 0) {
+
+    const auto cloud = cloud_manager->getUnorderedCloudPtr();
+
+    const sensor_msgs::PointCloud2::Ptr msg = boost::make_shared<sensor_msgs::PointCloud2>();
+    pcl::toROSMsg(*cloud, *msg);
+
+    try {
+      pub.publish(msg);
+    }
+    catch (...) {
+    }
+  }
+}
+
+inline void publishCloud(const ros::Publisher &pub, const PC_ptr cloud, const feature_extraction::indices_ptr_t indices) {
+  if (cloud && pub.getNumSubscribers() > 0) {
+
+    const auto manager = std::make_shared<feature_selection::FSCloudManager>(cloud, indices);
+    publishCloud(pub, manager);
+  }
+}
+
 /*//}*/

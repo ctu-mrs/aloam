@@ -25,9 +25,10 @@ public:
 private:
   std::shared_ptr<CommonHandlers_t> handlers;
 
-  std::shared_ptr<AloamMapping>     aloam_mapping;
-  std::shared_ptr<AloamOdometry>    aloam_odometry;
-  std::shared_ptr<FeatureExtractor> feature_extractor;
+  std::shared_ptr<AloamMapping>                        aloam_mapping;
+  std::shared_ptr<AloamOdometry>                       aloam_odometry;
+  std::shared_ptr<FeatureExtractor>                    feature_extractor;
+  std::shared_ptr<feature_selection::FeatureSelection> feature_selection;
 
   const sensor_msgs::PointCloud2::Ptr pclToRos(const feature_selection::FSCloudManagerPtr manager);
   const tf2_msgs::TFMessage           geomToTf2(const geometry_msgs::TransformStamped &geom_msg);
@@ -129,7 +130,6 @@ void AloamSlamRosbag::onInit() {
   const ros::Time bag_end_time   = bag_points_view->getEndTime();
   /*//}*/
 
-
   /*//{ Fill TF buffer with static TFs */
   tf_buffer   = std::make_unique<tf2_ros::Buffer>();
   tf_listener = std::make_unique<tf2_ros::TransformListener>(*tf_buffer);
@@ -173,6 +173,11 @@ void AloamSlamRosbag::onInit() {
   handlers->tf_lidar_in_fcu_frame = getStaticTf(handlers->frame_fcu, handlers->frame_lidar);
   handlers->profiler              = std::make_shared<mrs_lib::Profiler>(nh_, "AloamRosbag", enable_profiler);
   handlers->scope_timer_logger    = std::make_shared<mrs_lib::ScopeTimerLogger>(time_logger_filepath, handlers->enable_scope_timer);
+
+  // Setup feature selection library to be used in mapping
+  handlers->feature_selection = std::make_shared<feature_selection::FeatureSelection>();
+  handlers->feature_selection->initialize(*handlers->param_loader, handlers->scan_lines, handlers->samples_per_row, handlers->vfov);
+  handlers->overwrite_intensity_with_curvature = handlers->feature_selection->requiresCurvatureInIntensityField();
 
   // | ----------------------- SLAM handlers  ------------------- |
   aloam_mapping     = std::make_shared<AloamMapping>(handlers);
@@ -279,28 +284,15 @@ void AloamSlamRosbag::readWriteRosbag(const std::string &rosbag_points_topic, co
     }
 
     // | -------------------- Extract features -------------------- |
-    FECloudManagersOut_t fe_managers;
-    const bool           write_clouds = write_bag_out && write_pointclouds;
-    const bool           fe_succ      = feature_extractor->extractFeatures(cloud_msg, write_clouds, fe_managers);
+    const bool                                  write_clouds = write_bag_out && write_pointclouds;
+    const std::shared_ptr<FECloudManagersOut_t> fe_managers  = write_clouds ? std::make_shared<FECloudManagersOut_t>() : nullptr;
+    const bool                                  fe_succ      = feature_extractor->extractFeatures(cloud_msg, fe_managers);
 
     if (!fe_succ) {
       ROS_WARN("[AloamRosbag] Feature extraction failed for frame: %d/%ld.", frame, frame_total_count);
 
       frame_invalid_count++;
       continue;
-    }
-
-    if (write_clouds) {
-      _bag_out_.write(topic_edges_salient, stamp, pclToRos(fe_managers.man_edges_salient));
-      _bag_out_.write(topic_planes_salient, stamp, pclToRos(fe_managers.man_planes_salient));
-      _bag_out_.write(topic_edges_extracted, stamp, pclToRos(fe_managers.man_edges_extracted));
-      _bag_out_.write(topic_planes_extracted, stamp, pclToRos(fe_managers.man_planes_extracted));
-      if (fe_managers.man_edges_selected) {
-        _bag_out_.write(topic_edges_selected, stamp, pclToRos(fe_managers.man_edges_selected));
-      }
-      if (fe_managers.man_planes_selected) {
-        _bag_out_.write(topic_planes_selected, stamp, pclToRos(fe_managers.man_planes_selected));
-      }
     }
 
     // | ---------------------- Call odometry --------------------- |
@@ -319,10 +311,11 @@ void AloamSlamRosbag::readWriteRosbag(const std::string &rosbag_points_topic, co
     }
 
     // | ---------------------- Call mapping ---------------------- |
-    geometry_msgs::TransformStamped   tf_msg_mapping;
-    aloam_slam::AloamDiagnostics::Ptr diag_msg_mapping;
+    geometry_msgs::TransformStamped tf_msg_mapping;
+    aloam_slam::AloamDiagnostics    diag_msg_mapping;
 
-    const bool mapping_succ = aloam_mapping->computeMapping(tf_msg_mapping, diag_msg_mapping);
+    const std::shared_ptr<MappingCloudManagersOut_t> mapping_managers = write_clouds ? std::make_shared<MappingCloudManagersOut_t>() : nullptr;
+    const bool                                       mapping_succ     = aloam_mapping->computeMapping(tf_msg_mapping, diag_msg_mapping, mapping_managers);
 
     if (!mapping_succ) {
       ROS_WARN("[AloamRosbag] Mapping failed for frame: %d/%ld.", frame, frame_total_count);
@@ -334,6 +327,19 @@ void AloamSlamRosbag::readWriteRosbag(const std::string &rosbag_points_topic, co
     if (write_bag_out) {
       _bag_out_.write("/tf", stamp, geomToTf2(tf_msg_mapping));
       _bag_out_.write(topic_diagnostics, stamp, diag_msg_mapping);
+    }
+
+    if (write_clouds) {
+      _bag_out_.write(topic_edges_salient, stamp, pclToRos(fe_managers->man_edges_salient));
+      _bag_out_.write(topic_planes_salient, stamp, pclToRos(fe_managers->man_planes_salient));
+      _bag_out_.write(topic_edges_extracted, stamp, pclToRos(fe_managers->man_edges_extracted));
+      _bag_out_.write(topic_planes_extracted, stamp, pclToRos(fe_managers->man_planes_extracted));
+      if (mapping_managers->man_edges_selected) {
+        _bag_out_.write(topic_edges_selected, stamp, pclToRos(mapping_managers->man_edges_selected));
+      }
+      if (mapping_managers->man_planes_selected) {
+        _bag_out_.write(topic_planes_selected, stamp, pclToRos(mapping_managers->man_planes_selected));
+      }
     }
 
     frame_valid_count++;

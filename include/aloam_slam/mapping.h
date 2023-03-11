@@ -1,13 +1,14 @@
-#ifndef ALOAM_MAPPING_H
-#define ALOAM_MAPPING_H
+#pragma once
 
 /* includes //{ */
 
 #include <random>
 #include <algorithm>
 
+#include <std_srvs/Trigger.h>
+#include <geometry_msgs/PoseStamped.h>
+
 #include "aloam_slam/common.h"
-#include "aloam_slam/tic_toc.h"
 #include "aloam_slam/lidarFactor.hpp"
 
 #include "aloam_slam/AloamDiagnostics.h"
@@ -19,15 +20,37 @@
 namespace aloam_slam
 {
 
+class VoxelFilter {
+
+public:
+  VoxelFilter(const PC_ptr cloud, const feature_extraction::indices_ptr_t indices, const float resolution);
+  PC_ptr filter() const;
+
+private:
+  bool _enabled = true;
+  bool _empty   = false;
+
+  PC_ptr                            _cloud   = nullptr;
+  feature_extraction::indices_ptr_t _indices = nullptr;
+
+  Eigen::Array3f  _inverse_leaf_size;
+  Eigen::Vector3i _div_b_mul;
+  Eigen::Vector3f _min_b_flt;
+};
+
+struct MappingCloudManagersOut_t
+{
+  feature_selection::FSCloudManagerPtr man_edges_selected  = nullptr;
+  feature_selection::FSCloudManagerPtr man_planes_selected = nullptr;
+};
+
 struct MappingData
 {
   feature_extraction::FEDiagnostics diagnostics_fe;
   aloam_slam::OdometryDiagnostics   diagnostics_odometry;
 
-  ros::Time     stamp_ros;
-  tf::Transform odometry;
-  /* pcl::PointCloud<PointType>::Ptr cloud_corners_last; */
-  /* pcl::PointCloud<PointType>::Ptr cloud_surfs_last; */
+  ros::Time                            stamp_ros;
+  tf::Transform                        odometry;
   feature_selection::FSCloudManagerPtr manager_corners;
   feature_selection::FSCloudManagerPtr manager_surfs;
 };
@@ -37,7 +60,8 @@ class AloamMapping {
 public:
   AloamMapping(const std::shared_ptr<CommonHandlers_t> handlers);
 
-  bool computeMapping(geometry_msgs::TransformStamped &tf_msg_out, aloam_slam::AloamDiagnostics::Ptr &diag_msg_out);
+  bool computeMapping(geometry_msgs::TransformStamped &tf_msg_out, aloam_slam::AloamDiagnostics &diag_msg_out,
+                      const std::shared_ptr<MappingCloudManagersOut_t> managers_out = nullptr);
 
   std::atomic<bool> is_initialized = false;
 
@@ -53,13 +77,9 @@ private:
   ros::Timer _timer_mapping_loop;
   ros::Time  _time_last_map_publish;
 
-  std::mutex                                   _mutex_cloud_features;
-  std::vector<pcl::PointCloud<PointType>::Ptr> _cloud_corners;
-  std::vector<pcl::PointCloud<PointType>::Ptr> _cloud_surfs;
-
-  // Voxel filters
-  pcl::VoxelGrid<PointType> _filter_downsize_corners;
-  pcl::VoxelGrid<PointType> _filter_downsize_surfs;
+  std::mutex          _mutex_cloud_features;
+  std::vector<PC_ptr> _cloud_corners;
+  std::vector<PC_ptr> _cloud_surfs;
 
   // Feature extractor newest data
   std::condition_variable      _cv_mapping_data;
@@ -73,6 +93,8 @@ private:
   ros::Publisher _pub_path;
   ros::Publisher _pub_eigenvalue;
   ros::Publisher _pub_diag;
+  ros::Publisher _pub_features_edges_selected_;
+  ros::Publisher _pub_features_planes_selected_;
 
   // services
   ros::ServiceServer _srv_reset_mapping;
@@ -118,15 +140,30 @@ private:
 
   void transformAssociateToMap();
   void transformUpdate();
-  void pointAssociateToMap(PointType const *const pi, PointType *const po);
+  pt_t pointAssociateToMap(const pt_t &pi) const;
 
-  std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> findFactors(
-      const pcl::KdTreeFLANN<PointType>::Ptr kdtree_map_corners, const pcl::KdTreeFLANN<PointType>::Ptr kdtree_map_surfs,
-      const pcl::PointCloud<PointType>::Ptr features_corners_stack, const pcl::PointCloud<PointType>::Ptr features_surfs_stack,
-      const pcl::PointCloud<PointType>::Ptr map_features_corners, const pcl::PointCloud<PointType>::Ptr map_features_surfs);
+
+  std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> findFactors(const std::shared_ptr<pcl::KdTreeFLANN<pt_t>> kdtree_map_corners,
+                                                                                         const std::shared_ptr<pcl::KdTreeFLANN<pt_t>> kdtree_map_surfs,
+                                                                                         const PC_ptr features_corners_stack, const PC_ptr features_surfs_stack,
+                                                                                         const PC_ptr map_features_corners, const PC_ptr map_features_surfs);
 
   std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> selectFactorsGreedy(
       const std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> &factors);
+
+
+  // | -------------------- Feature selection ------------------- |
+  struct LidarFeatureSelectionEdgePlaneIO_t
+  {
+    PC_ptr                            cloud;
+    feature_extraction::indices_ptr_t indices_edges_extracted;   // All edge features
+    feature_extraction::indices_ptr_t indices_planes_extracted;  // All plane features
+
+    bool                              selection_enabled;
+    bool                              selection_success = false;
+    feature_extraction::indices_ptr_t indices_edges_selected;
+    feature_extraction::indices_ptr_t indices_planes_selected;
+  };
+  void selectFeatures(LidarFeatureSelectionEdgePlaneIO_t &selection_io, feature_selection::FSDiagnostics &msg_diag);
 };
 }  // namespace aloam_slam
-#endif
