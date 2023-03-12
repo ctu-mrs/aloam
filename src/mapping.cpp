@@ -85,8 +85,8 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
   ros::Time     time_aloam_odometry;
   tf::Transform aloam_odometry;
 
-  feature_selection::FSCloudManagerPtr manager_corners;
-  feature_selection::FSCloudManagerPtr manager_surfs;
+  feature_selection::FSCloudManagerPtr manager_corners_extracted;
+  feature_selection::FSCloudManagerPtr manager_surfs_extracted;
 
   {
     std::unique_lock lock(_mutex_mapping_data);
@@ -112,10 +112,10 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
     timer               = std::make_unique<mrs_lib::ScopeTimer>("ALOAM::timerMapping", _handlers->scope_timer_logger, _handlers->enable_scope_timer);
     const float t_start = timer->getLifetime();
 
-    time_aloam_odometry = _mapping_data->stamp_ros;
-    aloam_odometry      = _mapping_data->odometry;
-    manager_corners     = _mapping_data->manager_corners;
-    manager_surfs       = _mapping_data->manager_surfs;
+    time_aloam_odometry       = _mapping_data->stamp_ros;
+    aloam_odometry            = _mapping_data->odometry;
+    manager_corners_extracted = _mapping_data->manager_corners;
+    manager_surfs_extracted   = _mapping_data->manager_surfs;
 
     diag_msg_out.feature_extraction = _mapping_data->diagnostics_fe;
     diag_msg_out.odometry           = _mapping_data->diagnostics_odometry;
@@ -128,13 +128,15 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
   diag_msg_out.mapping.ms_loading_data = timer->getLifetime();
 
   /*//{ Select features from the extracted features */
+  feature_selection::FSCloudManagerPtr manager_corners_selected = nullptr;
+  feature_selection::FSCloudManagerPtr manager_surfs_selected   = nullptr;
   if (_handlers->feature_selection->enabled()) {
 
     LidarFeatureSelectionEdgePlaneIO_t selection_io;
 
-    selection_io.cloud                    = manager_corners->getCloudPtr();
-    selection_io.indices_edges_extracted  = manager_corners->getIndicesPtr();
-    selection_io.indices_planes_extracted = manager_surfs->getIndicesPtr();
+    selection_io.cloud                    = manager_corners_extracted->getCloudPtr();
+    selection_io.indices_edges_extracted  = manager_corners_extracted->getIndicesPtr();
+    selection_io.indices_planes_extracted = manager_surfs_extracted->getIndicesPtr();
 
     diag_msg_out.feature_selection.stamp = time_aloam_odometry;
 
@@ -142,16 +144,16 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
 
     if (selection_io.selection_success) {
 
-      manager_corners = std::make_shared<feature_selection::FSCloudManager>(selection_io.cloud, selection_io.indices_edges_selected);
-      manager_surfs   = std::make_shared<feature_selection::FSCloudManager>(selection_io.cloud, selection_io.indices_planes_selected);
+      manager_corners_selected = std::make_shared<feature_selection::FSCloudManager>(selection_io.cloud, selection_io.indices_edges_selected);
+      manager_surfs_selected   = std::make_shared<feature_selection::FSCloudManager>(selection_io.cloud, selection_io.indices_planes_selected);
 
       if (managers_out) {
-        managers_out->man_edges_selected  = manager_corners;
-        managers_out->man_planes_selected = manager_surfs;
+        managers_out->man_edges_selected  = manager_corners_selected;
+        managers_out->man_planes_selected = manager_surfs_selected;
       }
 
-      publishCloud(_pub_features_edges_selected_, manager_corners);
-      publishCloud(_pub_features_planes_selected_, manager_surfs);
+      publishCloud(_pub_features_edges_selected_, manager_corners_selected);
+      publishCloud(_pub_features_planes_selected_, manager_surfs_selected);
     }
   }
   /*//}*/
@@ -331,11 +333,21 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
   /*//}*/
 
   /*//{ Find factors and optimize */
-  const VoxelFilter filter_corners         = VoxelFilter(manager_corners->getCloudPtr(), manager_corners->getIndicesPtr(), _resolution_line);
-  const PC_ptr      features_corners_stack = filter_corners.filter();
 
-  const VoxelFilter filter_surfs         = VoxelFilter(manager_surfs->getCloudPtr(), manager_surfs->getIndicesPtr(), _resolution_plane);
-  const PC_ptr      features_surfs_stack = filter_surfs.filter();
+  // Voxelizes features for optimization
+  PC_ptr features_corners_opt_stack;
+  PC_ptr features_surfs_opt_stack;
+
+  if (manager_corners_selected && manager_surfs_selected) {
+
+    features_corners_opt_stack = VoxelFilter(manager_corners_selected->getCloudPtr(), manager_corners_selected->getIndicesPtr(), _resolution_line).filter();
+    features_surfs_opt_stack   = VoxelFilter(manager_surfs_selected->getCloudPtr(), manager_surfs_selected->getIndicesPtr(), _resolution_plane).filter();
+
+  } else {
+
+    features_corners_opt_stack = VoxelFilter(manager_corners_extracted->getCloudPtr(), manager_corners_extracted->getIndicesPtr(), _resolution_line).filter();
+    features_surfs_opt_stack   = VoxelFilter(manager_surfs_extracted->getCloudPtr(), manager_surfs_extracted->getIndicesPtr(), _resolution_plane).filter();
+  }
 
   /* printf("map prepare time %f ms\n", t_shift.toc()); */
   /* printf("map corner num %d  surf num %d \n", laserCloudCornerFromMapNum, laserCloudSurfFromMapNum); */
@@ -343,8 +355,6 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
 
     const std::shared_ptr<pcl::KdTreeFLANN<pt_t>> kdtree_map_corners = std::make_shared<pcl::KdTreeFLANN<pt_t>>(true);
     const std::shared_ptr<pcl::KdTreeFLANN<pt_t>> kdtree_map_surfs   = std::make_shared<pcl::KdTreeFLANN<pt_t>>(true);
-    /* const pcl::KdTreeFLANN<pt_t>::Ptr kdtree_map_corners(new pcl::KdTreeFLANN<pt_t>()); */
-    /* const pcl::KdTreeFLANN<pt_t>::Ptr kdtree_map_surfs(new pcl::KdTreeFLANN<pt_t>()); */
 
     kdtree_map_corners->setInputCloud(map_features_corners);
     kdtree_map_surfs->setInputCloud(map_features_surfs);
@@ -361,7 +371,8 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
 
 
       /* mrs_lib::ScopeTimer timer("finding factors", nullptr, true); */
-      auto factors = findFactors(kdtree_map_corners, kdtree_map_surfs, features_corners_stack, features_surfs_stack, map_features_corners, map_features_surfs);
+      auto factors =
+          findFactors(kdtree_map_corners, kdtree_map_surfs, features_corners_opt_stack, features_surfs_opt_stack, map_features_corners, map_features_surfs);
       /* timer.checkpoint("found"); */
 
       /* if (false) { */
@@ -471,8 +482,12 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
 
     transformUpdate();
 
-    for (unsigned int i = 0; i < features_corners_stack->points.size(); i++) {
-      const auto &point_sel = pointAssociateToMap(features_corners_stack->points.at(i));
+    // Store all extracted corners to map
+    const auto &corners_extracted = manager_corners_extracted->getCloudPtr();
+    for (const auto &idx : *manager_corners_extracted->getIndicesPtr()) {
+
+      const auto &point_ori = corners_extracted->at(idx.col, idx.row);
+      const auto &point_sel = pointAssociateToMap(point_ori);
 
       int cubeI = int((point_sel.x + 25.0) / 50.0) + _cloud_center_width;
       int cubeJ = int((point_sel.y + 25.0) / 50.0) + _cloud_center_height;
@@ -494,8 +509,12 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
       }
     }
 
-    for (unsigned int i = 0; i < features_surfs_stack->points.size(); i++) {
-      const auto &point_sel = pointAssociateToMap(features_surfs_stack->points.at(i));
+    // Store all extracted surfs to map
+    const auto &surfs_extracted = manager_surfs_extracted->getCloudPtr();
+    for (const auto &idx : *manager_surfs_extracted->getIndicesPtr()) {
+
+      const auto &point_ori = surfs_extracted->at(idx.col, idx.row);
+      const auto &point_sel = pointAssociateToMap(point_ori);
 
       int cubeI = int((point_sel.x + 25.0) / 50.0) + _cloud_center_width;
       int cubeJ = int((point_sel.y + 25.0) / 50.0) + _cloud_center_height;
@@ -685,13 +704,6 @@ pt_t AloamMapping::pointAssociateToMap(const pt_t &pi) const {
   po.x    = float(point_w.x());
   po.y    = float(point_w.y());
   po.z    = float(point_w.z());
-  /* // Well, optimize? */
-  /* po->intensity                 = pi->intensity; */
-  /* po->ambient                   = pi->ambient; */
-  /* po->range                     = pi->range; */
-  /* po->ring                      = pi->ring; */
-  /* po->reflectivity              = pi->reflectivity; */
-  /* po->t                         = pi->t; */
   return po;
 }
 /*//}*/
@@ -794,18 +806,17 @@ void AloamMapping::setTransform(const Eigen::Vector3d &t, const Eigen::Quaternio
 
 /* findFactors() //{ */
 std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> AloamMapping::findFactors(
-    const std::shared_ptr<pcl::KdTreeFLANN<pt_t>> kdtree_map_corners, const std::shared_ptr<pcl::KdTreeFLANN<pt_t>> kdtree_map_surfs,
-    const PC_ptr features_corners_stack, const PC_ptr features_surfs_stack, const PC_ptr map_features_corners, const PC_ptr map_features_surfs) {
+    const std::shared_ptr<pcl::KdTreeFLANN<pt_t>> kdtree_map_corners, const std::shared_ptr<pcl::KdTreeFLANN<pt_t>> kdtree_map_surfs, const PC_ptr corners,
+    const PC_ptr surfs, const PC_ptr map_features_corners, const PC_ptr map_features_surfs) {
 
   std::vector<LidarEdgeFactor *>  factors_corners;
   std::vector<LidarPlaneFactor *> factors_surfs;
 
   /*//{ Corners */
-  for (unsigned int i = 0; i < features_corners_stack->points.size(); i++) {
+  for (const auto &point_ori : *corners) {
     std::vector<int>   point_search_indices;
     std::vector<float> point_search_sq_dist;
 
-    const auto &point_ori = features_corners_stack->points.at(i);
     const auto &point_sel = pointAssociateToMap(point_ori);
     kdtree_map_corners->nearestKSearch(point_sel, 5, point_search_indices, point_search_sq_dist);
 
@@ -846,11 +857,10 @@ std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> Aloam
   /*//}*/
 
   /*//{ Surfs */
-  for (unsigned int i = 0; i < features_surfs_stack->points.size(); i++) {
+  for (const auto &point_ori : *surfs) {
     std::vector<int>   point_search_indices;
     std::vector<float> point_search_sq_dist;
 
-    const auto &point_ori = features_surfs_stack->points.at(i);
     const auto &point_sel = pointAssociateToMap(point_ori);
     kdtree_map_surfs->nearestKSearch(point_sel, 5, point_search_indices, point_search_sq_dist);
 
@@ -1148,14 +1158,17 @@ VoxelFilter::VoxelFilter(const PC_ptr cloud, const feature_extraction::indices_p
 /*//{ filter() */
 PC_ptr VoxelFilter::filter() const {
 
+  const PC_ptr cloud = boost::make_shared<PC>();
+
   if (_empty || !_enabled) {
-    return boost::make_shared<PC>();
+    return cloud;
   }
+
+  std::unordered_map<int, std::pair<size_t, pt_t>> voxel_map;
 
   // Ordered cloud: iterate over the given indices
   if (_indices) {
 
-    std::unordered_map<int, feature_extraction::index_pair_t> voxel_map;
     for (const auto &idx : *_indices) {
 
       const auto           &p = _cloud->at(idx.col, idx.row);
@@ -1166,42 +1179,60 @@ PC_ptr VoxelFilter::filter() const {
       // Compute the centroid leaf index
       const int voxel_idx = ijk.dot(_div_b_mul);
 
-      if (voxel_map.find(voxel_idx) == voxel_map.end()) {
-        voxel_map[voxel_idx] = idx;
+      auto it = voxel_map.find(voxel_idx);
+      if (it == voxel_map.end()) {
+
+        voxel_map[voxel_idx] = {1, p};
+
+      } else if (_return_centroid) {
+
+        // Update centroid
+        it->second.first++;
+        auto &mean = it->second.second;
+        mean.x += (p.x - mean.x) / it->second.first;
+        mean.y += (p.y - mean.y) / it->second.first;
+        mean.z += (p.z - mean.z) / it->second.first;
       }
     }
-
-    const feature_extraction::indices_ptr_t indices_out = std::make_shared<feature_extraction::indices_t>();
-    indices_out->reserve(voxel_map.size());
-    std::transform(voxel_map.cbegin(), voxel_map.cend(), std::back_inserter(*indices_out), [](const auto &it) { return it.second; });
-
-    return feature_selection::FSCloudManager(_cloud, indices_out).getUnorderedCloudPtr();
   }
 
   // Unordered cloud: iterate over all points (should be finite)
-  std::unordered_map<int, size_t> voxel_map;
-  for (size_t i = 0; i < _cloud->points.size(); i++) {
+  else {
 
-    const auto           &p = _cloud->points.at(i);
-    const Eigen::Vector3i ijk =
-        Eigen::Vector3i(std::floor(p.x * _inverse_leaf_size[0]) - _min_b_flt[0], std::floor(p.y * _inverse_leaf_size[1]) - _min_b_flt[1],
-                        std::floor(p.z * _inverse_leaf_size[2]) - _min_b_flt[2]);
+    for (const auto &p : _cloud->points) {
 
-    // Compute the centroid leaf index
-    const int voxel_idx = ijk.dot(_div_b_mul);
-    if (voxel_map.find(voxel_idx) == voxel_map.end()) {
-      voxel_map[voxel_idx] = i;
+      const Eigen::Vector3i ijk =
+          Eigen::Vector3i(std::floor(p.x * _inverse_leaf_size[0]) - _min_b_flt[0], std::floor(p.y * _inverse_leaf_size[1]) - _min_b_flt[1],
+                          std::floor(p.z * _inverse_leaf_size[2]) - _min_b_flt[2]);
+
+      // Compute the centroid leaf index
+      const int voxel_idx = ijk.dot(_div_b_mul);
+
+      // Insert to map if there is no point already stored at the leaf index
+      auto it = voxel_map.find(voxel_idx);
+      if (it == voxel_map.end()) {
+
+        voxel_map[voxel_idx] = {1, p};
+
+      } else if (_return_centroid) {
+
+        // Update centroid
+        it->second.first++;
+        auto &mean = it->second.second;
+        mean.x += (p.x - mean.x) / it->second.first;
+        mean.y += (p.y - mean.y) / it->second.first;
+        mean.z += (p.z - mean.z) / it->second.first;
+      }
     }
   }
 
-  const PC_ptr cloud = boost::make_shared<PC>();
-  cloud->header      = _cloud->header;
-  cloud->is_dense    = true;
-  cloud->height      = 1;
-  cloud->width       = voxel_map.size();
+  cloud->header   = _cloud->header;
+  cloud->is_dense = true;
+  cloud->height   = 1;
+  cloud->width    = voxel_map.size();
   cloud->points.reserve(cloud->width);
 
-  std::transform(voxel_map.cbegin(), voxel_map.cend(), std::back_inserter(cloud->points), [this](const auto &it) { return _cloud->at(it.second); });
+  std::transform(voxel_map.cbegin(), voxel_map.cend(), std::back_inserter(cloud->points), [this](const auto &it) { return it.second.second; });
 
   return cloud;
 }

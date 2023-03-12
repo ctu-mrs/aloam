@@ -23,12 +23,15 @@ namespace aloam_slam
 class VoxelFilter {
 
 public:
+  VoxelFilter(){};
   VoxelFilter(const PC_ptr cloud, const feature_extraction::indices_ptr_t indices, const float resolution);
   PC_ptr filter() const;
 
 private:
   bool _enabled = true;
   bool _empty   = false;
+
+  bool _return_centroid = false;
 
   PC_ptr                            _cloud   = nullptr;
   feature_extraction::indices_ptr_t _indices = nullptr;
