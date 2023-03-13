@@ -15,6 +15,8 @@
 #include "aloam_slam/OdometryDiagnostics.h"
 #include "aloam_slam/MappingDiagnostics.h"
 
+#include <pcl/filters/voxel_grid.h>
+
 //}
 
 namespace aloam_slam
@@ -145,6 +147,8 @@ private:
   void transformUpdate();
   pt_t pointAssociateToMap(const pt_t &pi) const;
 
+  pcl::VoxelGrid<pt_t> _filter_downsize_corners;
+  pcl::VoxelGrid<pt_t> _filter_downsize_surfs;
 
   std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> findFactors(const std::shared_ptr<pcl::KdTreeFLANN<pt_t>> kdtree_map_corners,
                                                                                          const std::shared_ptr<pcl::KdTreeFLANN<pt_t>> kdtree_map_surfs,

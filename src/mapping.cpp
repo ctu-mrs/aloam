@@ -35,6 +35,9 @@ AloamMapping::AloamMapping(const std::shared_ptr<CommonHandlers_t> handlers) : _
     }
   }
 
+  _filter_downsize_corners.setLeafSize(_resolution_line, _resolution_line, _resolution_line);
+  _filter_downsize_surfs.setLeafSize(_resolution_plane, _resolution_plane, _resolution_plane);
+
   _pub_diag            = handlers->nh.advertise<aloam_slam::AloamDiagnostics>("diag_out", 1);
   _pub_laser_cloud_map = handlers->nh.advertise<sensor_msgs::PointCloud2>("map_out", 1);
   _pub_odom_global     = handlers->nh.advertise<nav_msgs::Odometry>("odom_global_out", 1);
@@ -109,8 +112,7 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
       return false;
     }
 
-    timer               = std::make_unique<mrs_lib::ScopeTimer>("ALOAM::timerMapping", _handlers->scope_timer_logger, _handlers->enable_scope_timer);
-    /* const float t_start = timer->getLifetime(); */
+    timer = std::make_unique<mrs_lib::ScopeTimer>("ALOAM::timerMapping", _handlers->scope_timer_logger, _handlers->enable_scope_timer);
 
     time_aloam_odometry       = _mapping_data->stamp_ros;
     aloam_odometry            = _mapping_data->odometry;
@@ -124,7 +126,7 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
   }
   /*//}*/
 
-  timer->checkpoint("loading data");
+  /* timer->checkpoint("loading data"); */
   diag_msg_out.mapping.ms_loading_data = timer->getLifetime();
 
   /*//{ Select features from the extracted features */
@@ -155,6 +157,13 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
       publishCloud(_pub_features_edges_selected_, manager_corners_selected);
       publishCloud(_pub_features_planes_selected_, manager_surfs_selected);
     }
+
+    /* timer->checkpoint("selecting features"); */
+    diag_msg_out.feature_selection.ms_total = timer->getLifetime() - diag_msg_out.mapping.ms_loading_data;
+
+  } else {
+
+    diag_msg_out.feature_selection.ms_total = 0.0f;
   }
   /*//}*/
 
@@ -330,24 +339,49 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
       *map_features_surfs += *_cloud_surfs.at(i);
     }
   }
+
+  /* timer->checkpoint("generating local feature map"); */
   /*//}*/
 
   /*//{ Find factors and optimize */
 
   // Voxelizes features for optimization
-  PC_ptr features_corners_opt_stack;
-  PC_ptr features_surfs_opt_stack;
+
+  // Custom VoxelGrid is slower, using the PCL implementation
+  /* PC_ptr features_corners_opt_stack; */
+  /* PC_ptr features_surfs_opt_stack; */
+
+  /* if (manager_corners_selected && manager_surfs_selected) { */
+
+  /*   features_corners_opt_stack = VoxelFilter(manager_corners_selected->getCloudPtr(), manager_corners_selected->getIndicesPtr(), _resolution_line).filter();
+   */
+  /*   features_surfs_opt_stack   = VoxelFilter(manager_surfs_selected->getCloudPtr(), manager_surfs_selected->getIndicesPtr(), _resolution_plane).filter(); */
+
+  /* } else { */
+
+  /*   features_corners_opt_stack = VoxelFilter(manager_corners_extracted->getCloudPtr(), manager_corners_extracted->getIndicesPtr(),
+   * _resolution_line).filter(); */
+  /*   features_surfs_opt_stack   = VoxelFilter(manager_surfs_extracted->getCloudPtr(), manager_surfs_extracted->getIndicesPtr(), _resolution_plane).filter();
+   */
+  /* } */
 
   if (manager_corners_selected && manager_surfs_selected) {
 
-    features_corners_opt_stack = VoxelFilter(manager_corners_selected->getCloudPtr(), manager_corners_selected->getIndicesPtr(), _resolution_line).filter();
-    features_surfs_opt_stack   = VoxelFilter(manager_surfs_selected->getCloudPtr(), manager_surfs_selected->getIndicesPtr(), _resolution_plane).filter();
+    _filter_downsize_corners.setInputCloud(manager_corners_selected->getUnorderedCloudPtr());
+    _filter_downsize_surfs.setInputCloud(manager_surfs_selected->getUnorderedCloudPtr());
 
   } else {
 
-    features_corners_opt_stack = VoxelFilter(manager_corners_extracted->getCloudPtr(), manager_corners_extracted->getIndicesPtr(), _resolution_line).filter();
-    features_surfs_opt_stack   = VoxelFilter(manager_surfs_extracted->getCloudPtr(), manager_surfs_extracted->getIndicesPtr(), _resolution_plane).filter();
+    _filter_downsize_corners.setInputCloud(manager_corners_extracted->getUnorderedCloudPtr());
+    _filter_downsize_surfs.setInputCloud(manager_surfs_extracted->getUnorderedCloudPtr());
   }
+
+  const PC_ptr features_corners_opt_stack = boost::make_shared<PC>();
+  const PC_ptr features_surfs_opt_stack   = boost::make_shared<PC>();
+  _filter_downsize_corners.filter(*features_corners_opt_stack);
+  _filter_downsize_surfs.filter(*features_surfs_opt_stack);
+  
+  /* timer->checkpoint("voxelizing input features"); */
 
   /* printf("map prepare time %f ms\n", t_shift.toc()); */
   /* printf("map corner num %d  surf num %d \n", laserCloudCornerFromMapNum, laserCloudSurfFromMapNum); */
@@ -359,7 +393,12 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
     kdtree_map_corners->setInputCloud(map_features_corners);
     kdtree_map_surfs->setInputCloud(map_features_surfs);
 
+    /* timer->checkpoint("computing KDTree from input features"); */
+
     for (int iterCount = 0; iterCount < 2; iterCount++) {
+
+      /* timer->checkpoint("iter " + std::to_string(iterCount) + " init"); */
+
       // ceres::LossFunction *loss_function = NULL;
       ceres::LossFunction          *loss_function      = new ceres::HuberLoss(0.1);
       ceres::LocalParameterization *q_parameterization = new ceres::EigenQuaternionParameterization();
@@ -377,6 +416,7 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
       /* if (false) { */
       /* factors = selectFactorsGreedy(factors); */
       /* } */
+      /* timer->checkpoint("iter " + std::to_string(iterCount) + " finding constraints"); */
 
       /* ROS_ERROR("After selectFactorsGreedy()"); */
 
@@ -386,6 +426,7 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
       for (const auto &factor : factors.second) {
         problem.AddResidualBlock(LidarPlaneFactor::Create(factor), loss_function, _parameters, _parameters + 4);
       }
+      /* timer->checkpoint("iter " + std::to_string(iterCount) + " creating residuals"); */
       /* ROS_ERROR("After adding blocks to problem."); */
 
       ceres::Solver::Options options;
@@ -467,14 +508,15 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
       /* ROS_ERROR("Before solving"); */
       ceres::Solve(options, &problem, &summary);
       /* ROS_ERROR("After solving"); */
+      /* timer->checkpoint("iter " + std::to_string(iterCount) + " computing solution"); */
     }
   } else {
     ROS_WARN("[AloamMapping] Not enough map correspondences. Skipping mapping frame.");
   }
   /*//}*/
 
-  timer->checkpoint("associating features with map");
-  diag_msg_out.mapping.ms_associating_features = timer->getLifetime();
+  /* timer->checkpoint("solving problem"); */
+  diag_msg_out.mapping.ms_associating_features = timer->getLifetime() - diag_msg_out.mapping.ms_loading_data - diag_msg_out.feature_selection.ms_total;
 
   {
     std::scoped_lock lock(_mutex_cloud_features);
@@ -538,19 +580,26 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
     for (const auto ind : cloud_valid_indices) {
 
       if (!_cloud_corners.at(ind)->empty()) {
-        const VoxelFilter filter_downsize_corners = VoxelFilter(_cloud_corners.at(ind), nullptr, _resolution_line);
-        _cloud_corners.at(ind)                    = filter_downsize_corners.filter();
+        _filter_downsize_corners.setInputCloud(_cloud_corners.at(ind));
+        _filter_downsize_corners.filter(*_cloud_corners.at(ind));
+
+        /* const VoxelFilter filter_downsize_corners = VoxelFilter(_cloud_corners.at(ind), nullptr, _resolution_line); */
+        /* _cloud_corners.at(ind)                    = filter_downsize_corners.filter(); */
       }
 
       if (!_cloud_surfs.at(ind)->empty()) {
-        const VoxelFilter filter_downsize_surfs = VoxelFilter(_cloud_surfs.at(ind), nullptr, _resolution_plane);
-        _cloud_surfs.at(ind)                    = filter_downsize_surfs.filter();
+        _filter_downsize_surfs.setInputCloud(_cloud_surfs.at(ind));
+        _filter_downsize_surfs.filter(*_cloud_surfs.at(ind));
+        /* const VoxelFilter filter_downsize_surfs = VoxelFilter(_cloud_surfs.at(ind), nullptr, _resolution_plane); */
+        /* _cloud_surfs.at(ind)                    = filter_downsize_surfs.filter(); */
       }
     }
   }
 
-  timer->checkpoint("adding features to map");
-  diag_msg_out.mapping.ms_adding_features_to_map = timer->getLifetime();
+  /* timer->checkpoint("adding output-transformed features to map"); */
+
+  diag_msg_out.mapping.ms_adding_features_to_map =
+      timer->getLifetime() - diag_msg_out.mapping.ms_loading_data - diag_msg_out.mapping.ms_associating_features - diag_msg_out.feature_selection.ms_total;
 
   /*//{ Publish data */
 
@@ -648,9 +697,10 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
   /*//}*/
 
   diag_msg_out.frame            = ++_frame_count;
-  diag_msg_out.mapping.ms_total = timer->getLifetime();
-  diag_msg_out.ms_total         = diag_msg_out.feature_extraction.ms_total + diag_msg_out.odometry.ms_total + diag_msg_out.mapping.ms_total;
-  diag_msg_out.data_stamp       = time_aloam_odometry;
+  diag_msg_out.mapping.ms_total = timer->getLifetime() - diag_msg_out.feature_selection.ms_total;
+  diag_msg_out.ms_total =
+      diag_msg_out.feature_extraction.ms_total + diag_msg_out.odometry.ms_total + diag_msg_out.feature_selection.ms_total + diag_msg_out.mapping.ms_total;
+  diag_msg_out.data_stamp = time_aloam_odometry;
 
   // Publish diagnostics
   if (_pub_diag.getNumSubscribers() > 0) {
