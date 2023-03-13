@@ -43,7 +43,8 @@ private:
   std::unique_ptr<tf2_ros::Buffer>            tf_buffer;
   std::unique_ptr<tf2_ros::TransformListener> tf_listener;
 
-  void readWriteRosbag(const std::string &rosbag_points_topic, const bool write_bag_out, const bool write_input_points, const bool write_pointclouds);
+  void readWriteRosbag([[maybe_unused]] const std::string &rosbag_points_topic, const bool write_bag_out, const bool write_input_points,
+                       const bool write_pointclouds);
 };
 
 //}
@@ -102,8 +103,8 @@ void AloamSlamRosbag::onInit() {
   }
 
   std::string rosbag_points_topic;
-  bool        write_input_points;
-  bool        write_pointclouds;
+  bool        write_input_points = false;
+  bool        write_pointclouds  = false;
 
   if (write_bag_out) {
 
@@ -125,9 +126,9 @@ void AloamSlamRosbag::onInit() {
   /*//}*/
 
   /*//{ Read rosbag duration */
-  bag_points_view                = std::make_unique<rosbag::View>(_bag_in_, rosbag::TopicQuery(rosbag_points_topic));
-  const ros::Time bag_begin_time = bag_points_view->getBeginTime();
-  const ros::Time bag_end_time   = bag_points_view->getEndTime();
+  bag_points_view = std::make_unique<rosbag::View>(_bag_in_, rosbag::TopicQuery(rosbag_points_topic));
+  /* const ros::Time bag_begin_time = bag_points_view->getBeginTime(); */
+  const ros::Time bag_end_time = bag_points_view->getEndTime();
   /*//}*/
 
   /*//{ Fill TF buffer with static TFs */
@@ -233,7 +234,7 @@ tf::Transform AloamSlamRosbag::getStaticTf(const std::string &frame_from, const 
 /*//}*/
 
 /* readWriteRosbag() //{ */
-void AloamSlamRosbag::readWriteRosbag(const std::string &rosbag_points_topic, const bool write_bag_out, const bool write_input_points,
+void AloamSlamRosbag::readWriteRosbag([[maybe_unused]] const std::string &rosbag_points_topic, const bool write_bag_out, const bool write_input_points,
                                       const bool write_pointclouds) {
 
   const std::string topic_diagnostics      = "/" + handlers->uav_name + "/slam/diagnostics";

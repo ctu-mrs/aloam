@@ -42,6 +42,7 @@ AloamOdometry::AloamOdometry(const std::shared_ptr<CommonHandlers_t> handlers, c
 
 /*//{ computeOdometry() */
 bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out) {
+
   if (!is_initialized) {
     ROS_WARN_THROTTLE(1.0, "[AloamOdometry] Calling uninitialized object.");
     return false;
@@ -125,11 +126,8 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
   if (_frame_count > 0) {
     std::scoped_lock lock(_mutex_odometry_process);
 
-    const int cornerPointsSharpNum = corner_points_sharp->points.size();
-    const int surfPointsFlatNum    = surf_points_flat->points.size();
-
-    pcl::KdTreeFLANN<pcl::PointXYZI> _kdtree_corners_last;
-    pcl::KdTreeFLANN<pcl::PointXYZI> _kdtree_surfs_last;
+    pcl::KdTreeFLANN<pt_I_t> _kdtree_corners_last;
+    pcl::KdTreeFLANN<pt_I_t> _kdtree_surfs_last;
 
     _kdtree_corners_last.setInputCloud(_features_corners_last);
     _kdtree_surfs_last.setInputCloud(_features_surfs_last);
@@ -147,13 +145,13 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
       problem.AddParameterBlock(_para_q, 4, q_parameterization);
       problem.AddParameterBlock(_para_t, 3);
 
-      pcl::PointXYZI     pointSel;
       std::vector<int>   pointSearchInd;
       std::vector<float> pointSearchSqDis;
 
       // find correspondence for corner features
-      for (int i = 0; i < cornerPointsSharpNum; ++i) {
-        TransformToStart(&(corner_points_sharp->points.at(i)), &pointSel);
+      for (const auto &point_ori : corner_points_sharp->points) {
+
+        const auto pointSel = TransformToStart(point_ori);
         _kdtree_corners_last.nearestKSearch(pointSel, 1, pointSearchInd, pointSearchSqDis);
 
         int closestPointInd = -1, minPointInd2 = -1;
@@ -164,19 +162,20 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
           double minPointSqDis2 = DISTANCE_SQ_THRESHOLD;
           // search in the direction of increasing scan line
           for (int j = closestPointInd + 1; j < (int)_features_corners_last->points.size(); ++j) {
+
+            const auto &point_j = _features_surfs_last->points.at(j);
+
             // if in the same scan line, continue
-            if (int(_features_corners_last->points.at(j).intensity) <= closestPointScanID) {
+            if (int(point_j.intensity) <= closestPointScanID) {
               continue;
             }
 
             // if not in nearby scans, end the loop
-            if (int(_features_corners_last->points.at(j).intensity) > (closestPointScanID + NEARBY_SCAN)) {
+            if (int(point_j.intensity) > (closestPointScanID + NEARBY_SCAN)) {
               break;
             }
 
-            const double pointSqDis = (_features_corners_last->points.at(j).x - pointSel.x) * (_features_corners_last->points.at(j).x - pointSel.x) +
-                                      (_features_corners_last->points.at(j).y - pointSel.y) * (_features_corners_last->points.at(j).y - pointSel.y) +
-                                      (_features_corners_last->points.at(j).z - pointSel.z) * (_features_corners_last->points.at(j).z - pointSel.z);
+            const double pointSqDis = std::pow(point_j.x - pointSel.x, 2.0) + std::pow(point_j.y - pointSel.y, 2.0) + std::pow(point_j.z - pointSel.z, 2.0);
 
             if (pointSqDis < minPointSqDis2) {
               // find nearer point
@@ -187,19 +186,20 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
 
           // search in the direction of decreasing scan line
           for (int j = closestPointInd - 1; j >= 0; --j) {
+
+            const auto &point_j = _features_surfs_last->points.at(j);
+
             // if in the same scan line, continue
-            if (int(_features_corners_last->points.at(j).intensity) >= closestPointScanID) {
+            if (int(point_j.intensity) >= closestPointScanID) {
               continue;
             }
 
             // if not in nearby scans, end the loop
-            if (int(_features_corners_last->points.at(j).intensity) < (closestPointScanID - NEARBY_SCAN)) {
+            if (int(point_j.intensity) < (closestPointScanID - NEARBY_SCAN)) {
               break;
             }
 
-            const double pointSqDis = (_features_corners_last->points.at(j).x - pointSel.x) * (_features_corners_last->points.at(j).x - pointSel.x) +
-                                      (_features_corners_last->points.at(j).y - pointSel.y) * (_features_corners_last->points.at(j).y - pointSel.y) +
-                                      (_features_corners_last->points.at(j).z - pointSel.z) * (_features_corners_last->points.at(j).z - pointSel.z);
+            const double pointSqDis = std::pow(point_j.x - pointSel.x, 2.0) + std::pow(point_j.y - pointSel.y, 2.0) + std::pow(point_j.z - pointSel.z, 2.0);
 
             if (pointSqDis < minPointSqDis2) {
               // find nearer point
@@ -210,7 +210,7 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
         }
         if (minPointInd2 >= 0)  // both closestPointInd and minPointInd2 is valid
         {
-          const Eigen::Vector3d curr_point(corner_points_sharp->points.at(i).x, corner_points_sharp->points.at(i).y, corner_points_sharp->points.at(i).z);
+          const Eigen::Vector3d curr_point(point_ori.x, point_ori.y, point_ori.z);
           const Eigen::Vector3d last_point_a(_features_corners_last->points.at(closestPointInd).x, _features_corners_last->points.at(closestPointInd).y,
                                              _features_corners_last->points.at(closestPointInd).z);
           const Eigen::Vector3d last_point_b(_features_corners_last->points.at(minPointInd2).x, _features_corners_last->points.at(minPointInd2).y,
@@ -218,7 +218,7 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
 
           double s = 1.0;
           if (DISTORTION) {
-            s = (corner_points_sharp->points.at(i).intensity - int(corner_points_sharp->points.at(i).intensity)) / _scan_period_sec;
+            s = (point_ori.intensity - int(point_ori.intensity)) / _scan_period_sec;
           }
           LidarEdgeFactor     *factor        = new LidarEdgeFactor(curr_point, last_point_a, last_point_b, s);
           ceres::CostFunction *cost_function = LidarEdgeFactor::Create(factor);
@@ -228,8 +228,8 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
       }
 
       // find correspondence for plane features
-      for (int i = 0; i < surfPointsFlatNum; ++i) {
-        TransformToStart(&(surf_points_flat->points.at(i)), &pointSel);
+      for (const auto &point_ori : surf_points_flat->points) {
+        const auto pointSel = TransformToStart(point_ori);
         _kdtree_surfs_last.nearestKSearch(pointSel, 1, pointSearchInd, pointSearchSqDis);
 
         int closestPointInd = -1, minPointInd2 = -1, minPointInd3 = -1;
@@ -238,26 +238,28 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
 
           // get closest point's scan ID
           const int closestPointScanID = int(_features_surfs_last->points.at(closestPointInd).intensity);
-          double    minPointSqDis2 = DISTANCE_SQ_THRESHOLD, minPointSqDis3 = DISTANCE_SQ_THRESHOLD;
+          double    minPointSqDis2     = DISTANCE_SQ_THRESHOLD;
+          double    minPointSqDis3     = DISTANCE_SQ_THRESHOLD;
 
           // search in the direction of increasing scan line
           for (int j = closestPointInd + 1; j < (int)_features_surfs_last->points.size(); ++j) {
+
+            const auto &point_j = _features_surfs_last->points.at(j);
+
             // if not in nearby scans, end the loop
-            if (int(_features_surfs_last->points.at(j).intensity) > (closestPointScanID + NEARBY_SCAN)) {
+            if (int(point_j.intensity) > (closestPointScanID + NEARBY_SCAN)) {
               break;
             }
 
-            const double pointSqDis = (_features_surfs_last->points.at(j).x - pointSel.x) * (_features_surfs_last->points.at(j).x - pointSel.x) +
-                                      (_features_surfs_last->points.at(j).y - pointSel.y) * (_features_surfs_last->points.at(j).y - pointSel.y) +
-                                      (_features_surfs_last->points.at(j).z - pointSel.z) * (_features_surfs_last->points.at(j).z - pointSel.z);
+            const double pointSqDis = std::pow(point_j.x - pointSel.x, 2.0) + std::pow(point_j.y - pointSel.y, 2.0) + std::pow(point_j.z - pointSel.z, 2.0);
 
             // if in the same or lower scan line
-            if (int(_features_surfs_last->points.at(j).intensity) <= closestPointScanID && pointSqDis < minPointSqDis2) {
+            if (int(point_j.intensity) <= closestPointScanID && pointSqDis < minPointSqDis2) {
               minPointSqDis2 = pointSqDis;
               minPointInd2   = j;
             }
             // if in the higher scan line
-            else if (int(_features_surfs_last->points.at(j).intensity) > closestPointScanID && pointSqDis < minPointSqDis3) {
+            else if (int(point_j.intensity) > closestPointScanID && pointSqDis < minPointSqDis3) {
               minPointSqDis3 = pointSqDis;
               minPointInd3   = j;
             }
@@ -265,20 +267,21 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
 
           // search in the direction of decreasing scan line
           for (int j = closestPointInd - 1; j >= 0; --j) {
+
+            const auto &point_j = _features_surfs_last->points.at(j);
+
             // if not in nearby scans, end the loop
-            if (int(_features_surfs_last->points.at(j).intensity) < (closestPointScanID - NEARBY_SCAN)) {
+            if (int(point_j.intensity) < (closestPointScanID - NEARBY_SCAN)) {
               break;
             }
 
-            const double pointSqDis = (_features_surfs_last->points.at(j).x - pointSel.x) * (_features_surfs_last->points.at(j).x - pointSel.x) +
-                                      (_features_surfs_last->points.at(j).y - pointSel.y) * (_features_surfs_last->points.at(j).y - pointSel.y) +
-                                      (_features_surfs_last->points.at(j).z - pointSel.z) * (_features_surfs_last->points.at(j).z - pointSel.z);
+            const double pointSqDis = std::pow(point_j.x - pointSel.x, 2.0) + std::pow(point_j.y - pointSel.y, 2.0) + std::pow(point_j.z - pointSel.z, 2.0);
 
             // if in the same or higher scan line
-            if (int(_features_surfs_last->points.at(j).intensity) >= closestPointScanID && pointSqDis < minPointSqDis2) {
+            if (int(point_j.intensity) >= closestPointScanID && pointSqDis < minPointSqDis2) {
               minPointSqDis2 = pointSqDis;
               minPointInd2   = j;
-            } else if (int(_features_surfs_last->points.at(j).intensity) < closestPointScanID && pointSqDis < minPointSqDis3) {
+            } else if (int(point_j.intensity) < closestPointScanID && pointSqDis < minPointSqDis3) {
               // find nearer point
               minPointSqDis3 = pointSqDis;
               minPointInd3   = j;
@@ -287,19 +290,18 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
 
           if (minPointInd2 >= 0 && minPointInd3 >= 0) {
 
-            const auto &sp   = surf_points_flat->points.at(i);
             const auto &fp_a = _features_surfs_last->points.at(closestPointInd);
             const auto &fp_b = _features_surfs_last->points.at(minPointInd2);
             const auto &fp_c = _features_surfs_last->points.at(minPointInd3);
 
-            const Eigen::Vector3d curr_point(sp.x, sp.y, sp.z);
+            const Eigen::Vector3d curr_point(point_ori.x, point_ori.y, point_ori.z);
             const Eigen::Vector3d last_point_a(fp_a.x, fp_a.y, fp_a.z);
             const Eigen::Vector3d last_point_b(fp_b.x, fp_b.y, fp_b.z);
             const Eigen::Vector3d last_point_c(fp_c.x, fp_c.y, fp_c.z);
 
             double s = 1.0;
             if (DISTORTION) {
-              s = (surf_points_flat->points.at(i).intensity - int(surf_points_flat->points.at(i).intensity)) / _scan_period_sec;
+              s = (point_ori.intensity - int(point_ori.intensity)) / _scan_period_sec;
             }
             LidarPlaneNormFactorFromPoints *factor        = new LidarPlaneNormFactorFromPoints(curr_point, last_point_a, last_point_b, last_point_c, s);
             ceres::CostFunction            *cost_function = LidarPlaneNormFactorFromPoints::Create(factor);
@@ -499,21 +501,24 @@ void AloamOdometry::setTransform(const Eigen::Vector3d &t, const Eigen::Quaterni
 //}
 
 /*//{ TransformToStart() */
-void AloamOdometry::TransformToStart(pt_I_t const *const pi, pt_I_t *const po) {
+pt_I_t AloamOdometry::TransformToStart(const pt_I_t &pi) {
   // interpolation ratio
   double s = 1.0;
   if (DISTORTION) {
-    s = (pi->intensity - int(pi->intensity)) / _scan_period_sec;
+    s = (pi.intensity - int(pi.intensity)) / _scan_period_sec;
   }
+
   const Eigen::Quaterniond q_point_last = Eigen::Quaterniond::Identity().slerp(s, _q_last_curr);
   const Eigen::Vector3d    t_point_last = s * _t_last_curr;
-  const Eigen::Vector3d    point(pi->x, pi->y, pi->z);
+  const Eigen::Vector3d    point(pi.x, pi.y, pi.z);
   const Eigen::Vector3d    un_point = q_point_last * point + t_point_last;
 
-  po->x         = un_point.x();
-  po->y         = un_point.y();
-  po->z         = un_point.z();
-  po->intensity = pi->intensity;
+  pt_I_t po;
+  po.x         = un_point.x();
+  po.y         = un_point.y();
+  po.z         = un_point.z();
+  po.intensity = pi.intensity;
+  return po;
 }
 /*//}*/
 

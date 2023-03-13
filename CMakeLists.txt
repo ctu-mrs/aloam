@@ -19,8 +19,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 # add_definitions(-Werror)
-# add_definitions(-Wall)
-# add_definitions(-Wextra)
+add_definitions(-Wall)
+add_definitions(-Wextra)
 
 find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
@@ -29,9 +29,6 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
   rosbag
-  std_msgs
-  image_transport
-  cv_bridge
   tf
   mrs_lib
   mrs_msgs
@@ -61,7 +58,7 @@ add_message_files(DIRECTORY msg FILES
 )
 
 generate_messages(DEPENDENCIES
-  geometry_msgs nav_msgs std_msgs mrs_msgs pcl_msgs feature_extraction feature_selection ouster_ros sensor_msgs
+  geometry_msgs nav_msgs mrs_msgs pcl_msgs feature_extraction feature_selection ouster_ros sensor_msgs
 )
 
 set(LIBRARIES
@@ -70,7 +67,7 @@ set(LIBRARIES
   )
 
 catkin_package(
-  CATKIN_DEPENDS geometry_msgs sensor_msgs nav_msgs roscpp rospy std_msgs mrs_lib mrs_msgs eigen_conversions tf_conversions pcl_ros pcl_conversions pcl_msgs feature_extraction feature_selection ouster_ros
+  CATKIN_DEPENDS geometry_msgs sensor_msgs nav_msgs roscpp rospy mrs_lib mrs_msgs eigen_conversions tf_conversions pcl_ros pcl_conversions pcl_msgs feature_extraction feature_selection ouster_ros
   LIBRARIES ${LIBRARIES}
   )
 

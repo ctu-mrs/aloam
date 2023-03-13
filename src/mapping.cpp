@@ -110,7 +110,7 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
     }
 
     timer               = std::make_unique<mrs_lib::ScopeTimer>("ALOAM::timerMapping", _handlers->scope_timer_logger, _handlers->enable_scope_timer);
-    const float t_start = timer->getLifetime();
+    /* const float t_start = timer->getLifetime(); */
 
     time_aloam_odometry       = _mapping_data->stamp_ros;
     aloam_odometry            = _mapping_data->odometry;
@@ -325,9 +325,9 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
       }
     }
 
-    for (unsigned int i = 0; i < cloud_valid_indices.size(); i++) {
-      *map_features_corners += *_cloud_corners.at(cloud_valid_indices.at(i));
-      *map_features_surfs += *_cloud_surfs.at(cloud_valid_indices.at(i));
+    for (const auto i : cloud_valid_indices) {
+      *map_features_corners += *_cloud_corners.at(i);
+      *map_features_surfs += *_cloud_surfs.at(i);
     }
   }
   /*//}*/
@@ -368,7 +368,6 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
       ceres::Problem problem(problem_options);
       problem.AddParameterBlock(_parameters, 4, q_parameterization);
       problem.AddParameterBlock(_parameters + 4, 3);
-
 
       /* mrs_lib::ScopeTimer timer("finding factors", nullptr, true); */
       auto factors =

@@ -77,7 +77,6 @@ private:
   // member methods
   void timerOdometry(const ros::TimerEvent &event);
 
-  void TransformToStart(pt_I_t const *const pi, pt_I_t *const po);
-  void TransformToEnd(pt_I_t const *const pi, pt_I_t *const po);
+  pt_I_t TransformToStart(const pt_I_t &pi);
 };
 }  // namespace aloam_slam

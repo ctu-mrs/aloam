@@ -22,11 +22,9 @@
   <depend>nav_msgs</depend>
   <depend>roscpp</depend>
   <depend>rospy</depend>
-  <depend>std_msgs</depend>
   <depend>rosbag</depend>
   <depend>sensor_msgs</depend>
   <depend>tf</depend>
-  <depend>image_transport</depend>
   <depend>mrs_lib</depend>
   <depend>mrs_msgs</depend>
   <depend>eigen_conversions</depend>

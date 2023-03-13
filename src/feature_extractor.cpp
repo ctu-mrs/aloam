@@ -122,7 +122,6 @@ bool FeatureExtractor::extractFeatures(const sensor_msgs::PointCloud2::ConstPtr 
   publishCloud(_pub_features_edges_salient_, odometry_data->manager_corners_salient);
   publishCloud(_pub_features_planes_salient_, odometry_data->manager_surfs_salient);
 
-
   _aloam_odometry->setData(odometry_data);
 
   return true;
@@ -174,6 +173,5 @@ bool FeatureExtractor::hasField(const std::string field, const sensor_msgs::Poin
   return false;
 }
 /*//}*/
-
 
 }  // namespace aloam_slam
