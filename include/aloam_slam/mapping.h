@@ -31,7 +31,7 @@ private:
   bool _enabled = true;
   bool _empty   = false;
 
-  bool _return_centroid = false;
+  bool _return_centroid = true;
 
   PC_ptr                            _cloud   = nullptr;
   feature_extraction::indices_ptr_t _indices = nullptr;
