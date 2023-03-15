@@ -34,12 +34,13 @@
     <node pkg="nodelet" type="nodelet" name="aloam" args="$(arg nodelet) aloam_slam/AloamSlam $(arg nodelet_manager)" output="screen" launch-prefix="bash -c 'sleep $(arg launch_delay); $0 $@'; $(arg launch_prefix)">
 
       <rosparam file="$(find feature_extraction)/config/default.yaml" command="load" />
+      <rosparam file="$(find feature_selection)/config/default.yaml" command="load" />
       <rosparam file="$(find aloam_slam)/config/aloam.yaml" command="load" />
       <rosparam file="$(find aloam_slam)/config/sensor.yaml" command="load" />
       <rosparam if="$(eval not arg('custom_config') == '')" file="$(arg custom_config)" command="load" />
 
       <param name="enable_profiler" type="bool" value="$(arg ENABLE_PROFILER)" />
-
+      
       <param name="uav_name" type="string" value="$(arg UAV_NAME)" />
       <param name="fcu_frame" type="string" value="$(arg fcu_frame)" />
       <param name="odom_frame" type="string" value="$(arg odom_frame)" />

@@ -4,6 +4,7 @@
 namespace aloam_slam
 {
 
+template <typename T_pt>
 struct OdometryData
 {
   feature_extraction::FEDiagnostics diagnostics_fe;
@@ -13,22 +14,23 @@ struct OdometryData
 
   std::size_t finite_points_count;
 
-  feature_selection::FSCloudManagerPtr manager_corners_salient;
-  feature_selection::FSCloudManagerPtr manager_corners_extracted;
-  feature_selection::FSCloudManagerPtr manager_surfs_salient;
-  feature_selection::FSCloudManagerPtr manager_surfs_extracted;
+  feature_selection::FSCloudManagerPtr<T_pt> manager_corners_salient;
+  feature_selection::FSCloudManagerPtr<T_pt> manager_corners_extracted;
+  feature_selection::FSCloudManagerPtr<T_pt> manager_surfs_salient;
+  feature_selection::FSCloudManagerPtr<T_pt> manager_surfs_extracted;
 };
 
+template <class T_pt>
 class AloamOdometry {
 
 public:
-  AloamOdometry(const std::shared_ptr<CommonHandlers_t> handlers, const std::shared_ptr<AloamMapping> aloam_mapping);
+  AloamOdometry(const std::shared_ptr<CommonHandlers_t> handlers, const std::shared_ptr<AloamMapping<T_pt>> aloam_mapping);
 
   std::atomic<bool> is_initialized = false;
 
   bool computeOdometry(geometry_msgs::TransformStamped &tf_msg_out);
 
-  void setData(const std::shared_ptr<OdometryData> odometry_data);
+  void setData(const std::shared_ptr<OdometryData<T_pt>> odometry_data);
   void setTransform(const Eigen::Vector3d &t, const Eigen::Quaterniond &q, const ros::Time &stamp);
   void setFrequency(const float frequency);
 
@@ -37,7 +39,7 @@ private:
   std::shared_ptr<feature_selection::FeatureSelection> _feature_selection;
 
   // member objects
-  std::shared_ptr<AloamMapping>                  _aloam_mapping;
+  std::shared_ptr<AloamMapping<T_pt>>            _aloam_mapping;
   std::shared_ptr<tf2_ros::TransformBroadcaster> _tf_broadcaster;
   ros::Timer                                     _timer_odometry_loop;
 
@@ -51,10 +53,10 @@ private:
   Eigen::Vector3d    _t_w_curr;
 
   // Feature extractor newest data
-  std::condition_variable       _cv_odometry_data;
-  std::mutex                    _mutex_odometry_data;
-  bool                          _has_new_data = false;
-  std::shared_ptr<OdometryData> _odometry_data;
+  std::condition_variable             _cv_odometry_data;
+  std::mutex                          _mutex_odometry_data;
+  bool                                _has_new_data = false;
+  std::shared_ptr<OdometryData<T_pt>> _odometry_data;
 
   // publishers and subscribers
   ros::Publisher _pub_odometry_local;

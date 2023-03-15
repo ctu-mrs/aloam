@@ -4,7 +4,8 @@ namespace aloam_slam
 {
 
 /* //{ AloamOdometry() */
-AloamOdometry::AloamOdometry(const std::shared_ptr<CommonHandlers_t> handlers, const std::shared_ptr<AloamMapping> aloam_mapping)
+template <class T_pt>
+AloamOdometry<T_pt>::AloamOdometry(const std::shared_ptr<CommonHandlers_t> handlers, const std::shared_ptr<AloamMapping<T_pt>> aloam_mapping)
     : _q_last_curr(_para_q), _t_last_curr(_para_t) {
 
   _handlers        = handlers;
@@ -41,7 +42,8 @@ AloamOdometry::AloamOdometry(const std::shared_ptr<CommonHandlers_t> handlers, c
 //}
 
 /*//{ computeOdometry() */
-bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out) {
+template <class T_pt>
+bool AloamOdometry<T_pt>::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out) {
 
   if (!is_initialized) {
     ROS_WARN_THROTTLE(1.0, "[AloamOdometry] Calling uninitialized object.");
@@ -52,10 +54,9 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
   pcl::PointCloud<pt_I_t>::Ptr         corner_points_sharp;
   pcl::PointCloud<pt_I_t>::Ptr         surf_points_flat;
   unsigned int                         proc_points_count;
-  size_t                               cloud_width;
 
-  feature_selection::FSCloudManagerPtr manager_corners_extracted;
-  feature_selection::FSCloudManagerPtr manager_surfs_extracted;
+  feature_selection::FSCloudManagerPtr<T_pt> manager_corners_extracted;
+  feature_selection::FSCloudManagerPtr<T_pt> manager_surfs_extracted;
 
   ros::Time                         stamp;
   std::uint64_t                     stamp_pcl;
@@ -85,7 +86,7 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
       return false;
     }
 
-    timer = std::make_unique<mrs_lib::ScopeTimer>("ALOAM::FeatureExtraction::timerOdometry", _handlers->scope_timer_logger, _handlers->enable_scope_timer);
+    timer = std::make_unique<mrs_lib::ScopeTimer>("ALOAM::AloamOdometry::timerOdometry", _handlers->scope_timer_logger, _handlers->enable_scope_timer);
 
     proc_points_count = _odometry_data->finite_points_count;
     stamp             = _odometry_data->stamp_ros;
@@ -94,13 +95,11 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
     manager_corners_extracted = _odometry_data->manager_corners_extracted;
     manager_surfs_extracted   = _odometry_data->manager_surfs_extracted;
 
-    cloud_width = manager_corners_extracted->getCloudPtr()->width;
-
     // We have to convert because we use the intensity field in searching for associations
-    corner_points_sharp = cloudPointOStoCloudPoint(_odometry_data->manager_corners_salient->getUnorderedCloudPtr(),
-                                                   _odometry_data->manager_corners_salient->getIndicesPtr(), cloud_width, _scan_period_sec);
-    surf_points_flat    = cloudPointOStoCloudPoint(_odometry_data->manager_surfs_salient->getUnorderedCloudPtr(),
-                                                   _odometry_data->manager_surfs_salient->getIndicesPtr(), cloud_width, _scan_period_sec);
+    corner_points_sharp = cloudPointTtoCloudIPoint(_odometry_data->manager_corners_salient->getCloudPtr(),
+                                                   _odometry_data->manager_corners_salient->getIndicesPtr(), _scan_period_sec);
+    surf_points_flat    = cloudPointTtoCloudIPoint(_odometry_data->manager_surfs_salient->getCloudPtr(), _odometry_data->manager_surfs_salient->getIndicesPtr(),
+                                                   _scan_period_sec);
 
     diagnostics_fe = _odometry_data->diagnostics_fe;
 
@@ -114,7 +113,7 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
     return false;
   }
 
-  const std::shared_ptr<MappingData> mapping_data = std::make_shared<MappingData>();
+  const std::shared_ptr<MappingData<T_pt>> mapping_data = std::make_shared<MappingData<T_pt>>();
 
   timer->checkpoint("loading data");
   mapping_data->diagnostics_odometry.ms_loading_data = timer->getLifetime();
@@ -346,10 +345,8 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
   /*//{ Save odometry data to AloamMapping */
   {
     std::scoped_lock lock(_mutex_odometry_process);
-    _features_corners_last =
-        cloudPointOStoCloudPoint(manager_corners_extracted->getUnorderedCloudPtr(), manager_corners_extracted->getIndicesPtr(), cloud_width, _scan_period_sec);
-    _features_surfs_last =
-        cloudPointOStoCloudPoint(manager_surfs_extracted->getUnorderedCloudPtr(), manager_surfs_extracted->getIndicesPtr(), cloud_width, _scan_period_sec);
+    _features_corners_last = cloudPointTtoCloudIPoint(manager_corners_extracted->getCloudPtr(), manager_corners_extracted->getIndicesPtr(), _scan_period_sec);
+    _features_surfs_last   = cloudPointTtoCloudIPoint(manager_surfs_extracted->getCloudPtr(), manager_surfs_extracted->getIndicesPtr(), _scan_period_sec);
 
     _features_corners_last->header.stamp = stamp_pcl;
     _features_surfs_last->header.stamp   = stamp_pcl;
@@ -423,14 +420,16 @@ bool AloamOdometry::computeOdometry(geometry_msgs::TransformStamped &tf_msg_out)
 /*//}*/
 
 /*//{ timerOdometry() */
-void AloamOdometry::timerOdometry([[maybe_unused]] const ros::TimerEvent &event) {
+template <class T_pt>
+void AloamOdometry<T_pt>::timerOdometry([[maybe_unused]] const ros::TimerEvent &event) {
   geometry_msgs::TransformStamped tf_msg;
   computeOdometry(tf_msg);
 }
 /*//}*/
 
 /*//{ setData() */
-void AloamOdometry::setData(const std::shared_ptr<OdometryData> data) {
+template <class T_pt>
+void AloamOdometry<T_pt>::setData(const std::shared_ptr<OdometryData<T_pt>> data) {
 
   mrs_lib::Routine profiler_routine = _handlers->profiler->createRoutine("aloamOdometrySetData");
 
@@ -446,7 +445,8 @@ void AloamOdometry::setData(const std::shared_ptr<OdometryData> data) {
 
 /* setTransform() //{ */
 
-void AloamOdometry::setTransform(const Eigen::Vector3d &t, const Eigen::Quaterniond &q, const ros::Time &stamp) {
+template <class T_pt>
+void AloamOdometry<T_pt>::setTransform(const Eigen::Vector3d &t, const Eigen::Quaterniond &q, const ros::Time &stamp) {
   _q_w_curr = q;
   _t_w_curr = t;
 
@@ -501,7 +501,8 @@ void AloamOdometry::setTransform(const Eigen::Vector3d &t, const Eigen::Quaterni
 //}
 
 /*//{ TransformToStart() */
-pt_I_t AloamOdometry::TransformToStart(const pt_I_t &pi) {
+template <class T_pt>
+pt_I_t AloamOdometry<T_pt>::TransformToStart(const pt_I_t &pi) {
   // interpolation ratio
   double s = 1.0;
   if (DISTORTION) {
@@ -523,10 +524,18 @@ pt_I_t AloamOdometry::TransformToStart(const pt_I_t &pi) {
 /*//}*/
 
 /*//{ setFrequency() */
-void AloamOdometry::setFrequency(const float frequency) {
+template <class T_pt>
+void AloamOdometry<T_pt>::setFrequency(const float frequency) {
   _scan_period_sec = 1.0f / frequency;
 }
 /*//}*/
+
+// Explicit template instantiation
+template struct OdometryData<ouster_ros::Point>;
+template struct OdometryData<pandar_pointcloud::PointXYZIT>;
+
+template class AloamOdometry<ouster_ros::Point>;
+template class AloamOdometry<pandar_pointcloud::PointXYZIT>;
 
 }  // namespace aloam_slam
 

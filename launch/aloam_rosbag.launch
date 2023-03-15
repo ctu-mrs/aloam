@@ -20,7 +20,7 @@
 
   <!-- DEFAULT PARAMETERS AND FRAMES -->
   <arg name="fcu_frame" default="$(arg UAV_NAME)/fcu" />
-  <arg name="lidar_frame" default="$(arg UAV_NAME)/os_lidar" />
+  <arg name="lidar_frame" default="$(arg UAV_NAME)/os_sensor" />
   <arg name="odom_frame" default="$(arg UAV_NAME)/slam_odom_origin" />
   <arg name="map_frame" default="$(arg UAV_NAME)/slam_origin" />
 

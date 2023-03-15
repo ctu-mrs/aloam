@@ -22,12 +22,13 @@
 namespace aloam_slam
 {
 
+template <class T_pt>
 class VoxelFilter {
 
 public:
   VoxelFilter(){};
-  VoxelFilter(const PC_ptr cloud, const feature_extraction::indices_ptr_t indices, const float resolution);
-  PC_ptr filter() const;
+  VoxelFilter(const boost::shared_ptr<pcl::PointCloud<T_pt>> cloud, const feature_extraction::indices_ptr_t indices, const float resolution);
+  boost::shared_ptr<pcl::PointCloud<T_pt>> filter() const;
 
 private:
   bool _enabled = true;
@@ -35,46 +36,50 @@ private:
 
   bool _return_centroid = true;
 
-  PC_ptr                            _cloud   = nullptr;
-  feature_extraction::indices_ptr_t _indices = nullptr;
+  boost::shared_ptr<pcl::PointCloud<T_pt>> _cloud   = nullptr;
+  feature_extraction::indices_ptr_t        _indices = nullptr;
 
   Eigen::Array3f  _inverse_leaf_size;
   Eigen::Vector3i _div_b_mul;
   Eigen::Vector3f _min_b_flt;
 };
 
+template <typename T_pt>
 struct MappingCloudManagersOut_t
 {
-  feature_selection::FSCloudManagerPtr man_edges_selected  = nullptr;
-  feature_selection::FSCloudManagerPtr man_planes_selected = nullptr;
+  feature_selection::FSCloudManagerPtr<T_pt> man_edges_selected  = nullptr;
+  feature_selection::FSCloudManagerPtr<T_pt> man_planes_selected = nullptr;
 };
 
+template <typename T_pt>
 struct MappingData
 {
   feature_extraction::FEDiagnostics diagnostics_fe;
   aloam_slam::OdometryDiagnostics   diagnostics_odometry;
 
-  ros::Time                            stamp_ros;
-  tf::Transform                        odometry;
-  feature_selection::FSCloudManagerPtr manager_corners;
-  feature_selection::FSCloudManagerPtr manager_surfs;
+  ros::Time                                  stamp_ros;
+  tf::Transform                              odometry;
+  feature_selection::FSCloudManagerPtr<T_pt> manager_corners;
+  feature_selection::FSCloudManagerPtr<T_pt> manager_surfs;
 };
 
+template <class T_pt>
 class AloamMapping {
 
 public:
-  AloamMapping(const std::shared_ptr<CommonHandlers_t> handlers);
+  AloamMapping(const std::shared_ptr<CommonHandlers_t> handlers, const std::shared_ptr<feature_selection::FeatureSelection> feature_selection);
 
   bool computeMapping(geometry_msgs::TransformStamped &tf_msg_out, aloam_slam::AloamDiagnostics &diag_msg_out,
-                      const std::shared_ptr<MappingCloudManagersOut_t> managers_out = nullptr);
+                      const std::shared_ptr<MappingCloudManagersOut_t<T_pt>> managers_out = nullptr);
 
   std::atomic<bool> is_initialized = false;
 
-  void setData(const std::shared_ptr<MappingData> data);
+  void setData(const std::shared_ptr<MappingData<T_pt>> data);
   void setTransform(const Eigen::Vector3d &t, const Eigen::Quaterniond &q, const ros::Time &stamp);
 
 private:
-  std::shared_ptr<CommonHandlers_t> _handlers;
+  std::shared_ptr<CommonHandlers_t>                    _handlers;
+  std::shared_ptr<feature_selection::FeatureSelection> _feature_selection;
 
   // member objects
   std::shared_ptr<tf2_ros::TransformBroadcaster> _tf_broadcaster;
@@ -82,15 +87,15 @@ private:
   ros::Timer _timer_mapping_loop;
   ros::Time  _time_last_map_publish;
 
-  std::mutex          _mutex_cloud_features;
-  std::vector<PC_ptr> _cloud_corners;
-  std::vector<PC_ptr> _cloud_surfs;
+  std::mutex                                            _mutex_cloud_features;
+  std::vector<boost::shared_ptr<pcl::PointCloud<T_pt>>> _cloud_corners;
+  std::vector<boost::shared_ptr<pcl::PointCloud<T_pt>>> _cloud_surfs;
 
   // Feature extractor newest data
-  std::condition_variable      _cv_mapping_data;
-  std::mutex                   _mutex_mapping_data;
-  bool                         _has_new_data = false;
-  std::shared_ptr<MappingData> _mapping_data = nullptr;
+  std::condition_variable            _cv_mapping_data;
+  std::mutex                         _mutex_mapping_data;
+  bool                               _has_new_data = false;
+  std::shared_ptr<MappingData<T_pt>> _mapping_data = nullptr;
 
   // publishers and subscribers
   ros::Publisher _pub_laser_cloud_map;
@@ -145,15 +150,17 @@ private:
 
   void transformAssociateToMap();
   void transformUpdate();
-  pt_t pointAssociateToMap(const pt_t &pi) const;
+  T_pt pointAssociateToMap(const T_pt &pi) const;
 
-  pcl::VoxelGrid<pt_t> _filter_downsize_corners;
-  pcl::VoxelGrid<pt_t> _filter_downsize_surfs;
+  pcl::VoxelGrid<T_pt> _filter_downsize_corners;
+  pcl::VoxelGrid<T_pt> _filter_downsize_surfs;
 
-  std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> findFactors(const std::shared_ptr<pcl::KdTreeFLANN<pt_t>> kdtree_map_corners,
-                                                                                         const std::shared_ptr<pcl::KdTreeFLANN<pt_t>> kdtree_map_surfs,
-                                                                                         const PC_ptr features_corners_stack, const PC_ptr features_surfs_stack,
-                                                                                         const PC_ptr map_features_corners, const PC_ptr map_features_surfs);
+  std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> findFactors(const std::shared_ptr<pcl::KdTreeFLANN<T_pt>>  kdtree_map_corners,
+                                                                                         const std::shared_ptr<pcl::KdTreeFLANN<T_pt>>  kdtree_map_surfs,
+                                                                                         const boost::shared_ptr<pcl::PointCloud<T_pt>> features_corners_stack,
+                                                                                         const boost::shared_ptr<pcl::PointCloud<T_pt>> features_surfs_stack,
+                                                                                         const boost::shared_ptr<pcl::PointCloud<T_pt>> map_features_corners,
+                                                                                         const boost::shared_ptr<pcl::PointCloud<T_pt>> map_features_surfs);
 
   std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> selectFactorsGreedy(
       const std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> &factors);
@@ -162,9 +169,9 @@ private:
   // | -------------------- Feature selection ------------------- |
   struct LidarFeatureSelectionEdgePlaneIO_t
   {
-    PC_ptr                            cloud;
-    feature_extraction::indices_ptr_t indices_edges_extracted;   // All edge features
-    feature_extraction::indices_ptr_t indices_planes_extracted;  // All plane features
+    boost::shared_ptr<pcl::PointCloud<T_pt>> cloud;
+    feature_extraction::indices_ptr_t        indices_edges_extracted;   // All edge features
+    feature_extraction::indices_ptr_t        indices_planes_extracted;  // All plane features
 
     bool                              selection_enabled;
     bool                              selection_success = false;

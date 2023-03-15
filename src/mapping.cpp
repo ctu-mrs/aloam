@@ -4,10 +4,13 @@ namespace aloam_slam
 {
 
 /*//{ AloamMapping() */
-AloamMapping::AloamMapping(const std::shared_ptr<CommonHandlers_t> handlers) : _q_w_curr(_parameters), _t_w_curr(_parameters + 4) {
+template <class T_pt>
+AloamMapping<T_pt>::AloamMapping(const std::shared_ptr<CommonHandlers_t> handlers, const std::shared_ptr<feature_selection::FeatureSelection> feature_selection)
+    : _q_w_curr(_parameters), _t_w_curr(_parameters + 4) {
 
-  _handlers        = handlers;
-  _scan_period_sec = 1.0f / handlers->frequency;
+  _handlers          = handlers;
+  _scan_period_sec   = 1.0f / handlers->frequency;
+  _feature_selection = feature_selection;
 
   ros::Time::waitForValid();
 
@@ -30,8 +33,8 @@ AloamMapping::AloamMapping(const std::shared_ptr<CommonHandlers_t> handlers) : _
     _cloud_corners.resize(_cloud_volume);
     _cloud_surfs.resize(_cloud_volume);
     for (int i = 0; i < _cloud_volume; i++) {
-      _cloud_corners.at(i) = boost::make_shared<PC>();
-      _cloud_surfs.at(i)   = boost::make_shared<PC>();
+      _cloud_corners.at(i) = boost::make_shared<pcl::PointCloud<T_pt>>();
+      _cloud_surfs.at(i)   = boost::make_shared<pcl::PointCloud<T_pt>>();
     }
   }
 
@@ -60,7 +63,8 @@ AloamMapping::AloamMapping(const std::shared_ptr<CommonHandlers_t> handlers) : _
 /*//}*/
 
 /*//{ setData() */
-void AloamMapping::setData(const std::shared_ptr<MappingData> data) {
+template <class T_pt>
+void AloamMapping<T_pt>::setData(const std::shared_ptr<MappingData<T_pt>> data) {
 
   const mrs_lib::Routine profiler_routine = _handlers->profiler->createRoutine("aloamMappingSetData");
 
@@ -75,8 +79,9 @@ void AloamMapping::setData(const std::shared_ptr<MappingData> data) {
 /*//}*/
 
 /*//{ computeMapping() */
-bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, aloam_slam::AloamDiagnostics &diag_msg_out,
-                                  const std::shared_ptr<MappingCloudManagersOut_t> managers_out) {
+template <class T_pt>
+bool AloamMapping<T_pt>::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, aloam_slam::AloamDiagnostics &diag_msg_out,
+                                        const std::shared_ptr<MappingCloudManagersOut_t<T_pt>> managers_out) {
 
   if (!is_initialized) {
     return false;
@@ -88,8 +93,8 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
   ros::Time     time_aloam_odometry;
   tf::Transform aloam_odometry;
 
-  feature_selection::FSCloudManagerPtr manager_corners_extracted;
-  feature_selection::FSCloudManagerPtr manager_surfs_extracted;
+  feature_selection::FSCloudManagerPtr<T_pt> manager_corners_extracted;
+  feature_selection::FSCloudManagerPtr<T_pt> manager_surfs_extracted;
 
   {
     std::unique_lock lock(_mutex_mapping_data);
@@ -130,9 +135,9 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
   diag_msg_out.mapping.ms_loading_data = timer->getLifetime();
 
   /*//{ Select features from the extracted features */
-  feature_selection::FSCloudManagerPtr manager_corners_selected = nullptr;
-  feature_selection::FSCloudManagerPtr manager_surfs_selected   = nullptr;
-  if (_handlers->feature_selection->enabled()) {
+  feature_selection::FSCloudManagerPtr<T_pt> manager_corners_selected = nullptr;
+  feature_selection::FSCloudManagerPtr<T_pt> manager_surfs_selected   = nullptr;
+  if (_feature_selection->enabled()) {
 
     LidarFeatureSelectionEdgePlaneIO_t selection_io;
 
@@ -146,8 +151,8 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
 
     if (selection_io.selection_success) {
 
-      manager_corners_selected = std::make_shared<feature_selection::FSCloudManager>(selection_io.cloud, selection_io.indices_edges_selected);
-      manager_surfs_selected   = std::make_shared<feature_selection::FSCloudManager>(selection_io.cloud, selection_io.indices_planes_selected);
+      manager_corners_selected = std::make_shared<feature_selection::FSCloudManager<T_pt>>(selection_io.cloud, selection_io.indices_edges_selected);
+      manager_surfs_selected   = std::make_shared<feature_selection::FSCloudManager<T_pt>>(selection_io.cloud, selection_io.indices_planes_selected);
 
       if (managers_out) {
         managers_out->man_edges_selected  = manager_corners_selected;
@@ -172,8 +177,8 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
   tf::vectorTFToEigen(aloam_odometry.getOrigin(), _t_wodom_curr);
   tf::quaternionTFToEigen(aloam_odometry.getRotation(), _q_wodom_curr);
 
-  const PC_ptr map_features_corners = boost::make_shared<PC>();
-  const PC_ptr map_features_surfs   = boost::make_shared<PC>();
+  const boost::shared_ptr<pcl::PointCloud<T_pt>> map_features_corners = boost::make_shared<pcl::PointCloud<T_pt>>();
+  const boost::shared_ptr<pcl::PointCloud<T_pt>> map_features_surfs   = boost::make_shared<pcl::PointCloud<T_pt>>();
 
   std::vector<int> cloud_valid_indices;
 
@@ -201,9 +206,9 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
     while (center_cube_I < 3) {
       for (int j = 0; j < _cloud_height; j++) {
         for (int k = 0; k < _cloud_depth; k++) {
-          int          i             = _cloud_width - 1;
-          const PC_ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-          const PC_ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          int                                            i             = _cloud_width - 1;
+          const boost::shared_ptr<pcl::PointCloud<T_pt>> local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          const boost::shared_ptr<pcl::PointCloud<T_pt>> local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
           for (; i >= 1; i--) {
             _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
                 _cloud_corners.at(i - 1 + _cloud_width * j + _cloud_width * _cloud_height * k);
@@ -222,9 +227,9 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
     while (center_cube_I >= _cloud_width - 3) {
       for (int j = 0; j < _cloud_height; j++) {
         for (int k = 0; k < _cloud_depth; k++) {
-          int          i             = 0;
-          const PC_ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-          const PC_ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          int                                            i             = 0;
+          const boost::shared_ptr<pcl::PointCloud<T_pt>> local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          const boost::shared_ptr<pcl::PointCloud<T_pt>> local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
           for (; i < _cloud_width - 1; i++) {
             _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
                 _cloud_corners.at(i + 1 + _cloud_width * j + _cloud_width * _cloud_height * k);
@@ -243,9 +248,9 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
     while (center_cube_J < 3) {
       for (int i = 0; i < _cloud_width; i++) {
         for (int k = 0; k < _cloud_depth; k++) {
-          int          j             = _cloud_height - 1;
-          const PC_ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-          const PC_ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          int                                            j             = _cloud_height - 1;
+          const boost::shared_ptr<pcl::PointCloud<T_pt>> local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          const boost::shared_ptr<pcl::PointCloud<T_pt>> local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
           for (; j >= 1; j--) {
             _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
                 _cloud_corners.at(i + _cloud_width * (j - 1) + _cloud_width * _cloud_height * k);
@@ -264,9 +269,9 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
     while (center_cube_J >= _cloud_height - 3) {
       for (int i = 0; i < _cloud_width; i++) {
         for (int k = 0; k < _cloud_depth; k++) {
-          int          j             = 0;
-          const PC_ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-          const PC_ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          int                                            j             = 0;
+          const boost::shared_ptr<pcl::PointCloud<T_pt>> local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          const boost::shared_ptr<pcl::PointCloud<T_pt>> local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
           for (; j < _cloud_height - 1; j++) {
             _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
                 _cloud_corners.at(i + _cloud_width * (j + 1) + _cloud_width * _cloud_height * k);
@@ -285,9 +290,9 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
     while (center_cube_K < 3) {
       for (int i = 0; i < _cloud_width; i++) {
         for (int j = 0; j < _cloud_height; j++) {
-          int          k             = _cloud_depth - 1;
-          const PC_ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-          const PC_ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          int                                            k             = _cloud_depth - 1;
+          const boost::shared_ptr<pcl::PointCloud<T_pt>> local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          const boost::shared_ptr<pcl::PointCloud<T_pt>> local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
           for (; k >= 1; k--) {
             _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
                 _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * (k - 1));
@@ -306,9 +311,9 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
     while (center_cube_K >= _cloud_depth - 3) {
       for (int i = 0; i < _cloud_width; i++) {
         for (int j = 0; j < _cloud_height; j++) {
-          int          k             = 0;
-          const PC_ptr local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-          const PC_ptr local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          int                                            k             = 0;
+          const boost::shared_ptr<pcl::PointCloud<T_pt>> local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          const boost::shared_ptr<pcl::PointCloud<T_pt>> local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
           for (; k < _cloud_depth - 1; k++) {
             _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
                 _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * (k + 1));
@@ -348,8 +353,8 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
   // Voxelizes features for optimization
 
   // Custom VoxelGrid is slower, using the PCL implementation
-  /* PC_ptr features_corners_opt_stack; */
-  /* PC_ptr features_surfs_opt_stack; */
+  /* boost::shared_ptr<pcl::PointCloud<T_pt>> features_corners_opt_stack; */
+  /* boost::shared_ptr<pcl::PointCloud<T_pt>> features_surfs_opt_stack; */
 
   /* if (manager_corners_selected && manager_surfs_selected) { */
 
@@ -367,28 +372,28 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
 
   if (manager_corners_selected && manager_surfs_selected) {
 
-    _filter_downsize_corners.setInputCloud(manager_corners_selected->getUnorderedCloudPtr());
-    _filter_downsize_surfs.setInputCloud(manager_surfs_selected->getUnorderedCloudPtr());
+    _filter_downsize_corners.setInputCloud(manager_corners_selected->extractCloudByIndices());
+    _filter_downsize_surfs.setInputCloud(manager_surfs_selected->extractCloudByIndices());
 
   } else {
 
-    _filter_downsize_corners.setInputCloud(manager_corners_extracted->getUnorderedCloudPtr());
-    _filter_downsize_surfs.setInputCloud(manager_surfs_extracted->getUnorderedCloudPtr());
+    _filter_downsize_corners.setInputCloud(manager_corners_extracted->extractCloudByIndices());
+    _filter_downsize_surfs.setInputCloud(manager_surfs_extracted->extractCloudByIndices());
   }
 
-  const PC_ptr features_corners_opt_stack = boost::make_shared<PC>();
-  const PC_ptr features_surfs_opt_stack   = boost::make_shared<PC>();
+  const boost::shared_ptr<pcl::PointCloud<T_pt>> features_corners_opt_stack = boost::make_shared<pcl::PointCloud<T_pt>>();
+  const boost::shared_ptr<pcl::PointCloud<T_pt>> features_surfs_opt_stack   = boost::make_shared<pcl::PointCloud<T_pt>>();
   _filter_downsize_corners.filter(*features_corners_opt_stack);
   _filter_downsize_surfs.filter(*features_surfs_opt_stack);
-  
+
   /* timer->checkpoint("voxelizing input features"); */
 
   /* printf("map prepare time %f ms\n", t_shift.toc()); */
   /* printf("map corner num %d  surf num %d \n", laserCloudCornerFromMapNum, laserCloudSurfFromMapNum); */
   if (map_features_corners->points.size() > 10 && map_features_surfs->points.size() > 50) {
 
-    const std::shared_ptr<pcl::KdTreeFLANN<pt_t>> kdtree_map_corners = std::make_shared<pcl::KdTreeFLANN<pt_t>>(true);
-    const std::shared_ptr<pcl::KdTreeFLANN<pt_t>> kdtree_map_surfs   = std::make_shared<pcl::KdTreeFLANN<pt_t>>(true);
+    const std::shared_ptr<pcl::KdTreeFLANN<T_pt>> kdtree_map_corners = std::make_shared<pcl::KdTreeFLANN<T_pt>>(true);
+    const std::shared_ptr<pcl::KdTreeFLANN<T_pt>> kdtree_map_surfs   = std::make_shared<pcl::KdTreeFLANN<T_pt>>(true);
 
     kdtree_map_corners->setInputCloud(map_features_corners);
     kdtree_map_surfs->setInputCloud(map_features_surfs);
@@ -527,7 +532,7 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
     const auto &corners_extracted = manager_corners_extracted->getCloudPtr();
     for (const auto &idx : *manager_corners_extracted->getIndicesPtr()) {
 
-      const auto &point_ori = corners_extracted->at(idx.col, idx.row);
+      const auto &point_ori = corners_extracted->at(idx.val);
       const auto &point_sel = pointAssociateToMap(point_ori);
 
       int cubeI = int((point_sel.x + 25.0) / 50.0) + _cloud_center_width;
@@ -554,7 +559,7 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
     const auto &surfs_extracted = manager_surfs_extracted->getCloudPtr();
     for (const auto &idx : *manager_surfs_extracted->getIndicesPtr()) {
 
-      const auto &point_ori = surfs_extracted->at(idx.col, idx.row);
+      const auto &point_ori = surfs_extracted->at(idx.val);
       const auto &point_sel = pointAssociateToMap(point_ori);
 
       int cubeI = int((point_sel.x + 25.0) / 50.0) + _cloud_center_width;
@@ -672,7 +677,7 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
 
   // Publish entire map
   if (_pub_laser_cloud_map.getNumSubscribers() > 0 && (ros::Time::now() - _time_last_map_publish).toSec() > _map_publish_period) {
-    PC map_pcl;
+    pcl::PointCloud<T_pt> map_pcl;
     {
       std::scoped_lock lock(_mutex_cloud_features);
       for (int i = 0; i < _cloud_volume; i++) {
@@ -721,7 +726,8 @@ bool AloamMapping::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, a
 /*//}*/
 
 /*//{ timerMapping() */
-void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
+template <class T_pt>
+void AloamMapping<T_pt>::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
   geometry_msgs::TransformStamped tf_msg;
   aloam_slam::AloamDiagnostics    diag_msg;
 
@@ -730,26 +736,29 @@ void AloamMapping::timerMapping([[maybe_unused]] const ros::TimerEvent &event) {
 /*//}*/
 
 /*//{ transformAssociateToMap() */
-void AloamMapping::transformAssociateToMap() {
+template <class T_pt>
+void AloamMapping<T_pt>::transformAssociateToMap() {
   _q_w_curr = _q_wmap_wodom * _q_wodom_curr;
   _t_w_curr = _q_wmap_wodom * _t_wodom_curr + _t_wmap_wodom;
 }
 /*//}*/
 
 /*//{ transformUpdate() */
-void AloamMapping::transformUpdate() {
+template <class T_pt>
+void AloamMapping<T_pt>::transformUpdate() {
   _q_wmap_wodom = _q_w_curr * _q_wodom_curr.inverse();
   _t_wmap_wodom = _t_w_curr - _q_wmap_wodom * _t_wodom_curr;
 }
 /*//}*/
 
 /*//{ pointAssociateToMap() */
-pt_t AloamMapping::pointAssociateToMap(const pt_t &pi) const {
+template <class T_pt>
+T_pt AloamMapping<T_pt>::pointAssociateToMap(const T_pt &pi) const {
 
   const Eigen::Vector3d point_curr(pi.x, pi.y, pi.z);
   const Eigen::Vector3d point_w = _q_w_curr * point_curr + _t_w_curr;
 
-  pt_t po = pi;
+  T_pt po = pi;
   po.x    = float(point_w.x());
   po.y    = float(point_w.y());
   po.z    = float(point_w.z());
@@ -758,13 +767,14 @@ pt_t AloamMapping::pointAssociateToMap(const pt_t &pi) const {
 /*//}*/
 
 /*//{ callbackResetMapping() */
-bool AloamMapping::callbackResetMapping([[maybe_unused]] std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res) {
+template <class T_pt>
+bool AloamMapping<T_pt>::callbackResetMapping([[maybe_unused]] std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res) {
   std::scoped_lock lock(_mutex_cloud_features);
   _cloud_corners.resize(_cloud_volume);
   _cloud_surfs.resize(_cloud_volume);
   for (int i = 0; i < _cloud_volume; i++) {
-    _cloud_corners.at(i) = boost::make_shared<PC>();
-    _cloud_surfs.at(i)   = boost::make_shared<PC>();
+    _cloud_corners.at(i) = boost::make_shared<pcl::PointCloud<T_pt>>();
+    _cloud_surfs.at(i)   = boost::make_shared<pcl::PointCloud<T_pt>>();
   }
   ROS_INFO("[AloamMapping] Reset: map features were cleared.");
 
@@ -776,7 +786,8 @@ bool AloamMapping::callbackResetMapping([[maybe_unused]] std_srvs::Trigger::Requ
 
 /* setTransform() //{ */
 
-void AloamMapping::setTransform(const Eigen::Vector3d &t, const Eigen::Quaterniond &q, const ros::Time &stamp) {
+template <class T_pt>
+void AloamMapping<T_pt>::setTransform(const Eigen::Vector3d &t, const Eigen::Quaterniond &q, const ros::Time &stamp) {
   _q_wodom_curr = q;
   _t_wodom_curr = t;
 
@@ -854,9 +865,11 @@ void AloamMapping::setTransform(const Eigen::Vector3d &t, const Eigen::Quaternio
 //}
 
 /* findFactors() //{ */
-std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> AloamMapping::findFactors(
-    const std::shared_ptr<pcl::KdTreeFLANN<pt_t>> kdtree_map_corners, const std::shared_ptr<pcl::KdTreeFLANN<pt_t>> kdtree_map_surfs, const PC_ptr corners,
-    const PC_ptr surfs, const PC_ptr map_features_corners, const PC_ptr map_features_surfs) {
+template <class T_pt>
+std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> AloamMapping<T_pt>::findFactors(
+    const std::shared_ptr<pcl::KdTreeFLANN<T_pt>> kdtree_map_corners, const std::shared_ptr<pcl::KdTreeFLANN<T_pt>> kdtree_map_surfs,
+    const boost::shared_ptr<pcl::PointCloud<T_pt>> corners, const boost::shared_ptr<pcl::PointCloud<T_pt>> surfs,
+    const boost::shared_ptr<pcl::PointCloud<T_pt>> map_features_corners, const boost::shared_ptr<pcl::PointCloud<T_pt>> map_features_surfs) {
 
   std::vector<LidarEdgeFactor *>  factors_corners;
   std::vector<LidarPlaneFactor *> factors_surfs;
@@ -953,7 +966,8 @@ std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> Aloam
 //}
 
 /* selectFactorsGreedy() //{ */
-std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> AloamMapping::selectFactorsGreedy(
+template <class T_pt>
+std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> AloamMapping<T_pt>::selectFactorsGreedy(
     const std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> &factors) {
 
   // TODO: Integrate into findFactors() so not all feature correspondences have to be found. This is for debugging.
@@ -1124,9 +1138,10 @@ std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> Aloam
 //}
 
 /*//{ selectFeatures() */
-void AloamMapping::selectFeatures(LidarFeatureSelectionEdgePlaneIO_t &selection_io, feature_selection::FSDiagnostics &msg_diag) {
+template <class T_pt>
+void AloamMapping<T_pt>::selectFeatures(LidarFeatureSelectionEdgePlaneIO_t &selection_io, feature_selection::FSDiagnostics &msg_diag) {
 
-  if (!_handlers->feature_selection) {
+  if (!_feature_selection) {
     selection_io.selection_enabled = false;
     return;
   }
@@ -1135,15 +1150,17 @@ void AloamMapping::selectFeatures(LidarFeatureSelectionEdgePlaneIO_t &selection_
 
   if (selection_io.selection_enabled) {
 
-    std::vector<feature_selection::SelectionIO_t> selection_vec(2);
+    std::vector<feature_selection::SelectionIO_t<T_pt>> selection_vec(2);
 
-    selection_vec.at(0).feature_name_in      = "edges";
-    selection_vec.at(0).cloud_manager_ptr_in = std::make_shared<feature_selection::FSCloudManager>(selection_io.cloud, selection_io.indices_edges_extracted);
+    selection_vec.at(0).feature_name_in = "edges";
+    selection_vec.at(0).cloud_manager_ptr_in =
+        std::make_shared<feature_selection::FSCloudManager<T_pt>>(selection_io.cloud, selection_io.indices_edges_extracted);
 
-    selection_vec.at(1).feature_name_in      = "planes";
-    selection_vec.at(1).cloud_manager_ptr_in = std::make_shared<feature_selection::FSCloudManager>(selection_io.cloud, selection_io.indices_planes_extracted);
+    selection_vec.at(1).feature_name_in = "planes";
+    selection_vec.at(1).cloud_manager_ptr_in =
+        std::make_shared<feature_selection::FSCloudManager<T_pt>>(selection_io.cloud, selection_io.indices_planes_extracted);
 
-    selection_io.selection_success = _handlers->feature_selection->select(selection_vec, msg_diag);
+    selection_io.selection_success = _feature_selection->select(selection_vec, msg_diag);
 
     if (selection_io.selection_success) {
       selection_io.indices_edges_selected  = selection_vec.at(0).indices_out;
@@ -1158,7 +1175,8 @@ void AloamMapping::selectFeatures(LidarFeatureSelectionEdgePlaneIO_t &selection_
 /*//{ VoxelFilter() */
 
 // Method taken from: https://github.com/PointCloudLibrary/pcl/issues/2211
-VoxelFilter::VoxelFilter(const PC_ptr cloud, const feature_extraction::indices_ptr_t indices, const float resolution) {
+template <class T_pt>
+VoxelFilter<T_pt>::VoxelFilter(const boost::shared_ptr<pcl::PointCloud<T_pt>> cloud, const feature_extraction::indices_ptr_t indices, const float resolution) {
 
   if (cloud->empty()) {
     _empty = true;
@@ -1205,22 +1223,23 @@ VoxelFilter::VoxelFilter(const PC_ptr cloud, const feature_extraction::indices_p
 /*//}*/
 
 /*//{ filter() */
-PC_ptr VoxelFilter::filter() const {
+template <class T_pt>
+boost::shared_ptr<pcl::PointCloud<T_pt>> VoxelFilter<T_pt>::filter() const {
 
-  const PC_ptr cloud = boost::make_shared<PC>();
+  const boost::shared_ptr<pcl::PointCloud<T_pt>> cloud = boost::make_shared<pcl::PointCloud<T_pt>>();
 
   if (_empty || !_enabled) {
     return cloud;
   }
 
-  std::unordered_map<int, std::pair<size_t, pt_t>> voxel_map;
+  std::unordered_map<int, std::pair<size_t, T_pt>> voxel_map;
 
   // Ordered cloud: iterate over the given indices
   if (_indices) {
 
     for (const auto &idx : *_indices) {
 
-      const auto           &p = _cloud->at(idx.col, idx.row);
+      const auto           &p = _cloud->at(idx.val);
       const Eigen::Vector3i ijk =
           Eigen::Vector3i(std::floor(p.x * _inverse_leaf_size[0]) - _min_b_flt[0], std::floor(p.y * _inverse_leaf_size[1]) - _min_b_flt[1],
                           std::floor(p.z * _inverse_leaf_size[2]) - _min_b_flt[2]);
@@ -1281,11 +1300,23 @@ PC_ptr VoxelFilter::filter() const {
   cloud->width    = voxel_map.size();
   cloud->points.reserve(cloud->width);
 
-  std::transform(voxel_map.cbegin(), voxel_map.cend(), std::back_inserter(cloud->points), [this](const auto &it) { return it.second.second; });
+  std::transform(voxel_map.cbegin(), voxel_map.cend(), std::back_inserter(cloud->points), [](const auto &it) { return it.second.second; });
 
   return cloud;
 }
 /*//}*/
 
-}  // namespace aloam_slam
+// Explicit template instantiation
+template class VoxelFilter<ouster_ros::Point>;
+template class VoxelFilter<pandar_pointcloud::PointXYZIT>;
 
+template struct MappingCloudManagersOut_t<ouster_ros::Point>;
+template struct MappingCloudManagersOut_t<pandar_pointcloud::PointXYZIT>;
+
+template struct MappingData<ouster_ros::Point>;
+template struct MappingData<pandar_pointcloud::PointXYZIT>;
+
+template class AloamMapping<ouster_ros::Point>;
+template class AloamMapping<pandar_pointcloud::PointXYZIT>;
+
+}  // namespace aloam_slam

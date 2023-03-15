@@ -19,8 +19,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 # add_definitions(-Werror)
-add_definitions(-Wall)
-add_definitions(-Wextra)
+# add_definitions(-Wall)
+# add_definitions(-Wextra)
 
 find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
@@ -62,8 +62,7 @@ generate_messages(DEPENDENCIES
 )
 
 set(LIBRARIES
-  # AloamSlam AloamSlamRosbag
-  AloamSlamRosbag
+  AloamSlam AloamSlamRosbag
   )
 
 catkin_package(
@@ -87,24 +86,24 @@ add_definitions(
   ${PCL_DEFINITIONS}
   )
 
-# add_library(AloamSlam
-#   src/aloam.cpp
-#   src/odometry.cpp
-#   src/mapping.cpp
-#   src/feature_extractor.cpp
-#   )
+add_library(AloamSlam
+  src/aloam.cpp
+  src/odometry.cpp
+  src/mapping.cpp
+  src/feature_extractor.cpp
+  )
 
-# add_dependencies(AloamSlam
-#   ${${PROJECT_NAME}_EXPORTED_TARGETS}
-#   ${catkin_EXPORTED_TARGETS}
-#   )
+add_dependencies(AloamSlam
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+  )
 
-# target_link_libraries(AloamSlam
-#   ${catkin_LIBRARIES}
-#   ${PCL_LIBRARIES}
-#   ${Eigen_LIBRARIES}
-#   ${CERES_LIBRARIES}
-#   )
+target_link_libraries(AloamSlam
+  ${catkin_LIBRARIES}
+  ${PCL_LIBRARIES}
+  ${Eigen_LIBRARIES}
+  ${CERES_LIBRARIES}
+  )
 
 add_library(AloamSlamRosbag
   src/aloam_rosbag.cpp

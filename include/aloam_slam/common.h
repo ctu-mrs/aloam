@@ -40,9 +40,7 @@
 #include <ros/ros.h>
 #include <nodelet/nodelet.h>
 
-#include <feature_selection/data_structures.h>
 #include <feature_selection/feature_selection.h>
-
 #include <feature_extraction/lidar_extraction_edge_plane.h>
 
 #include <math.h>
@@ -79,7 +77,7 @@ struct CommonHandlers_t
   std::shared_ptr<mrs_lib::ParamLoader> param_loader;
   std::shared_ptr<mrs_lib::Profiler>    profiler;
 
-  std::shared_ptr<feature_selection::FeatureSelection> feature_selection;
+  /* std::shared_ptr<feature_selection::FeatureSelection> feature_selection; */
 
   bool offline_run = false;
 
@@ -92,9 +90,7 @@ struct CommonHandlers_t
   tf::Transform tf_lidar_in_fcu_frame;
 
   // Sensor parameters
-  int   scan_lines;
   int   samples_per_row;
-  float vfov;
   float frequency;
 
   // Scope timer
@@ -105,41 +101,33 @@ struct CommonHandlers_t
   bool overwrite_intensity_with_curvature = false;
 };
 
-/*//{ cloudPointOStoCloudPoint() */
-inline pcl::PointCloud<pt_I_t>::Ptr cloudPointOStoCloudPoint(const PC_ptr cloud_unordered_in, const feature_selection::IndicesPtr_t indices,
-                                                             const size_t cloud_width, const float scan_period_sec) {
+/*//{ cloudPointTtoCloudIPoint() */
+template <typename T_pt>
+inline pcl::PointCloud<pt_I_t>::Ptr cloudPointTtoCloudIPoint(const boost::shared_ptr<pcl::PointCloud<T_pt>> cloud_in,
+                                                             const feature_selection::IndicesPtr_t indices, const float scan_period_sec) {
 
-  if (!cloud_unordered_in || !indices) {
-    ROS_ERROR("[cloudPointOStoCloudPoint]: Null pointer to input cloud or input indices given, returning nullptr.");
-    return nullptr;
-  } else if (!cloud_unordered_in->is_dense) {
-    ROS_ERROR("[cloudPointOStoCloudPoint]: Input cloud is NOT dense (is organized), returning nullptr.");
-    return nullptr;
-  } else if (cloud_unordered_in->size() != indices->size()) {
-    ROS_ERROR("[cloudPointOStoCloudPoint]: Size of input dense cloud and respective point indices do not match, returning nullptr.");
+  if (!cloud_in || !indices) {
+    ROS_ERROR("[cloudPointTtoCloudIPoint]: Null pointer to input cloud or input indices given, returning nullptr.");
     return nullptr;
   }
 
-  const float cloud_width_flt = cloud_width;
-
   const pcl::PointCloud<pt_I_t>::Ptr cloud_out = boost::make_shared<pcl::PointCloud<pt_I_t>>();
-  cloud_out->header                            = cloud_unordered_in->header;
-  cloud_out->width                             = cloud_unordered_in->width;
+  cloud_out->header                            = cloud_in->header;
+  cloud_out->width                             = indices->size();
   cloud_out->height                            = 1;
   cloud_out->is_dense                          = true;
 
   cloud_out->reserve(cloud_out->width);
-  for (size_t i = 0; i < cloud_unordered_in->size(); i++) {
-    const auto &point_os = cloud_unordered_in->at(i);
-    const auto &idx      = indices->at(i);
+  for (const auto idx : *indices) {
+    const auto &point = cloud_in->at(idx.val);
 
-    pt_I_t point;
-    point.x         = point_os.x;
-    point.y         = point_os.y;
-    point.z         = point_os.z;
-    point.intensity = float(point_os.ring) + scan_period_sec * (float(idx.col) / cloud_width_flt);
+    pt_I_t point_I;
+    point_I.x         = point.x;
+    point_I.y         = point.y;
+    point_I.z         = point.z;
+    point_I.intensity = float(point.ring) + scan_period_sec * (idx.azimuth / (2.0 * M_PI));
 
-    cloud_out->push_back(point);
+    cloud_out->push_back(point_I);
   }
 
   return cloud_out;
@@ -148,10 +136,16 @@ inline pcl::PointCloud<pt_I_t>::Ptr cloudPointOStoCloudPoint(const PC_ptr cloud_
 
 /*//{ publishCloud() */
 
-inline void publishCloud(const ros::Publisher &pub, const feature_selection::FSCloudManagerPtr cloud_manager) {
+template <typename T_pt>
+inline void publishCloud(const ros::Publisher &pub, const feature_selection::FSCloudManagerPtr<T_pt> cloud_manager) {
   if (cloud_manager && pub.getNumSubscribers() > 0) {
 
-    const auto cloud = cloud_manager->getUnorderedCloudPtr();
+    boost::shared_ptr<pcl::PointCloud<T_pt>> cloud;
+    if (cloud_manager->getIndicesPtr()) {
+      cloud = cloud_manager->extractCloudByIndices();
+    } else {
+      cloud = cloud_manager->getCloudPtr();
+    }
 
     const sensor_msgs::PointCloud2::Ptr msg = boost::make_shared<sensor_msgs::PointCloud2>();
     pcl::toROSMsg(*cloud, *msg);
@@ -164,10 +158,12 @@ inline void publishCloud(const ros::Publisher &pub, const feature_selection::FSC
   }
 }
 
-inline void publishCloud(const ros::Publisher &pub, const PC_ptr cloud, const feature_extraction::indices_ptr_t indices) {
+template <typename T_pt>
+inline void publishCloud(const ros::Publisher &pub, const boost::shared_ptr<pcl::PointCloud<T_pt>> cloud,
+                         const feature_extraction::indices_ptr_t indices = nullptr) {
   if (cloud && pub.getNumSubscribers() > 0) {
 
-    const auto manager = std::make_shared<feature_selection::FSCloudManager>(cloud, indices);
+    const auto manager = std::make_shared<feature_selection::FSCloudManager<T_pt>>(cloud, indices);
     publishCloud(pub, manager);
   }
 }

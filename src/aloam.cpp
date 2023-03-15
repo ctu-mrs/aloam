@@ -1,8 +1,7 @@
 /* includes //{ */
 
-#include "aloam_slam/feature_extractor.h"
+#include <aloam_slam/feature_extractor.h>
 
-#include <tf2_eigen/tf2_eigen.h>
 #include <tf2_ros/static_transform_broadcaster.h>
 
 //}
@@ -17,19 +16,25 @@ class AloamSlam : public nodelet::Nodelet {
 public:
   virtual void onInit();
 
-  tf::Transform getStaticTf(const std::string &frame_from, const std::string &frame_to);
+  tf::Transform getStaticTf(const std::string& frame_from, const std::string& frame_to);
 
-  void initOdom();
+  template <typename T_pt>
+  void initOdom(const std::shared_ptr<FeatureExtractor<T_pt>> fe, const std::shared_ptr<AloamOdometry<T_pt>> odom,
+                const std::shared_ptr<AloamMapping<T_pt>> mapping);
 
 private:
-  std::shared_ptr<CommonHandlers_t> handlers;
+  template <typename T_pt>
+  void initialize(const std::shared_ptr<feature_selection::FeatureSelection> feature_selection, const bool from_odom);
 
-  std::shared_ptr<AloamMapping>     aloam_mapping;
-  std::shared_ptr<AloamOdometry>    aloam_odometry;
-  std::shared_ptr<FeatureExtractor> feature_extractor;
+  std::shared_ptr<CommonHandlers_t> handlers;
 
   std::string frame_init;
   std::thread t_odom_init;
+
+  // Reference the three ALOAM objects so they are not destructed (and thus remain running)
+  std::shared_ptr<void> aloam_mapping;
+  std::shared_ptr<void> aloam_odometry;
+  std::shared_ptr<void> feature_extractor;
 };
 
 //}
@@ -50,6 +55,8 @@ void AloamSlam::onInit() {
   handlers->nh           = nh_;
   handlers->param_loader = std::make_shared<mrs_lib::ParamLoader>(nh_, "Aloam");
 
+  const std::string point_type = handlers->param_loader->loadParamReusable<std::string>("sensor/point_type");
+
   std::string time_logger_filepath;
   bool        verbose;
   bool        enable_profiler;
@@ -61,10 +68,8 @@ void AloamSlam::onInit() {
   handlers->param_loader->loadParam("odom_frame", handlers->frame_odom);
   handlers->param_loader->loadParam("map_frame", handlers->frame_map);
   handlers->param_loader->loadParam("init_frame", frame_init, {});
-  handlers->param_loader->loadParam("sensor/lines", handlers->scan_lines);
   handlers->param_loader->loadParam("sensor/frequency", handlers->frequency, -1.0f);
   handlers->param_loader->loadParam("sensor/samples", handlers->samples_per_row);
-  handlers->param_loader->loadParam("sensor/vertical_fov", handlers->vfov);
   handlers->param_loader->loadParam("verbose", verbose, false);
   handlers->param_loader->loadParam("enable_profiler", enable_profiler, false);
   handlers->param_loader->loadParam("scope_timer/enable", handlers->enable_scope_timer, false);
@@ -86,34 +91,28 @@ void AloamSlam::onInit() {
   // | ------------------- scope timer logger ------------------- |
   handlers->scope_timer_logger = std::make_shared<mrs_lib::ScopeTimerLogger>(time_logger_filepath, enable_scope_timer);
 
-
-  // | ----------------------- SLAM handlers  ------------------- |
-
-  aloam_mapping     = std::make_shared<AloamMapping>(handlers);
-  aloam_odometry    = std::make_shared<AloamOdometry>(handlers, aloam_mapping);
-  feature_extractor = std::make_shared<FeatureExtractor>(handlers, aloam_odometry);
-
   if (!handlers->param_loader->loadedSuccessfully()) {
     ROS_ERROR("[Aloam]: Could not load all parameters!");
     ros::shutdown();
   }
 
-  if (initialize_from_odom) {
-    t_odom_init = std::thread(&AloamSlam::initOdom, this);
-    t_odom_init.detach();
-    ROS_WARN("[Aloam] Waiting for pose initialization.");
+  const std::shared_ptr<feature_selection::FeatureSelection> feature_selection = std::make_shared<feature_selection::FeatureSelection>();
+  feature_selection->initialize(*handlers->param_loader, handlers->samples_per_row);
+  handlers->overwrite_intensity_with_curvature = feature_selection->requiresCurvatureInIntensityField();
+
+  if (point_type == "ouster_ros::Point") {
+    initialize<ouster_ros::Point>(feature_selection, initialize_from_odom);
+  } else if (point_type == "pandar_pointcloud::PointXYZIT") {
+    initialize<pandar_pointcloud::PointXYZIT>(feature_selection, initialize_from_odom);
   } else {
-    feature_extractor->is_initialized = true;
-    aloam_odometry->is_initialized    = true;
-    aloam_mapping->is_initialized     = true;
-    ROS_INFO("[Aloam]: \033[1;32minitialized\033[0m");
+    ROS_ERROR("[Aloam] Invalid point type. The point type should be from: {ouster_ros::Point, pandar_pointcloud::PointXYZIT}.");
   }
 }
 
 //}
 
 /*//{ getStaticTf() */
-tf::Transform AloamSlam::getStaticTf(const std::string &frame_from, const std::string &frame_to) {
+tf::Transform AloamSlam::getStaticTf(const std::string& frame_from, const std::string& frame_to) {
 
   ROS_INFO_ONCE("[Aloam]: Looking for transform from %s to %s", frame_from.c_str(), frame_to.c_str());
   geometry_msgs::TransformStamped tf_lidar_fcu;
@@ -140,9 +139,43 @@ tf::Transform AloamSlam::getStaticTf(const std::string &frame_from, const std::s
 }
 /*//}*/
 
+/* initialize() //{ */
+
+template <typename T_pt>
+void AloamSlam::initialize(const std::shared_ptr<feature_selection::FeatureSelection> feature_selection, const bool from_odom) {
+
+  const auto ptr_mapp = std::make_shared<AloamMapping<T_pt>>(handlers, feature_selection);
+  const auto ptr_odom = std::make_shared<AloamOdometry<T_pt>>(handlers, ptr_mapp);
+  const auto ptr_fe   = std::make_shared<FeatureExtractor<T_pt>>(handlers, ptr_odom);
+
+  if (from_odom) {
+
+    t_odom_init = std::thread(&AloamSlam::initOdom<T_pt>, this, ptr_fe, ptr_odom, ptr_mapp);
+    t_odom_init.detach();
+    ROS_WARN("[Aloam] Waiting for pose initialization.");
+
+  } else {
+
+    ptr_fe->is_initialized   = true;
+    ptr_odom->is_initialized = true;
+    ptr_mapp->is_initialized = true;
+
+    ROS_INFO("[Aloam]: \033[1;32minitialized\033[0m");
+  }
+
+  // Store references
+  aloam_mapping     = ptr_mapp;
+  aloam_odometry    = ptr_odom;
+  feature_extractor = ptr_fe;
+}
+
+//}
+
 /* initOdom() //{ */
 
-void AloamSlam::initOdom() {
+template <typename T_pt>
+void AloamSlam::initOdom(const std::shared_ptr<FeatureExtractor<T_pt>> fe, const std::shared_ptr<AloamOdometry<T_pt>> odom,
+                         const std::shared_ptr<AloamMapping<T_pt>> mapping) {
   mrs_lib::Transformer transformer("Aloam");
 
   ROS_WARN_STREAM("[Aloam] Waiting for transformation between " << handlers->frame_lidar << " and " << frame_init << ".");
@@ -157,13 +190,13 @@ void AloamSlam::initOdom() {
       Eigen::Vector3d    t(tf.translation());
       Eigen::Quaterniond q(tf.rotation());
 
-      aloam_odometry->setTransform(t, q, tf_opt->header.stamp);
-      aloam_mapping->setTransform(t, q, tf_opt->header.stamp);
+      odom->setTransform(t, q, tf_opt->header.stamp);
+      mapping->setTransform(t, q, tf_opt->header.stamp);
 
-      feature_extractor->is_initialized = true;
-      aloam_odometry->is_initialized    = true;
-      aloam_mapping->is_initialized     = true;
-      got_tf                            = true;
+      fe->is_initialized      = true;
+      odom->is_initialized    = true;
+      mapping->is_initialized = true;
+      got_tf                  = true;
       ROS_INFO("[Aloam]: \033[1;32minitialized\033[0m");
     } else {
       ROS_WARN_STREAM_THROTTLE(1.0, "[Aloam]: Did not get odometry initialization transform between " << handlers->frame_lidar << " and " << frame_init << ".");
