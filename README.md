@@ -24,7 +24,7 @@ The MRS version of A-LOAM depends on these packages:
 
 * [mrs_lib](https://github.com/ctu-mrs/mrs_lib),
 * [ouster driver](https://github.com/ctu-mrs/ouster), and
-* [mrs_pcl_tools](https://mrs.felk.cvut.cz/gitlab/uav/perception/mrs_pcl_tools) (optional, but recommended).
+* [mrs_pcl_tools](https://github.com/ctu-mrs/mrs_pcl_tools) (optional, but recommended).
 
 Theese packages have to be available and built in your ROS workspace.
 
