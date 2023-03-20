@@ -97,7 +97,7 @@ void AloamSlam::onInit() {
   }
 
   const std::shared_ptr<feature_selection::FeatureSelection> feature_selection = std::make_shared<feature_selection::FeatureSelection>();
-  feature_selection->initialize(*handlers->param_loader, handlers->samples_per_row);
+  feature_selection->initialize(*handlers->param_loader);
   handlers->overwrite_intensity_with_curvature = feature_selection->requiresCurvatureInIntensityField();
 
   if (point_type == "ouster_ros::Point") {

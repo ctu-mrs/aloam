@@ -78,6 +78,7 @@
       <remap from="~planes_salient_out"  to="slam/features/planes/salient" />
       <remap from="~edges_selected_out"  to="slam/features/edges/selected" />
       <remap from="~planes_selected_out" to="slam/features/planes/selected" />
+      <remap from="~signatures_out"      to="slam/features/signatures" />
 
     </node>
 

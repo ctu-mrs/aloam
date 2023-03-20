@@ -33,8 +33,8 @@ AloamMapping<T_pt>::AloamMapping(const std::shared_ptr<CommonHandlers_t> handler
     _cloud_corners.resize(_cloud_volume);
     _cloud_surfs.resize(_cloud_volume);
     for (int i = 0; i < _cloud_volume; i++) {
-      _cloud_corners.at(i) = boost::make_shared<pcl::PointCloud<T_pt>>();
-      _cloud_surfs.at(i)   = boost::make_shared<pcl::PointCloud<T_pt>>();
+      _cloud_corners.at(i) = boost::make_shared<PC>();
+      _cloud_surfs.at(i)   = boost::make_shared<PC>();
     }
   }
 
@@ -45,7 +45,6 @@ AloamMapping<T_pt>::AloamMapping(const std::shared_ptr<CommonHandlers_t> handler
   _pub_laser_cloud_map = handlers->nh.advertise<sensor_msgs::PointCloud2>("map_out", 1);
   _pub_odom_global     = handlers->nh.advertise<nav_msgs::Odometry>("odom_global_out", 1);
   _pub_path            = handlers->nh.advertise<nav_msgs::Path>("path_out", 1);
-  _pub_eigenvalue      = handlers->nh.advertise<mrs_msgs::Float64ArrayStamped>("eigenvalues_out", 1);
 
   _pub_features_edges_selected_  = handlers->nh.advertise<sensor_msgs::PointCloud2>("edges_selected_out", 1);
   _pub_features_planes_selected_ = handlers->nh.advertise<sensor_msgs::PointCloud2>("planes_selected_out", 1);
@@ -81,7 +80,10 @@ void AloamMapping<T_pt>::setData(const std::shared_ptr<MappingData<T_pt>> data) 
 /*//{ computeMapping() */
 template <class T_pt>
 bool AloamMapping<T_pt>::computeMapping(geometry_msgs::TransformStamped &tf_msg_out, aloam_slam::AloamDiagnostics &diag_msg_out,
-                                        const std::shared_ptr<MappingCloudManagersOut_t<T_pt>> managers_out) {
+                                        const std::shared_ptr<MappingCloudManagersOut_t<T_pt>> managers_out,
+                                        const std::shared_ptr<aloam_slam::FeaturesSignature>   sign_msg_out) {
+
+  const bool dbg = sign_msg_out != nullptr;
 
   if (!is_initialized) {
     return false;
@@ -134,7 +136,19 @@ bool AloamMapping<T_pt>::computeMapping(geometry_msgs::TransformStamped &tf_msg_
   /* timer->checkpoint("loading data"); */
   diag_msg_out.mapping.ms_loading_data = timer->getLifetime();
 
+  // | -------------- Downsample extracted features ------------- |
+  manager_corners_extracted = VoxelFilter(manager_corners_extracted, _resolution_line).filter();
+  manager_surfs_extracted   = VoxelFilter(manager_surfs_extracted, _resolution_plane).filter();
+
   /*//{ Select features from the extracted features */
+
+  std::shared_ptr<feature_selection::DebugData_t> dbg_edges;
+  std::shared_ptr<feature_selection::DebugData_t> dbg_planes;
+  if (dbg) {
+    dbg_edges  = std::make_shared<feature_selection::DebugData_t>();
+    dbg_planes = std::make_shared<feature_selection::DebugData_t>();
+  }
+
   feature_selection::FSCloudManagerPtr<T_pt> manager_corners_selected = nullptr;
   feature_selection::FSCloudManagerPtr<T_pt> manager_surfs_selected   = nullptr;
   if (_feature_selection->enabled()) {
@@ -146,6 +160,11 @@ bool AloamMapping<T_pt>::computeMapping(geometry_msgs::TransformStamped &tf_msg_
     selection_io.indices_planes_extracted = manager_surfs_extracted->getIndicesPtr();
 
     diag_msg_out.feature_selection.stamp = time_aloam_odometry;
+
+    if (dbg) {
+      selection_io.dbg_edges  = dbg_edges;
+      selection_io.dbg_planes = dbg_planes;
+    }
 
     selectFeatures(selection_io, diag_msg_out.feature_selection);
 
@@ -177,8 +196,8 @@ bool AloamMapping<T_pt>::computeMapping(geometry_msgs::TransformStamped &tf_msg_
   tf::vectorTFToEigen(aloam_odometry.getOrigin(), _t_wodom_curr);
   tf::quaternionTFToEigen(aloam_odometry.getRotation(), _q_wodom_curr);
 
-  const boost::shared_ptr<pcl::PointCloud<T_pt>> map_features_corners = boost::make_shared<pcl::PointCloud<T_pt>>();
-  const boost::shared_ptr<pcl::PointCloud<T_pt>> map_features_surfs   = boost::make_shared<pcl::PointCloud<T_pt>>();
+  const PC_pt map_features_corners = boost::make_shared<PC>();
+  const PC_pt map_features_surfs   = boost::make_shared<PC>();
 
   std::vector<int> cloud_valid_indices;
 
@@ -206,9 +225,9 @@ bool AloamMapping<T_pt>::computeMapping(geometry_msgs::TransformStamped &tf_msg_
     while (center_cube_I < 3) {
       for (int j = 0; j < _cloud_height; j++) {
         for (int k = 0; k < _cloud_depth; k++) {
-          int                                            i             = _cloud_width - 1;
-          const boost::shared_ptr<pcl::PointCloud<T_pt>> local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-          const boost::shared_ptr<pcl::PointCloud<T_pt>> local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          int         i             = _cloud_width - 1;
+          const PC_pt local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          const PC_pt local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
           for (; i >= 1; i--) {
             _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
                 _cloud_corners.at(i - 1 + _cloud_width * j + _cloud_width * _cloud_height * k);
@@ -227,9 +246,9 @@ bool AloamMapping<T_pt>::computeMapping(geometry_msgs::TransformStamped &tf_msg_
     while (center_cube_I >= _cloud_width - 3) {
       for (int j = 0; j < _cloud_height; j++) {
         for (int k = 0; k < _cloud_depth; k++) {
-          int                                            i             = 0;
-          const boost::shared_ptr<pcl::PointCloud<T_pt>> local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-          const boost::shared_ptr<pcl::PointCloud<T_pt>> local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          int         i             = 0;
+          const PC_pt local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          const PC_pt local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
           for (; i < _cloud_width - 1; i++) {
             _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
                 _cloud_corners.at(i + 1 + _cloud_width * j + _cloud_width * _cloud_height * k);
@@ -248,9 +267,9 @@ bool AloamMapping<T_pt>::computeMapping(geometry_msgs::TransformStamped &tf_msg_
     while (center_cube_J < 3) {
       for (int i = 0; i < _cloud_width; i++) {
         for (int k = 0; k < _cloud_depth; k++) {
-          int                                            j             = _cloud_height - 1;
-          const boost::shared_ptr<pcl::PointCloud<T_pt>> local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-          const boost::shared_ptr<pcl::PointCloud<T_pt>> local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          int         j             = _cloud_height - 1;
+          const PC_pt local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          const PC_pt local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
           for (; j >= 1; j--) {
             _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
                 _cloud_corners.at(i + _cloud_width * (j - 1) + _cloud_width * _cloud_height * k);
@@ -269,9 +288,9 @@ bool AloamMapping<T_pt>::computeMapping(geometry_msgs::TransformStamped &tf_msg_
     while (center_cube_J >= _cloud_height - 3) {
       for (int i = 0; i < _cloud_width; i++) {
         for (int k = 0; k < _cloud_depth; k++) {
-          int                                            j             = 0;
-          const boost::shared_ptr<pcl::PointCloud<T_pt>> local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-          const boost::shared_ptr<pcl::PointCloud<T_pt>> local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          int         j             = 0;
+          const PC_pt local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          const PC_pt local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
           for (; j < _cloud_height - 1; j++) {
             _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
                 _cloud_corners.at(i + _cloud_width * (j + 1) + _cloud_width * _cloud_height * k);
@@ -290,9 +309,9 @@ bool AloamMapping<T_pt>::computeMapping(geometry_msgs::TransformStamped &tf_msg_
     while (center_cube_K < 3) {
       for (int i = 0; i < _cloud_width; i++) {
         for (int j = 0; j < _cloud_height; j++) {
-          int                                            k             = _cloud_depth - 1;
-          const boost::shared_ptr<pcl::PointCloud<T_pt>> local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-          const boost::shared_ptr<pcl::PointCloud<T_pt>> local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          int         k             = _cloud_depth - 1;
+          const PC_pt local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          const PC_pt local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
           for (; k >= 1; k--) {
             _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
                 _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * (k - 1));
@@ -311,9 +330,9 @@ bool AloamMapping<T_pt>::computeMapping(geometry_msgs::TransformStamped &tf_msg_
     while (center_cube_K >= _cloud_depth - 3) {
       for (int i = 0; i < _cloud_width; i++) {
         for (int j = 0; j < _cloud_height; j++) {
-          int                                            k             = 0;
-          const boost::shared_ptr<pcl::PointCloud<T_pt>> local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
-          const boost::shared_ptr<pcl::PointCloud<T_pt>> local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          int         k             = 0;
+          const PC_pt local_corners = _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
+          const PC_pt local_surfs   = _cloud_surfs.at(i + _cloud_width * j + _cloud_width * _cloud_height * k);
           for (; k < _cloud_depth - 1; k++) {
             _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * k) =
                 _cloud_corners.at(i + _cloud_width * j + _cloud_width * _cloud_height * (k + 1));
@@ -350,41 +369,22 @@ bool AloamMapping<T_pt>::computeMapping(geometry_msgs::TransformStamped &tf_msg_
 
   /*//{ Find factors and optimize */
 
-  // Voxelizes features for optimization
-
-  // Custom VoxelGrid is slower, using the PCL implementation
-  /* boost::shared_ptr<pcl::PointCloud<T_pt>> features_corners_opt_stack; */
-  /* boost::shared_ptr<pcl::PointCloud<T_pt>> features_surfs_opt_stack; */
-
   /* if (manager_corners_selected && manager_surfs_selected) { */
 
-  /*   features_corners_opt_stack = VoxelFilter(manager_corners_selected->getCloudPtr(), manager_corners_selected->getIndicesPtr(), _resolution_line).filter();
-   */
-  /*   features_surfs_opt_stack   = VoxelFilter(manager_surfs_selected->getCloudPtr(), manager_surfs_selected->getIndicesPtr(), _resolution_plane).filter(); */
+  /*   _filter_downsize_corners.setInputCloud(manager_corners_selected->extractCloudByIndices()); */
+  /*   _filter_downsize_surfs.setInputCloud(manager_surfs_selected->extractCloudByIndices()); */
 
   /* } else { */
 
-  /*   features_corners_opt_stack = VoxelFilter(manager_corners_extracted->getCloudPtr(), manager_corners_extracted->getIndicesPtr(),
-   * _resolution_line).filter(); */
-  /*   features_surfs_opt_stack   = VoxelFilter(manager_surfs_extracted->getCloudPtr(), manager_surfs_extracted->getIndicesPtr(), _resolution_plane).filter();
-   */
+  /*   _filter_downsize_corners.setInputCloud(manager_corners_extracted->extractCloudByIndices()); */
+  /*   _filter_downsize_surfs.setInputCloud(manager_surfs_extracted->extractCloudByIndices()); */
   /* } */
+  /* _filter_downsize_surfs.setIndices( */
 
-  if (manager_corners_selected && manager_surfs_selected) {
-
-    _filter_downsize_corners.setInputCloud(manager_corners_selected->extractCloudByIndices());
-    _filter_downsize_surfs.setInputCloud(manager_surfs_selected->extractCloudByIndices());
-
-  } else {
-
-    _filter_downsize_corners.setInputCloud(manager_corners_extracted->extractCloudByIndices());
-    _filter_downsize_surfs.setInputCloud(manager_surfs_extracted->extractCloudByIndices());
-  }
-
-  const boost::shared_ptr<pcl::PointCloud<T_pt>> features_corners_opt_stack = boost::make_shared<pcl::PointCloud<T_pt>>();
-  const boost::shared_ptr<pcl::PointCloud<T_pt>> features_surfs_opt_stack   = boost::make_shared<pcl::PointCloud<T_pt>>();
-  _filter_downsize_corners.filter(*features_corners_opt_stack);
-  _filter_downsize_surfs.filter(*features_surfs_opt_stack);
+  /* const PC_pt features_corners_opt_stack = boost::make_shared<PC>(); */
+  /* const PC_pt features_surfs_opt_stack   = boost::make_shared<PC>(); */
+  /* _filter_downsize_corners.filter(*features_corners_opt_stack); */
+  /* _filter_downsize_surfs.filter(*features_surfs_opt_stack); */
 
   /* timer->checkpoint("voxelizing input features"); */
 
@@ -392,19 +392,44 @@ bool AloamMapping<T_pt>::computeMapping(geometry_msgs::TransformStamped &tf_msg_
   /* printf("map corner num %d  surf num %d \n", laserCloudCornerFromMapNum, laserCloudSurfFromMapNum); */
   if (map_features_corners->points.size() > 10 && map_features_surfs->points.size() > 50) {
 
+    const feature_selection::FSCloudManagerPtr<T_pt> manager_corners =
+        manager_corners_selected == nullptr ? manager_corners_extracted : manager_corners_selected;
+    const feature_selection::FSCloudManagerPtr<T_pt> manager_surfs = manager_surfs_selected == nullptr ? manager_surfs_extracted : manager_surfs_selected;
+
+    // | ---------------------- Build KD-Tree --------------------- |
     const std::shared_ptr<pcl::KdTreeFLANN<T_pt>> kdtree_map_corners = std::make_shared<pcl::KdTreeFLANN<T_pt>>(true);
     const std::shared_ptr<pcl::KdTreeFLANN<T_pt>> kdtree_map_surfs   = std::make_shared<pcl::KdTreeFLANN<T_pt>>(true);
 
     kdtree_map_corners->setInputCloud(map_features_corners);
     kdtree_map_surfs->setInputCloud(map_features_surfs);
 
+    // | ------------ Extract features for optimization ----------- |
+    const PC_pt features_corners_opt_stack = manager_corners->extractCloudByIndices();
+    const PC_pt features_surfs_opt_stack   = manager_surfs->extractCloudByIndices();
+
     /* timer->checkpoint("computing KDTree from input features"); */
 
+    // | ------------ Setup I/O for finding the factors ----------- |
+    FactorizationIO_t factorization_edges;
+    factorization_edges.kdtree     = kdtree_map_corners;
+    factorization_edges.features   = features_corners_opt_stack;
+    factorization_edges.map_points = map_features_corners;
+    /* factorization_edges.indices_sel_voxelized_out = indices_corners_voxelized_out; */
+
+    FactorizationIO_t factorization_planes;
+    factorization_planes.kdtree     = kdtree_map_surfs;
+    factorization_planes.features   = features_surfs_opt_stack;
+    factorization_planes.map_points = map_features_surfs;
+    /* factorization_planes.indices_sel_voxelized_out = indices_surfs_voxelized_out; */
+
+    factorization_edges.indices_features  = manager_corners->getIndicesPtr();
+    factorization_planes.indices_features = manager_surfs->getIndicesPtr();
+
+    // | ---------------- Optimize in 2 iterations ---------------- |
     for (int iterCount = 0; iterCount < 2; iterCount++) {
 
       /* timer->checkpoint("iter " + std::to_string(iterCount) + " init"); */
 
-      // ceres::LossFunction *loss_function = NULL;
       ceres::LossFunction          *loss_function      = new ceres::HuberLoss(0.1);
       ceres::LocalParameterization *q_parameterization = new ceres::EigenQuaternionParameterization();
       ceres::Problem::Options       problem_options;
@@ -414,47 +439,33 @@ bool AloamMapping<T_pt>::computeMapping(geometry_msgs::TransformStamped &tf_msg_
       problem.AddParameterBlock(_parameters + 4, 3);
 
       /* mrs_lib::ScopeTimer timer("finding factors", nullptr, true); */
-      auto factors =
-          findFactors(kdtree_map_corners, kdtree_map_surfs, features_corners_opt_stack, features_surfs_opt_stack, map_features_corners, map_features_surfs);
+      const auto &factors_edges  = findEdgeFactors(factorization_edges, dbg && iterCount == 0);
+      const auto &factors_planes = findPlaneFactors(factorization_planes, dbg && iterCount == 0);
       /* timer.checkpoint("found"); */
 
-      /* if (false) { */
-      /* factors = selectFactorsGreedy(factors); */
-      /* } */
-      /* timer->checkpoint("iter " + std::to_string(iterCount) + " finding constraints"); */
-
-      /* ROS_ERROR("After selectFactorsGreedy()"); */
-
-      for (const auto &factor : factors.first) {
+      for (const auto &factor : factors_edges) {
         problem.AddResidualBlock(LidarEdgeFactor::Create(factor), loss_function, _parameters, _parameters + 4);
       }
-      for (const auto &factor : factors.second) {
+      for (const auto &factor : factors_planes) {
         problem.AddResidualBlock(LidarPlaneFactor::Create(factor), loss_function, _parameters, _parameters + 4);
       }
       /* timer->checkpoint("iter " + std::to_string(iterCount) + " creating residuals"); */
       /* ROS_ERROR("After adding blocks to problem."); */
 
-      ceres::Solver::Options options;
-      options.linear_solver_type                = ceres::DENSE_QR;
-      options.max_num_iterations                = 4;
-      options.minimizer_progress_to_stdout      = false;
-      options.check_gradients                   = false;
-      options.gradient_check_relative_precision = 1e-4;
-      ceres::Solver::Summary summary;
-
       // Get eigenvalues to measure problem degradation //{
       /* TicToc t_eigenvalues; */
 
-      if (_pub_eigenvalue.getNumSubscribers() > 0) {
+      if (dbg && iterCount == 0) {
 
+        // | ---------- Parse Jacobian of the entire problem ---------- |
         // Get Jacobian
         ceres::CRSMatrix jacobian;
         problem.Evaluate(ceres::Problem::EvaluateOptions(), nullptr, nullptr, nullptr, &jacobian);
 
         // Convert it to eigen matrix
-        Eigen::MatrixXd eigen_matrix;
-        eigen_matrix.resize(jacobian.num_rows, jacobian.num_cols);
-        eigen_matrix.setZero();
+        Eigen::MatrixXd J;
+        J.resize(jacobian.num_rows, jacobian.num_cols);
+        J.setZero();
 
         for (int row = 0; row < jacobian.num_rows; ++row) {
           const int start = jacobian.rows.at(row);
@@ -464,51 +475,28 @@ bool AloamMapping<T_pt>::computeMapping(geometry_msgs::TransformStamped &tf_msg_
             const int    col   = jacobian.cols.at(i);
             const double value = jacobian.values.at(i);
 
-            eigen_matrix(row, col) = value;
+            J(row, col) = value;
           }
         }
 
-        // calculate matrix J^T*J
-        eigen_matrix = eigen_matrix.transpose() * eigen_matrix;
-
-        // get eigenvalues and eigenvectors
-        Eigen::EigenSolver<Eigen::MatrixXd> eigensolver;
-        eigensolver.compute(eigen_matrix);
-        const Eigen::VectorXd eigen_values  = eigensolver.eigenvalues().real();
-        const Eigen::MatrixXd eigen_vectors = eigensolver.eigenvectors().real();
-
-        std::cout << "\n" << eigen_values << std::endl;
-        std::cout << eigen_vectors << "\n" << std::endl;
-
-        const mrs_msgs::Float64ArrayStamped::Ptr msg_eigenvalue = boost::make_shared<mrs_msgs::Float64ArrayStamped>();
-        msg_eigenvalue->header.stamp                            = time_aloam_odometry;
-        msg_eigenvalue->values.resize(6, 0.0);
-
-        // Find eigenvalues corresponding to respective state elements
+        // | ------- Find the eigenvalues of all state variables ------ |
         // the order should be theta_x, theta_y, theta_z, x, y, z
-        for (int i = 0; i < 6; i++) {
-          double max_eig_vec = 0;
-          for (int j = 0; j < eigen_vectors.cols(); j++) {
-            const double eig_vec = abs(eigen_vectors(i, j));
-            if (eig_vec > max_eig_vec) {
-              max_eig_vec                  = eig_vec;
-              msg_eigenvalue->values.at(i) = eigen_values(j);
-            }
-          }
-        }
-
-        // Publish eigenvalues
-        try {
-          _pub_eigenvalue.publish(msg_eigenvalue);
-        }
-        catch (...) {
-          ROS_ERROR("[AloamMapping]: Exception caught during publishing topic: %s.", _pub_eigenvalue.getTopic().c_str());
-        }
+        const auto &eigen_values          = getEigenValuesOrdered(J);
+        sign_msg_out->problem_eigenvalues = {float(eigen_values[3]), float(eigen_values[4]), float(eigen_values[5]),
+                                             float(eigen_values[0]), float(eigen_values[1]), float(eigen_values[2])};
+        sign_msg_out->stamp               = time_aloam_odometry;
+        setSignatureVecMsg(dbg_edges, factorization_edges.associated_idx_eigenvalues, sign_msg_out->corners);
+        setSignatureVecMsg(dbg_planes, factorization_planes.associated_idx_eigenvalues, sign_msg_out->planes);
       }
-
-      /* float time_eigenvalues = t_eigenvalues.toc(); */
-      /* ROS_INFO("[AloamMapping] Eigenvalue calculation took %.3f ms.", time_eigenvalues); */
       /*//}*/
+
+      ceres::Solver::Options options;
+      options.linear_solver_type                = ceres::DENSE_QR;
+      options.max_num_iterations                = 4;
+      options.minimizer_progress_to_stdout      = false;
+      options.check_gradients                   = false;
+      options.gradient_check_relative_precision = 1e-4;
+      ceres::Solver::Summary summary;
 
       /* ROS_ERROR("Before solving"); */
       ceres::Solve(options, &problem, &summary);
@@ -677,7 +665,7 @@ bool AloamMapping<T_pt>::computeMapping(geometry_msgs::TransformStamped &tf_msg_
 
   // Publish entire map
   if (_pub_laser_cloud_map.getNumSubscribers() > 0 && (ros::Time::now() - _time_last_map_publish).toSec() > _map_publish_period) {
-    pcl::PointCloud<T_pt> map_pcl;
+    PC map_pcl;
     {
       std::scoped_lock lock(_mutex_cloud_features);
       for (int i = 0; i < _cloud_volume; i++) {
@@ -731,7 +719,7 @@ void AloamMapping<T_pt>::timerMapping([[maybe_unused]] const ros::TimerEvent &ev
   geometry_msgs::TransformStamped tf_msg;
   aloam_slam::AloamDiagnostics    diag_msg;
 
-  computeMapping(tf_msg, diag_msg, nullptr);
+  computeMapping(tf_msg, diag_msg, nullptr, nullptr);
 }
 /*//}*/
 
@@ -773,8 +761,8 @@ bool AloamMapping<T_pt>::callbackResetMapping([[maybe_unused]] std_srvs::Trigger
   _cloud_corners.resize(_cloud_volume);
   _cloud_surfs.resize(_cloud_volume);
   for (int i = 0; i < _cloud_volume; i++) {
-    _cloud_corners.at(i) = boost::make_shared<pcl::PointCloud<T_pt>>();
-    _cloud_surfs.at(i)   = boost::make_shared<pcl::PointCloud<T_pt>>();
+    _cloud_corners.at(i) = boost::make_shared<PC>();
+    _cloud_surfs.at(i)   = boost::make_shared<PC>();
   }
   ROS_INFO("[AloamMapping] Reset: map features were cleared.");
 
@@ -864,23 +852,29 @@ void AloamMapping<T_pt>::setTransform(const Eigen::Vector3d &t, const Eigen::Qua
 
 //}
 
-/* findFactors() //{ */
+/* findEdgeFactors() //{ */
 template <class T_pt>
-std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> AloamMapping<T_pt>::findFactors(
-    const std::shared_ptr<pcl::KdTreeFLANN<T_pt>> kdtree_map_corners, const std::shared_ptr<pcl::KdTreeFLANN<T_pt>> kdtree_map_surfs,
-    const boost::shared_ptr<pcl::PointCloud<T_pt>> corners, const boost::shared_ptr<pcl::PointCloud<T_pt>> surfs,
-    const boost::shared_ptr<pcl::PointCloud<T_pt>> map_features_corners, const boost::shared_ptr<pcl::PointCloud<T_pt>> map_features_surfs) {
+std::vector<LidarEdgeFactor *> AloamMapping<T_pt>::findEdgeFactors(FactorizationIO_t &factorization, const bool store_dbg_info) {
 
-  std::vector<LidarEdgeFactor *>  factors_corners;
-  std::vector<LidarPlaneFactor *> factors_surfs;
+  std::vector<LidarEdgeFactor *> factors;
 
-  /*//{ Corners */
-  for (const auto &point_ori : *corners) {
+  double Q[4];
+
+  if (store_dbg_info) {
+    Q[0] = _q_w_curr.x();
+    Q[1] = _q_w_curr.y();
+    Q[2] = _q_w_curr.z();
+    Q[3] = _q_w_curr.w();
+  }
+
+  for (size_t i = 0; i < factorization.features->size(); i++) {
+    const auto &point_ori = factorization.features->at(i);
+    const auto &point_sel = pointAssociateToMap(point_ori);
+    const auto &idx       = factorization.indices_features->at(i);
+
     std::vector<int>   point_search_indices;
     std::vector<float> point_search_sq_dist;
-
-    const auto &point_sel = pointAssociateToMap(point_ori);
-    kdtree_map_corners->nearestKSearch(point_sel, 5, point_search_indices, point_search_sq_dist);
+    factorization.kdtree->nearestKSearch(point_sel, 5, point_search_indices, point_search_sq_dist);
 
     // If the correspondence is found
     if (point_search_sq_dist.at(4) < 1.0) {
@@ -888,7 +882,7 @@ std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> Aloam
       std::vector<Eigen::Vector3d> nearCorners;
       nearCorners.reserve(5);
       for (int j = 0; j < 5; j++) {
-        const auto &point = map_features_corners->points.at(point_search_indices.at(j));
+        const auto &point = factorization.map_points->points.at(point_search_indices.at(j));
 
         const Eigen::Vector3d corner(point.x, point.y, point.z);
         center += corner;
@@ -911,26 +905,58 @@ std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> Aloam
         const Eigen::Vector3d point_a = center + unit_direction;
         const Eigen::Vector3d point_b = center - unit_direction;
 
+        // | ---------------------- Create factor --------------------- |
         LidarEdgeFactor *factor = new LidarEdgeFactor(curr_point, point_a, point_b, 1.0);
-        factors_corners.push_back(factor);
+        factors.push_back(factor);
+
+        // | --- Perform eigendecomposition of the J^T * J matrix -- |
+        if (store_dbg_info) {
+
+          // Find Jacobian for 3-dim state (xyz) and 6-DoF variable (xyzrpy)
+          Eigen::Matrix<double, 3, 6> J;
+          factor->getJacobian(Q, J);
+          const auto &eigen_values = getEigenValuesOrdered(J);
+
+          // Store results
+          factorization.associated_idx_eigenvalues.push_back({idx.val, eigen_values});
+        }
       }
     }
   }
-  /*//}*/
 
-  /*//{ Surfs */
-  for (const auto &point_ori : *surfs) {
+  return factors;
+}
+//}
+
+/* findPlaneFactors() //{ */
+template <class T_pt>
+std::vector<LidarPlaneFactor *> AloamMapping<T_pt>::findPlaneFactors(FactorizationIO_t &factorization, const bool store_dbg_info) {
+
+  std::vector<LidarPlaneFactor *> factors;
+
+  double Q[4];
+
+  if (store_dbg_info) {
+    Q[0] = _q_w_curr.x();
+    Q[1] = _q_w_curr.y();
+    Q[2] = _q_w_curr.z();
+    Q[3] = _q_w_curr.w();
+  }
+
+  for (size_t i = 0; i < factorization.features->size(); i++) {
+    const auto &point_ori = factorization.features->at(i);
+    const auto &point_sel = pointAssociateToMap(point_ori);
+    const auto &idx       = factorization.indices_features->at(i);
+
     std::vector<int>   point_search_indices;
     std::vector<float> point_search_sq_dist;
-
-    const auto &point_sel = pointAssociateToMap(point_ori);
-    kdtree_map_surfs->nearestKSearch(point_sel, 5, point_search_indices, point_search_sq_dist);
+    factorization.kdtree->nearestKSearch(point_sel, 5, point_search_indices, point_search_sq_dist);
 
     Eigen::Matrix<double, 5, 3> matA0;
     Eigen::Matrix<double, 5, 1> matB0 = -1 * Eigen::Matrix<double, 5, 1>::Ones();
     if (point_search_sq_dist.at(4) < 1.0) {
       for (int j = 0; j < 5; j++) {
-        const auto &point = map_features_surfs->points.at(point_search_indices.at(j));
+        const auto &point = factorization.map_points->points.at(point_search_indices.at(j));
         matA0(j, 0)       = point.x;
         matA0(j, 1)       = point.y;
         matA0(j, 2)       = point.z;
@@ -944,7 +970,7 @@ std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> Aloam
       // Here n(pa, pb, pc) is unit norm of plane
       bool planeValid = true;
       for (int j = 0; j < 5; j++) {
-        const auto &point = map_features_surfs->points.at(point_search_indices.at(j));
+        const auto &point = factorization.map_points->points.at(point_search_indices.at(j));
         // if OX * n > 0.2, then plane is not fit well
         if (std::fabs(n(0) * point.x + n(1) * point.y + n(2) * point.z + d) > 0.2) {
           planeValid = false;
@@ -955,185 +981,24 @@ std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> Aloam
         const Eigen::Vector3d curr_point(point_ori.x, point_ori.y, point_ori.z);
 
         LidarPlaneFactor *factor = new LidarPlaneFactor(curr_point, n, d);
-        factors_surfs.push_back(factor);
+        factors.push_back(factor);
+
+        // | --- Perform eigendecomposition of the J^T * J matrix -- |
+        if (store_dbg_info) {
+
+          // Find Jacobian for 3-dim state (xyz) and 6-DoF variable (xyzrpy)
+          Eigen::Matrix<double, 3, 6> J;
+          factor->getJacobian(Q, J);
+          const auto &eigen_values = getEigenValuesOrdered(J);
+
+          // Store results
+          factorization.associated_idx_eigenvalues.push_back({idx.val, eigen_values});
+        }
       }
     }
   }
-  /*//}*/
 
-  return {factors_corners, factors_surfs};
-}
-//}
-
-/* selectFactorsGreedy() //{ */
-template <class T_pt>
-std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> AloamMapping<T_pt>::selectFactorsGreedy(
-    const std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> &factors) {
-
-  // TODO: Integrate into findFactors() so not all feature correspondences have to be found. This is for debugging.
-
-  const auto &factors_corners = factors.first;
-  const auto &factors_surfs   = factors.second;
-
-  std::vector<LidarEdgeFactor *>  factors_corners_sel;
-  std::vector<LidarPlaneFactor *> factors_surfs_sel;
-  factors_corners_sel.reserve(factors_corners.size());
-  factors_surfs_sel.reserve(factors_surfs.size());
-
-  const size_t N_corners = factors_corners.size();
-  const size_t N         = N_corners + factors_surfs.size();
-  const size_t M         = 0.3 * N;
-  const double eps       = 0.05;
-
-  struct point_t
-  {
-    /* double                      residual[3]; */
-    bool                        has_data = false;
-    Eigen::Matrix<double, 3, 1> residual;
-    Eigen::Matrix<double, 3, 6> jacobian;
-    Eigen::Matrix<double, 6, 6> inf_mat;
-  };
-  std::vector<point_t> points(N);
-
-  std::vector<size_t> indices(N);
-  std::iota(std::begin(indices), std::end(indices), 0);  // Fill with 0 to N in increasing order
-
-  double Q[4];
-  double t[3];
-
-  Q[0] = _q_w_curr.x();
-  Q[1] = _q_w_curr.y();
-  Q[2] = _q_w_curr.z();
-  Q[3] = _q_w_curr.w();
-  t[0] = _t_w_curr.x();
-  t[1] = _t_w_curr.y();
-  t[2] = _t_w_curr.z();
-
-  Eigen::Matrix<double, 6, 6> inf_mat = Eigen::Matrix<double, 6, 6>::Zero();
-
-  /* ROS_ERROR("Initialized. M=%ld, N=%ld; corners: %ld, surfs: %ld", M, N, factors_corners.size(), factors_surfs.size()); */
-
-  size_t it = 0;
-
-  const size_t R_card = (double(N) / double(M)) * std::log(1.0 / eps);
-  /* const size_t R_card = double(N) / double(M); */
-  while (factors_corners_sel.size() + factors_surfs_sel.size() < M) {
-
-    const unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
-    std::shuffle(indices.begin(), indices.end(), std::default_random_engine(seed));
-
-    bool   best_is_surf = false;
-    int    best_idx     = -1;
-    size_t best_idx_raw = 0;
-    double best_log_det = -std::numeric_limits<double>::max();
-
-    ++it;
-    /* ROS_ERROR("[%ld] R=%ld", it, R_card); */
-
-    size_t i        = 0;
-    size_t i_finite = 0;
-    while (i_finite != R_card) {
-      bool   is_surf  = false;
-      size_t idx_feat = indices.at(i);
-
-      // Ensure we index surfs from 0
-      if (idx_feat >= N_corners) {
-        idx_feat -= N_corners;
-        is_surf = true;
-      }
-      /* ROS_ERROR("   [%ld::%ld] idx_feat=%ld, indices.at(i)=%ld, (%s)", it, i, idx_feat, indices.at(i), (is_surf) ? "surf" : "corner"); */
-
-      // If not computed yet: compute residual and jacobian
-      auto &point = points.at(idx_feat);
-      if (!point.has_data) {
-
-        /* ROS_ERROR("   [%ld::%ld] computing data for the point", it, i); */
-
-        double res[3];
-
-        if (is_surf) {
-
-          factors_surfs.at(idx_feat)->getResidual(Q, t, res);
-          factors_surfs.at(idx_feat)->getJacobian(Q, point.jacobian);
-
-        } else {
-
-          factors_corners.at(idx_feat)->getResidual(Q, t, res);
-          factors_corners.at(idx_feat)->getJacobian(Q, point.jacobian);
-          /* std::cout << point.jacobian << std::endl; */
-        }
-
-        point.residual[0] = res[0];
-        point.residual[1] = res[1];
-        point.residual[2] = res[2];
-        /* ROS_ERROR(" [%ld] point %d jacobian:", it, indices.at(i)); */
-        /* std::cout << point->jacobian << std::endl; */
-
-        // TODO: missing covariance matrix here
-        point.inf_mat = point.jacobian.transpose() * point.jacobian;
-
-        /* ROS_ERROR(" [%ld] point %d information matrix:", it, indices.at(i)); */
-        /* std::cout << point->inf_mat << std::endl; */
-        point.has_data = true;
-      }
-
-      // Compute log det and store max
-      /* ROS_ERROR("   [%ld::%ld] computing logdet for the point", it, i); */
-      const double log_det = std::log((inf_mat + point.inf_mat).determinant());
-      /* ROS_ERROR("   [%ld::%ld] det=%.3f, logdet=%.3f", it, i, (inf_mat + point.inf_mat).determinant(), log_det); */
-
-      // TODO: debug why such feature is infinite
-      if (std::isfinite(log_det)) {
-        /* std::cout << "inf_mat:\n" << std::endl; */
-        /* std::cout << inf_mat << std::endl; */
-        /* std::cout << "point.inf_mat:\n" << std::endl; */
-        /* std::cout << point.inf_mat << std::endl; */
-        /* std::cout << "point.inf_mat.det:\n" << std::endl; */
-        /* std::cout << point.inf_mat.determinant() << std::endl; */
-        if (log_det > best_log_det) {
-          best_is_surf = is_surf;
-          best_idx     = idx_feat;
-          best_idx_raw = indices.at(i);
-          best_log_det = log_det;
-        }
-        i_finite++;
-      } else {
-        ROS_ERROR(" [%ld] nan in logdet:", it);
-        ROS_ERROR("   [%ld]       jacobian:", it);
-        std::cout << point.jacobian << std::endl;
-        ROS_ERROR("   [%ld]       infmat (det=%.8f):", it, inf_mat.determinant());
-        std::cout << inf_mat << std::endl;
-        ROS_ERROR("   [%ld]       point.infmat (det=%.8f):", it, point.inf_mat.determinant());
-        std::cout << point.inf_mat << std::endl;
-        ROS_ERROR("   [%ld]       point.infmat+infmat (det=%.8f):", it, (inf_mat + point.inf_mat).determinant());
-        std::cout << point.inf_mat + inf_mat << std::endl;
-      }
-      /* std::cout << inf_mat + point->inf_mat << std::endl; */
-
-      i++;
-    }
-
-    inf_mat += points.at(best_idx_raw).inf_mat;
-
-    if (best_is_surf) {
-      factors_surfs_sel.push_back(factors_surfs.at(best_idx));
-    } else {
-      factors_corners_sel.push_back(factors_corners.at(best_idx));
-    }
-
-    /* ROS_ERROR("   [%ld] best_idx=%d, best_idx_raw=%ld, (%s) => logdet=%.1f", it, best_idx, best_idx_raw, (best_is_surf) ? "surf" : "corner", best_log_det);
-     */
-
-    /* ROS_ERROR(" [%ld] logdet=%.8f", it, std::log(inf_mat.determinant())); */
-
-    // Do not select the same index again
-    indices.erase(std::remove(indices.begin(), indices.end(), best_idx_raw), indices.end());
-  }
-
-  /* ROS_ERROR("  - selected %ld (%ld corners, %ld surfs)", factors_corners_sel.size() + factors_surfs_sel.size(), factors_corners_sel.size(), */
-  /*           factors_surfs_sel.size()); */
-
-  return {factors_corners_sel, factors_surfs_sel};
+  return factors;
 }
 //}
 
@@ -1155,10 +1020,12 @@ void AloamMapping<T_pt>::selectFeatures(LidarFeatureSelectionEdgePlaneIO_t &sele
     selection_vec.at(0).feature_name_in = "edges";
     selection_vec.at(0).cloud_manager_ptr_in =
         std::make_shared<feature_selection::FSCloudManager<T_pt>>(selection_io.cloud, selection_io.indices_edges_extracted);
+    selection_vec.at(0).dbg_data = selection_io.dbg_edges;
 
     selection_vec.at(1).feature_name_in = "planes";
     selection_vec.at(1).cloud_manager_ptr_in =
         std::make_shared<feature_selection::FSCloudManager<T_pt>>(selection_io.cloud, selection_io.indices_planes_extracted);
+    selection_vec.at(1).dbg_data = selection_io.dbg_planes;
 
     selection_io.selection_success = _feature_selection->select(selection_vec, msg_diag);
 
@@ -1170,13 +1037,126 @@ void AloamMapping<T_pt>::selectFeatures(LidarFeatureSelectionEdgePlaneIO_t &sele
 }
 /*//}*/
 
+/*//{ eigenDecomposition() */
+template <class T_pt>
+std::pair<Eigen::VectorXd, std::vector<Eigen::VectorXd>> AloamMapping<T_pt>::eigenDecomposition(const Eigen::MatrixXd &mat) {
+
+  // Compute
+  const Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> solver(mat);
+
+  // Get real values
+  const Eigen::VectorXd lambda = solver.eigenvalues().real();
+  const Eigen::MatrixXd v_mat  = solver.eigenvectors().real();
+
+  Eigen::VectorXd              eigen_values;
+  std::vector<Eigen::VectorXd> eigen_vectors;
+
+  eigen_values.resize(v_mat.cols());
+  eigen_vectors.resize(v_mat.cols());
+
+  // Order vectors/values per input order
+  for (int j = 0; j < v_mat.cols(); j++) {
+
+    int    max_i     = 0;
+    double max_i_val = 0.0;
+
+    for (int i = 0; i < v_mat.rows(); i++) {
+      const double val = std::fabs(v_mat(i, j));
+      if (val > max_i_val) {
+        max_i     = i;
+        max_i_val = val;
+      }
+    }
+
+    eigen_values[j]  = lambda[max_i];
+    eigen_vectors[j] = v_mat.row(max_i);
+  }
+
+  return {eigen_values, eigen_vectors};
+}
+/*//}*/
+
+/*//{ getEigenValuesOrdered() */
+template <class T_pt>
+std::vector<double> AloamMapping<T_pt>::getEigenValuesOrdered(const Eigen::MatrixXd &jacobian) {
+
+  const Eigen::Matrix<double, 6, 6> inf_mat = jacobian.transpose() * jacobian;
+
+  std::vector<double> eigen_values;
+  eigen_values.reserve(6);
+
+  // Eigendecomposition of the upper left 3x3 sumatrix (translation part)
+  {
+    const Eigen::Matrix<double, 3, 3> submat = inf_mat.block(0, 0, 3, 3);
+    const auto &[vals, _]                    = eigenDecomposition(submat);
+    for (int i = 0; i < 3; i++) {
+      eigen_values.push_back(vals[i]);
+    }
+  }
+
+  // Eigendecomposition of the bottom right 3x3 sumatrix (rotation part)
+  {
+    const Eigen::Matrix<double, 3, 3> submat = inf_mat.block(3, 3, 3, 3);
+    const auto &[vals, _]                    = eigenDecomposition(submat);
+    for (int i = 0; i < 3; i++) {
+      eigen_values.push_back(vals[i]);
+    }
+  }
+
+  return eigen_values;
+}
+/*//}*/
+
+/*//{ setSignatureVecMsg() */
+template <class T_pt>
+void AloamMapping<T_pt>::setSignatureVecMsg(const std::shared_ptr<feature_selection::DebugData_t> dbg_data, const IdxEigenvaluesPairs &assoc_idx_eigvals,
+                                            std::vector<aloam_slam::Signature> &msg) {
+
+  msg.reserve(dbg_data->data.size());
+  for (const auto &dato : dbg_data->data) {
+
+    aloam_slam::Signature sig;
+
+    sig.cloud_idx   = dato.cloud_idx;
+    sig.segment_idx = dato.segment_idx;
+
+    sig.selected   = dato.selected;
+    sig.standalone = dato.standalone;
+
+    sig.value      = dato.value;
+    sig.associated = false;
+
+    // TODO: compute eigenvalues also for non-selected features
+    if (sig.selected) {
+
+      const auto it = std::find_if(assoc_idx_eigvals.cbegin(), assoc_idx_eigvals.cend(),
+                                   [&](const std::pair<unsigned int, std::vector<double>> &x) { return x.first == dato.cloud_idx; });
+
+      if (it != assoc_idx_eigvals.cend()) {
+        sig.associated = true;
+
+        // Convert eigen values to float
+        sig.eigenvalues.reserve(it->second.size());
+        for (const double v : it->second) {
+          sig.eigenvalues.push_back(float(v));
+        }
+      }
+      /*   // Else: not-associated */
+    }
+    msg.push_back(sig);
+  }
+}
+/*//}*/
+
 // | -------------------- VoxelFilter class ------------------- |
 
 /*//{ VoxelFilter() */
 
 // Method taken from: https://github.com/PointCloudLibrary/pcl/issues/2211
 template <class T_pt>
-VoxelFilter<T_pt>::VoxelFilter(const boost::shared_ptr<pcl::PointCloud<T_pt>> cloud, const feature_extraction::indices_ptr_t indices, const float resolution) {
+VoxelFilter<T_pt>::VoxelFilter(const feature_selection::FSCloudManagerPtr<T_pt> manager, const float resolution) {
+
+  const auto cloud = manager->getCloudPtr();
 
   if (cloud->empty()) {
     _empty = true;
@@ -1204,8 +1184,7 @@ VoxelFilter<T_pt>::VoxelFilter(const boost::shared_ptr<pcl::PointCloud<T_pt>> cl
     return;
   }
 
-  _cloud   = cloud;
-  _indices = indices;
+  _manager = manager;
 
   // Compute the minimum and maximum bounding box values
   _min_b_flt[0] = min_p[0] * _inverse_leaf_size[0];
@@ -1224,85 +1203,58 @@ VoxelFilter<T_pt>::VoxelFilter(const boost::shared_ptr<pcl::PointCloud<T_pt>> cl
 
 /*//{ filter() */
 template <class T_pt>
-boost::shared_ptr<pcl::PointCloud<T_pt>> VoxelFilter<T_pt>::filter() const {
-
-  const boost::shared_ptr<pcl::PointCloud<T_pt>> cloud = boost::make_shared<pcl::PointCloud<T_pt>>();
+feature_selection::FSCloudManagerPtr<T_pt> VoxelFilter<T_pt>::filter(const feature_extraction::indices_ptr_t indices_removed) {
 
   if (_empty || !_enabled) {
-    return cloud;
+    return std::make_shared<feature_selection::FSCloudManager<T_pt>>(boost::make_shared<pcl::PointCloud<T_pt>>(),
+                                                                     std::make_shared<feature_extraction::indices_t>());
   }
 
+  const bool return_removed = indices_removed != nullptr;
+
+  // Voxelization map
   std::unordered_map<int, std::pair<size_t, T_pt>> voxel_map;
 
-  // Ordered cloud: iterate over the given indices
-  if (_indices) {
+  // The voxelized indices
+  const feature_extraction::indices_ptr_t indices_voxelized = std::make_shared<feature_extraction::indices_t>();
 
-    for (const auto &idx : *_indices) {
+  // Iterate over the entire input cloud
+  const auto cloud = _manager->getCloudPtr();
+  for (const auto &idx : *_manager->getIndicesPtr()) {
 
-      const auto           &p = _cloud->at(idx.val);
-      const Eigen::Vector3i ijk =
-          Eigen::Vector3i(std::floor(p.x * _inverse_leaf_size[0]) - _min_b_flt[0], std::floor(p.y * _inverse_leaf_size[1]) - _min_b_flt[1],
-                          std::floor(p.z * _inverse_leaf_size[2]) - _min_b_flt[2]);
+    const auto &p = cloud->at(idx.val);
 
-      // Compute the centroid leaf index
-      const int voxel_idx = ijk.dot(_div_b_mul);
+    const Eigen::Vector3i ijk =
+        Eigen::Vector3i(std::floor(p.x * _inverse_leaf_size[0]) - _min_b_flt[0], std::floor(p.y * _inverse_leaf_size[1]) - _min_b_flt[1],
+                        std::floor(p.z * _inverse_leaf_size[2]) - _min_b_flt[2]);
 
-      auto it = voxel_map.find(voxel_idx);
-      if (it == voxel_map.end()) {
+    // Compute the centroid leaf index
+    const int voxel_idx = ijk.dot(_div_b_mul);
 
-        voxel_map[voxel_idx] = {1, p};
+    // Insert to map if there is no point already stored at the leaf index
+    auto it = voxel_map.find(voxel_idx);
+    if (it == voxel_map.end()) {
 
-      } else if (_return_centroid) {
+      voxel_map[voxel_idx] = {1, p};
+      indices_voxelized->push_back(idx);
 
-        // Update centroid
-        it->second.first++;
-        auto &mean = it->second.second;
-        mean.x += (p.x - mean.x) / it->second.first;
-        mean.y += (p.y - mean.y) / it->second.first;
-        mean.z += (p.z - mean.z) / it->second.first;
-      }
+    } else if (_return_centroid) {
+
+      // Update centroid
+      it->second.first++;
+      auto &mean = it->second.second;
+      mean.x += (p.x - mean.x) / it->second.first;
+      mean.y += (p.y - mean.y) / it->second.first;
+      mean.z += (p.z - mean.z) / it->second.first;
+
+    } else if (return_removed) {
+
+      // Store removed indices
+      indices_removed->push_back(idx);
     }
   }
 
-  // Unordered cloud: iterate over all points (should be finite)
-  else {
-
-    for (const auto &p : _cloud->points) {
-
-      const Eigen::Vector3i ijk =
-          Eigen::Vector3i(std::floor(p.x * _inverse_leaf_size[0]) - _min_b_flt[0], std::floor(p.y * _inverse_leaf_size[1]) - _min_b_flt[1],
-                          std::floor(p.z * _inverse_leaf_size[2]) - _min_b_flt[2]);
-
-      // Compute the centroid leaf index
-      const int voxel_idx = ijk.dot(_div_b_mul);
-
-      // Insert to map if there is no point already stored at the leaf index
-      auto it = voxel_map.find(voxel_idx);
-      if (it == voxel_map.end()) {
-
-        voxel_map[voxel_idx] = {1, p};
-
-      } else if (_return_centroid) {
-
-        // Update centroid
-        it->second.first++;
-        auto &mean = it->second.second;
-        mean.x += (p.x - mean.x) / it->second.first;
-        mean.y += (p.y - mean.y) / it->second.first;
-        mean.z += (p.z - mean.z) / it->second.first;
-      }
-    }
-  }
-
-  cloud->header   = _cloud->header;
-  cloud->is_dense = true;
-  cloud->height   = 1;
-  cloud->width    = voxel_map.size();
-  cloud->points.reserve(cloud->width);
-
-  std::transform(voxel_map.cbegin(), voxel_map.cend(), std::back_inserter(cloud->points), [](const auto &it) { return it.second.second; });
-
-  return cloud;
+  return std::make_shared<feature_selection::FSCloudManager<T_pt>>(cloud, indices_voxelized);
 }
 /*//}*/
 

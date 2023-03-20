@@ -55,6 +55,8 @@ add_message_files(DIRECTORY msg FILES
   AloamDiagnostics.msg
   OdometryDiagnostics.msg
   MappingDiagnostics.msg
+  Signature.msg
+  FeaturesSignature.msg
 )
 
 generate_messages(DEPENDENCIES

@@ -14,6 +14,7 @@
 #include "aloam_slam/AloamDiagnostics.h"
 #include "aloam_slam/OdometryDiagnostics.h"
 #include "aloam_slam/MappingDiagnostics.h"
+#include "aloam_slam/FeaturesSignature.h"
 
 #include <pcl/filters/voxel_grid.h>
 
@@ -27,17 +28,16 @@ class VoxelFilter {
 
 public:
   VoxelFilter(){};
-  VoxelFilter(const boost::shared_ptr<pcl::PointCloud<T_pt>> cloud, const feature_extraction::indices_ptr_t indices, const float resolution);
-  boost::shared_ptr<pcl::PointCloud<T_pt>> filter() const;
+  VoxelFilter(const feature_selection::FSCloudManagerPtr<T_pt> manager, const float resolution);
+  feature_selection::FSCloudManagerPtr<T_pt> filter(const feature_extraction::indices_ptr_t indices_removed = nullptr);
 
 private:
   bool _enabled = true;
   bool _empty   = false;
 
-  bool _return_centroid = true;
+  bool _return_centroid = false;
 
-  boost::shared_ptr<pcl::PointCloud<T_pt>> _cloud   = nullptr;
-  feature_extraction::indices_ptr_t        _indices = nullptr;
+  feature_selection::FSCloudManagerPtr<T_pt> _manager = nullptr;
 
   Eigen::Array3f  _inverse_leaf_size;
   Eigen::Vector3i _div_b_mul;
@@ -66,11 +66,15 @@ struct MappingData
 template <class T_pt>
 class AloamMapping {
 
+  typedef pcl::PointCloud<T_pt> PC;
+  typedef boost::shared_ptr<PC> PC_pt;
+
 public:
   AloamMapping(const std::shared_ptr<CommonHandlers_t> handlers, const std::shared_ptr<feature_selection::FeatureSelection> feature_selection);
 
   bool computeMapping(geometry_msgs::TransformStamped &tf_msg_out, aloam_slam::AloamDiagnostics &diag_msg_out,
-                      const std::shared_ptr<MappingCloudManagersOut_t<T_pt>> managers_out = nullptr);
+                      const std::shared_ptr<MappingCloudManagersOut_t<T_pt>> managers_out = nullptr,
+                      const std::shared_ptr<aloam_slam::FeaturesSignature>   sign_msg_out = nullptr);
 
   std::atomic<bool> is_initialized = false;
 
@@ -87,9 +91,9 @@ private:
   ros::Timer _timer_mapping_loop;
   ros::Time  _time_last_map_publish;
 
-  std::mutex                                            _mutex_cloud_features;
-  std::vector<boost::shared_ptr<pcl::PointCloud<T_pt>>> _cloud_corners;
-  std::vector<boost::shared_ptr<pcl::PointCloud<T_pt>>> _cloud_surfs;
+  std::mutex         _mutex_cloud_features;
+  std::vector<PC_pt> _cloud_corners;
+  std::vector<PC_pt> _cloud_surfs;
 
   // Feature extractor newest data
   std::condition_variable            _cv_mapping_data;
@@ -101,7 +105,6 @@ private:
   ros::Publisher _pub_laser_cloud_map;
   ros::Publisher _pub_odom_global;
   ros::Publisher _pub_path;
-  ros::Publisher _pub_eigenvalue;
   ros::Publisher _pub_diag;
   ros::Publisher _pub_features_edges_selected_;
   ros::Publisher _pub_features_planes_selected_;
@@ -155,28 +158,44 @@ private:
   pcl::VoxelGrid<T_pt> _filter_downsize_corners;
   pcl::VoxelGrid<T_pt> _filter_downsize_surfs;
 
-  std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> findFactors(const std::shared_ptr<pcl::KdTreeFLANN<T_pt>>  kdtree_map_corners,
-                                                                                         const std::shared_ptr<pcl::KdTreeFLANN<T_pt>>  kdtree_map_surfs,
-                                                                                         const boost::shared_ptr<pcl::PointCloud<T_pt>> features_corners_stack,
-                                                                                         const boost::shared_ptr<pcl::PointCloud<T_pt>> features_surfs_stack,
-                                                                                         const boost::shared_ptr<pcl::PointCloud<T_pt>> map_features_corners,
-                                                                                         const boost::shared_ptr<pcl::PointCloud<T_pt>> map_features_surfs);
+  using IdxEigenvaluesPairs = std::vector<std::pair<unsigned int, std::vector<double>>>;
+  struct FactorizationIO_t
+  {
+    // inputs
+    std::shared_ptr<pcl::KdTreeFLANN<T_pt>> kdtree;
+    PC_pt                                   features;
+    PC_pt                                   map_points;
 
-  std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> selectFactorsGreedy(
-      const std::pair<std::vector<LidarEdgeFactor *>, std::vector<LidarPlaneFactor *>> &factors);
+    // helper variables
+    feature_extraction::indices_ptr_t indices_features;
 
+    // outputs
+    IdxEigenvaluesPairs associated_idx_eigenvalues;
+  };
+
+  std::vector<LidarEdgeFactor *>  findEdgeFactors(FactorizationIO_t &factorization, const bool store_dbg_info = false);
+  std::vector<LidarPlaneFactor *> findPlaneFactors(FactorizationIO_t &factorization, const bool store_dbg_info = false);
+
+  std::pair<Eigen::VectorXd, std::vector<Eigen::VectorXd>> eigenDecomposition(const Eigen::MatrixXd &mat);
+  std::vector<double>                                      getEigenValuesOrdered(const Eigen::MatrixXd &jacobian);
+
+  void setSignatureVecMsg(const std::shared_ptr<feature_selection::DebugData_t>            dbg_data,
+                          const IdxEigenvaluesPairs &assoc_idx_eigvals, std::vector<aloam_slam::Signature> &msg);
 
   // | -------------------- Feature selection ------------------- |
   struct LidarFeatureSelectionEdgePlaneIO_t
   {
-    boost::shared_ptr<pcl::PointCloud<T_pt>> cloud;
-    feature_extraction::indices_ptr_t        indices_edges_extracted;   // All edge features
-    feature_extraction::indices_ptr_t        indices_planes_extracted;  // All plane features
+    PC_pt                             cloud;
+    feature_extraction::indices_ptr_t indices_edges_extracted;   // All edge features
+    feature_extraction::indices_ptr_t indices_planes_extracted;  // All plane features
 
     bool                              selection_enabled;
     bool                              selection_success = false;
     feature_extraction::indices_ptr_t indices_edges_selected;
     feature_extraction::indices_ptr_t indices_planes_selected;
+
+    std::shared_ptr<feature_selection::DebugData_t> dbg_edges  = nullptr;
+    std::shared_ptr<feature_selection::DebugData_t> dbg_planes = nullptr;
   };
   void selectFeatures(LidarFeatureSelectionEdgePlaneIO_t &selection_io, feature_selection::FSDiagnostics &msg_diag);
 };

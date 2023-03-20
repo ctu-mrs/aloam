@@ -253,7 +253,7 @@ void AloamSlamRosbag::readWriteRosbag([[maybe_unused]] const std::string &rosbag
                                       const bool write_pointclouds) {
 
   const std::shared_ptr<feature_selection::FeatureSelection> feature_selection = std::make_shared<feature_selection::FeatureSelection>();
-  feature_selection->initialize(*handlers->param_loader, handlers->samples_per_row);
+  feature_selection->initialize(*handlers->param_loader);
   handlers->overwrite_intensity_with_curvature = feature_selection->requiresCurvatureInIntensityField();
 
   const auto ptr_mapp = std::make_shared<AloamMapping<T_pt>>(handlers, feature_selection);
@@ -278,6 +278,7 @@ void AloamSlamRosbag::readWriteRosbag([[maybe_unused]] const std::string &rosbag
   const std::string topic_planes_extracted = "/" + handlers->uav_name + "/slam/features/planes/extracted";
   const std::string topic_planes_salient   = "/" + handlers->uav_name + "/slam/features/planes/salient";
   const std::string topic_planes_selected  = "/" + handlers->uav_name + "/slam/features/planes/selected";
+  const std::string topic_signatures       = "/" + handlers->uav_name + "/slam/features/signatures";
 
   // Wait for initialization
   bool initialized = ptr_fe->is_initialized && ptr_odom->is_initialized && ptr_mapp->is_initialized;
@@ -350,7 +351,9 @@ void AloamSlamRosbag::readWriteRosbag([[maybe_unused]] const std::string &rosbag
     aloam_slam::AloamDiagnostics    diag_msg_mapping;
 
     const std::shared_ptr<MappingCloudManagersOut_t<T_pt>> mapping_managers = write_clouds ? std::make_shared<MappingCloudManagersOut_t<T_pt>>() : nullptr;
-    const bool                                             mapping_succ     = ptr_mapp->computeMapping(tf_msg_mapping, diag_msg_mapping, mapping_managers);
+    const std::shared_ptr<aloam_slam::FeaturesSignature>   mapping_sign_msg = write_bag_out ? std::make_shared<aloam_slam::FeaturesSignature>() : nullptr;
+
+    const bool mapping_succ = ptr_mapp->computeMapping(tf_msg_mapping, diag_msg_mapping, mapping_managers, mapping_sign_msg);
 
     if (!mapping_succ) {
       ROS_WARN("[AloamRosbag] Mapping failed for frame: %d/%ld.", frame, frame_total_count);
@@ -362,6 +365,7 @@ void AloamSlamRosbag::readWriteRosbag([[maybe_unused]] const std::string &rosbag
     if (write_bag_out) {
       _bag_out_.write("/tf", stamp, geomToTf2(tf_msg_mapping));
       _bag_out_.write(topic_diagnostics, stamp, diag_msg_mapping);
+      _bag_out_.write(topic_signatures, stamp, *mapping_sign_msg);
     }
 
     if (write_clouds) {
