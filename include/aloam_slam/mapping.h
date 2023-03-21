@@ -29,7 +29,7 @@ class VoxelFilter {
 public:
   VoxelFilter(){};
   VoxelFilter(const feature_selection::FSCloudManagerPtr<T_pt> manager, const float resolution);
-  feature_selection::FSCloudManagerPtr<T_pt> filter(const feature_extraction::indices_ptr_t indices_removed = nullptr);
+  feature_selection::FSCloudManagerPtr<T_pt> filter();
 
 private:
   bool _enabled = true;
@@ -158,6 +158,8 @@ private:
   pcl::VoxelGrid<T_pt> _filter_downsize_corners;
   pcl::VoxelGrid<T_pt> _filter_downsize_surfs;
 
+  Eigen::MatrixXd parseJacobianFromCeresProblem(ceres::Problem &problem);
+
   using IdxEigenvaluesPairs = std::vector<std::pair<unsigned int, std::vector<double>>>;
   struct FactorizationIO_t
   {
@@ -179,8 +181,8 @@ private:
   std::pair<Eigen::VectorXd, std::vector<Eigen::VectorXd>> eigenDecomposition(const Eigen::MatrixXd &mat);
   std::vector<double>                                      getEigenValuesOrdered(const Eigen::MatrixXd &jacobian);
 
-  void setSignatureVecMsg(const std::shared_ptr<feature_selection::DebugData_t>            dbg_data,
-                          const IdxEigenvaluesPairs &assoc_idx_eigvals, std::vector<aloam_slam::Signature> &msg);
+  void setSignatureVecMsg(const std::shared_ptr<feature_selection::DebugData_t> dbg_data, const IdxEigenvaluesPairs &idx_eigvals_sel,
+                          const IdxEigenvaluesPairs &idx_eigvals_rem, std::vector<aloam_slam::Signature> &msg);
 
   // | -------------------- Feature selection ------------------- |
   struct LidarFeatureSelectionEdgePlaneIO_t

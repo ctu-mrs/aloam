@@ -5,4 +5,5 @@ rosbag:
     filename: "aloam_out.bag"
     input_points: false
     pointclouds: false
+    signatures: true
   shutdown_ros: true

@@ -42,7 +42,7 @@ private:
 
   template <typename T_pt>
   void readWriteRosbag([[maybe_unused]] const std::string &rosbag_points_topic, const bool write_bag_out, const bool write_input_points,
-                       const bool write_pointclouds);
+                       const bool write_pointclouds, const bool write_signatures);
 };
 
 //}
@@ -68,7 +68,6 @@ void AloamSlamRosbag::onInit() {
   handlers->param_loader->loadParam("odom_frame", handlers->frame_odom);
   handlers->param_loader->loadParam("map_frame", handlers->frame_map);
   handlers->param_loader->loadParam("sensor/frequency", handlers->frequency, -1.0f);
-  handlers->param_loader->loadParam("sensor/samples", handlers->samples_per_row);
   const bool verbose                     = handlers->param_loader->loadParamReusable<bool>("verbose", false);
   const bool enable_profiler             = handlers->param_loader->loadParamReusable<bool>("enable_profiler", false);
   handlers->enable_scope_timer           = handlers->param_loader->loadParamReusable<bool>("scope_timer/enable", false);
@@ -100,6 +99,7 @@ void AloamSlamRosbag::onInit() {
   std::string rosbag_points_topic;
   bool        write_input_points = false;
   bool        write_pointclouds  = false;
+  bool        write_signatures   = false;
 
   if (write_bag_out) {
 
@@ -107,6 +107,7 @@ void AloamSlamRosbag::onInit() {
     rosbag_points_topic          = handlers->param_loader->loadParamReusable<std::string>("rosbag/points_topic");
     write_input_points           = handlers->param_loader->loadParamReusable<bool>("rosbag/write_out/input_points");
     write_pointclouds            = handlers->param_loader->loadParamReusable<bool>("rosbag/write_out/pointclouds");
+    write_signatures             = handlers->param_loader->loadParamReusable<bool>("rosbag/write_out/signatures");
 
     try {
       ROS_INFO("[AloamRosbag] Opening rosbag (%s) for writing.", bag_fn_out.c_str());
@@ -207,9 +208,9 @@ void AloamSlamRosbag::onInit() {
   handlers->scope_timer_logger    = std::make_shared<mrs_lib::ScopeTimerLogger>(time_logger_filepath, handlers->enable_scope_timer);
 
   if (is_ouster) {
-    readWriteRosbag<ouster_ros::Point>(rosbag_points_topic, write_bag_out, write_input_points, write_pointclouds);
+    readWriteRosbag<ouster_ros::Point>(rosbag_points_topic, write_bag_out, write_input_points, write_pointclouds, write_signatures);
   } else if (is_pandar) {
-    readWriteRosbag<pandar_pointcloud::PointXYZIT>(rosbag_points_topic, write_bag_out, write_input_points, write_pointclouds);
+    readWriteRosbag<pandar_pointcloud::PointXYZIT>(rosbag_points_topic, write_bag_out, write_input_points, write_pointclouds, write_signatures);
   }
 
   if (shutdown_ros) {
@@ -250,7 +251,7 @@ tf::Transform AloamSlamRosbag::getStaticTf(const std::string &frame_from, const 
 /* readWriteRosbag() //{ */
 template <typename T_pt>
 void AloamSlamRosbag::readWriteRosbag([[maybe_unused]] const std::string &rosbag_points_topic, const bool write_bag_out, const bool write_input_points,
-                                      const bool write_pointclouds) {
+                                      const bool write_pointclouds, const bool write_signatures) {
 
   const std::shared_ptr<feature_selection::FeatureSelection> feature_selection = std::make_shared<feature_selection::FeatureSelection>();
   feature_selection->initialize(*handlers->param_loader);
@@ -320,9 +321,8 @@ void AloamSlamRosbag::readWriteRosbag([[maybe_unused]] const std::string &rosbag
     }
 
     // | -------------------- Extract features -------------------- |
-    const bool                                        write_clouds = write_bag_out && write_pointclouds;
-    const std::shared_ptr<FECloudManagersOut_t<T_pt>> fe_managers  = write_clouds ? std::make_shared<FECloudManagersOut_t<T_pt>>() : nullptr;
-    const bool                                        fe_succ      = ptr_fe->extractFeatures(cloud_msg, fe_managers);
+    const std::shared_ptr<FECloudManagersOut_t<T_pt>> fe_managers = write_pointclouds ? std::make_shared<FECloudManagersOut_t<T_pt>>() : nullptr;
+    const bool                                        fe_succ     = ptr_fe->extractFeatures(cloud_msg, fe_managers);
 
     if (!fe_succ) {
       ROS_WARN("[AloamRosbag] Feature extraction failed for frame: %d/%ld.", frame, frame_total_count);
@@ -350,8 +350,9 @@ void AloamSlamRosbag::readWriteRosbag([[maybe_unused]] const std::string &rosbag
     geometry_msgs::TransformStamped tf_msg_mapping;
     aloam_slam::AloamDiagnostics    diag_msg_mapping;
 
-    const std::shared_ptr<MappingCloudManagersOut_t<T_pt>> mapping_managers = write_clouds ? std::make_shared<MappingCloudManagersOut_t<T_pt>>() : nullptr;
-    const std::shared_ptr<aloam_slam::FeaturesSignature>   mapping_sign_msg = write_bag_out ? std::make_shared<aloam_slam::FeaturesSignature>() : nullptr;
+    const std::shared_ptr<MappingCloudManagersOut_t<T_pt>> mapping_managers = write_pointclouds ? std::make_shared<MappingCloudManagersOut_t<T_pt>>() : nullptr;
+    const std::shared_ptr<aloam_slam::FeaturesSignature>   mapping_sign_msg =
+        (write_bag_out && write_signatures) ? std::make_shared<aloam_slam::FeaturesSignature>() : nullptr;
 
     const bool mapping_succ = ptr_mapp->computeMapping(tf_msg_mapping, diag_msg_mapping, mapping_managers, mapping_sign_msg);
 
@@ -368,7 +369,7 @@ void AloamSlamRosbag::readWriteRosbag([[maybe_unused]] const std::string &rosbag
       _bag_out_.write(topic_signatures, stamp, *mapping_sign_msg);
     }
 
-    if (write_clouds) {
+    if (write_pointclouds) {
       _bag_out_.write(topic_edges_salient, stamp, pclToRos(fe_managers->man_edges_salient));
       _bag_out_.write(topic_planes_salient, stamp, pclToRos(fe_managers->man_planes_salient));
       _bag_out_.write(topic_edges_extracted, stamp, pclToRos(fe_managers->man_edges_extracted));

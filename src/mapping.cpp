@@ -149,6 +149,7 @@ bool AloamMapping<T_pt>::computeMapping(geometry_msgs::TransformStamped &tf_msg_
     dbg_planes = std::make_shared<feature_selection::DebugData_t>();
   }
 
+  bool                                       fs_used                  = false;
   feature_selection::FSCloudManagerPtr<T_pt> manager_corners_selected = nullptr;
   feature_selection::FSCloudManagerPtr<T_pt> manager_surfs_selected   = nullptr;
   if (_feature_selection->enabled()) {
@@ -170,6 +171,7 @@ bool AloamMapping<T_pt>::computeMapping(geometry_msgs::TransformStamped &tf_msg_
 
     if (selection_io.selection_success) {
 
+      fs_used                  = true;
       manager_corners_selected = std::make_shared<feature_selection::FSCloudManager<T_pt>>(selection_io.cloud, selection_io.indices_edges_selected);
       manager_surfs_selected   = std::make_shared<feature_selection::FSCloudManager<T_pt>>(selection_io.cloud, selection_io.indices_planes_selected);
 
@@ -414,13 +416,11 @@ bool AloamMapping<T_pt>::computeMapping(geometry_msgs::TransformStamped &tf_msg_
     factorization_edges.kdtree     = kdtree_map_corners;
     factorization_edges.features   = features_corners_opt_stack;
     factorization_edges.map_points = map_features_corners;
-    /* factorization_edges.indices_sel_voxelized_out = indices_corners_voxelized_out; */
 
     FactorizationIO_t factorization_planes;
     factorization_planes.kdtree     = kdtree_map_surfs;
     factorization_planes.features   = features_surfs_opt_stack;
     factorization_planes.map_points = map_features_surfs;
-    /* factorization_planes.indices_sel_voxelized_out = indices_surfs_voxelized_out; */
 
     factorization_edges.indices_features  = manager_corners->getIndicesPtr();
     factorization_planes.indices_features = manager_surfs->getIndicesPtr();
@@ -457,36 +457,125 @@ bool AloamMapping<T_pt>::computeMapping(geometry_msgs::TransformStamped &tf_msg_
 
       if (dbg && iterCount == 0) {
 
-        // | ---------- Parse Jacobian of the entire problem ---------- |
+        sign_msg_out->stamp = time_aloam_odometry;
+
+        // | -- Compute eigenvalues of the problem with SEL features -- |
+
         // Get Jacobian
-        ceres::CRSMatrix jacobian;
-        problem.Evaluate(ceres::Problem::EvaluateOptions(), nullptr, nullptr, nullptr, &jacobian);
-
-        // Convert it to eigen matrix
-        Eigen::MatrixXd J;
-        J.resize(jacobian.num_rows, jacobian.num_cols);
-        J.setZero();
-
-        for (int row = 0; row < jacobian.num_rows; ++row) {
-          const int start = jacobian.rows.at(row);
-          const int end   = jacobian.rows.at(row + 1) - 1;
-
-          for (int i = start; i <= end; i++) {
-            const int    col   = jacobian.cols.at(i);
-            const double value = jacobian.values.at(i);
-
-            J(row, col) = value;
+        {
+          const Eigen::MatrixXd J = parseJacobianFromCeresProblem(problem);
+          // the order from CERES should be theta_x, theta_y, theta_z, x, y, z
+          const auto              &eigen_values_sel = getEigenValuesOrdered(J);
+          const std::vector<float> values_flt       = {float(eigen_values_sel[3]), float(eigen_values_sel[4]), float(eigen_values_sel[5]),
+                                                       float(eigen_values_sel[0]), float(eigen_values_sel[1]), float(eigen_values_sel[2])};
+          if (fs_used) {
+            sign_msg_out->problem_eigenvalues_w_fs = values_flt;
+          } else {
+            sign_msg_out->problem_eigenvalues_wo_fs = values_flt;
           }
         }
 
-        // | ------- Find the eigenvalues of all state variables ------ |
-        // the order should be theta_x, theta_y, theta_z, x, y, z
-        const auto &eigen_values          = getEigenValuesOrdered(J);
-        sign_msg_out->problem_eigenvalues = {float(eigen_values[3]), float(eigen_values[4]), float(eigen_values[5]),
-                                             float(eigen_values[0]), float(eigen_values[1]), float(eigen_values[2])};
-        sign_msg_out->stamp               = time_aloam_odometry;
-        setSignatureVecMsg(dbg_edges, factorization_edges.associated_idx_eigenvalues, sign_msg_out->corners);
-        setSignatureVecMsg(dbg_planes, factorization_planes.associated_idx_eigenvalues, sign_msg_out->planes);
+        // | ---------- Find factors of removed features --------- |
+        FactorizationIO_t fact_edge_rem;
+        FactorizationIO_t fact_plane_rem;
+
+        // Setup inputs to factorization
+        {
+          // Setup removed feature clouds
+          const feature_extraction::indices_ptr_t indices_corners_rem = std::make_shared<feature_extraction::indices_t>();
+          const feature_extraction::indices_ptr_t indices_surfs_rem   = std::make_shared<feature_extraction::indices_t>();
+          indices_corners_rem->reserve(dbg_edges->data_rem.size());
+          for (const auto &dato : dbg_edges->data_rem) {
+            feature_extraction::index_azimuth_t idx_az;
+            idx_az.val     = dato.cloud_idx;
+            idx_az.azimuth = dato.value;
+            indices_corners_rem->push_back(idx_az);
+          }
+          indices_surfs_rem->reserve(dbg_planes->data_rem.size());
+          for (const auto &dato : dbg_planes->data_rem) {
+            feature_extraction::index_azimuth_t idx_az;
+            idx_az.val     = dato.cloud_idx;
+            idx_az.azimuth = dato.value;
+            indices_surfs_rem->push_back(idx_az);
+          }
+
+          // Convert to point cloud
+          const PC_pt features_corners_rem =
+              feature_selection::FSCloudManager<T_pt>(manager_corners_extracted->getCloudPtr(), indices_corners_rem).extractCloudByIndices();
+          const PC_pt features_surfs_rem =
+              feature_selection::FSCloudManager<T_pt>(manager_surfs_extracted->getCloudPtr(), indices_surfs_rem).extractCloudByIndices();
+
+          // Setup factorization structs
+          fact_edge_rem.kdtree           = kdtree_map_corners;
+          fact_edge_rem.features         = features_corners_rem;
+          fact_edge_rem.map_points       = map_features_corners;
+          fact_edge_rem.indices_features = indices_corners_rem;
+
+          fact_plane_rem.kdtree           = kdtree_map_surfs;
+          fact_plane_rem.features         = features_surfs_rem;
+          fact_plane_rem.map_points       = map_features_surfs;
+          fact_plane_rem.indices_features = indices_surfs_rem;
+        }
+
+        // Find factors for both types
+        const auto &factors_edges_rem  = findEdgeFactors(fact_edge_rem, true);
+        const auto &factors_planes_rem = findPlaneFactors(fact_plane_rem, true);
+
+        // If we used FS to remove some residuals
+        /* if (fs_used) { */
+
+        /*   // Define the problem with all the residuals */
+        /*   ceres::LossFunction          *loss_function_all      = new ceres::HuberLoss(0.1); */
+        /*   ceres::LocalParameterization *q_parameterization_all = new ceres::EigenQuaternionParameterization(); */
+        /*   ceres::Problem::Options       problem_options_all; */
+
+
+        /*   // Copy current estimate */
+        /*   double parameters[7]; */
+        /*   parameters[0] = _parameters[0]; */
+        /*   parameters[1] = _parameters[1]; */
+        /*   parameters[2] = _parameters[2]; */
+        /*   parameters[3] = _parameters[3]; */
+        /*   parameters[4] = _parameters[4]; */
+        /*   parameters[5] = _parameters[5]; */
+        /*   parameters[6] = _parameters[6]; */
+        /*   Eigen::Map<Eigen::Quaterniond> q_w_curr(parameters); */
+        /*   Eigen::Map<Eigen::Vector3d>    t_w_curr(parameters + 4); */
+
+        /*   // Add parameter blocks */
+        /*   ceres::Problem problem_all(problem_options_all); */
+        /*   problem_all.AddParameterBlock(parameters, 4, q_parameterization_all); */
+        /*   problem_all.AddParameterBlock(parameters + 4, 3); */
+
+        /*   // Add selected factors */
+        /*   for (const auto &factor : factors_edges) { */
+        /*     problem_all.AddResidualBlock(LidarEdgeFactor::Create(factor), loss_function_all, parameters, parameters + 4); */
+        /*   } */
+        /*   for (const auto &factor : factors_planes) { */
+        /*     problem_all.AddResidualBlock(LidarPlaneFactor::Create(factor), loss_function_all, parameters, parameters + 4); */
+        /*   } */
+
+        /*   // Add removed factors */
+        /*   for (const auto &factor : factors_edges_rem) { */
+        /*     problem_all.AddResidualBlock(LidarEdgeFactor::Create(factor), loss_function_all, parameters, parameters + 4); */
+        /*   } */
+        /*   for (const auto &factor : factors_planes_rem) { */
+        /*     problem_all.AddResidualBlock(LidarPlaneFactor::Create(factor), loss_function_all, parameters, parameters + 4); */
+        /*   } */
+
+        /*   // | -- Compute eigenvalues of the problem with ALL features -- | */
+        /*   { */
+        /*     const Eigen::MatrixXd J                = parseJacobianFromCeresProblem(problem_all); */
+        /*     const auto           &eigen_values_all = getEigenValuesOrdered(J); */
+        /*     // the order from CERES should be theta_x, theta_y, theta_z, x, y, z */
+        /*     sign_msg_out->problem_eigenvalues_wo_fs = {float(eigen_values_all[3]), float(eigen_values_all[4]), float(eigen_values_all[5]), */
+        /*                                                float(eigen_values_all[0]), float(eigen_values_all[1]), float(eigen_values_all[2])}; */
+        /*   } */
+        /* } */
+
+        // | ------- Store factors and other info in output msg ------- |
+        setSignatureVecMsg(dbg_edges, factorization_edges.associated_idx_eigenvalues, fact_edge_rem.associated_idx_eigenvalues, sign_msg_out->corners);
+        setSignatureVecMsg(dbg_planes, factorization_planes.associated_idx_eigenvalues, fact_plane_rem.associated_idx_eigenvalues, sign_msg_out->planes);
       }
       /*//}*/
 
@@ -1109,42 +1198,106 @@ std::vector<double> AloamMapping<T_pt>::getEigenValuesOrdered(const Eigen::Matri
 
 /*//{ setSignatureVecMsg() */
 template <class T_pt>
-void AloamMapping<T_pt>::setSignatureVecMsg(const std::shared_ptr<feature_selection::DebugData_t> dbg_data, const IdxEigenvaluesPairs &assoc_idx_eigvals,
-                                            std::vector<aloam_slam::Signature> &msg) {
+void AloamMapping<T_pt>::setSignatureVecMsg(const std::shared_ptr<feature_selection::DebugData_t> dbg_data, const IdxEigenvaluesPairs &idx_eigvals_sel,
+                                            const IdxEigenvaluesPairs &idx_eigvals_rem, std::vector<aloam_slam::Signature> &msg) {
 
-  msg.reserve(dbg_data->data.size());
-  for (const auto &dato : dbg_data->data) {
+  const auto &data_sel = dbg_data->data_sel;
+  const auto &data_rem = dbg_data->data_rem;
+
+  msg.reserve(data_rem.size() + data_sel.size());
+
+  // | -------------- Fill selected features first -------------- |
+  for (const auto &dato : dbg_data->data_sel) {
 
     aloam_slam::Signature sig;
 
     sig.cloud_idx   = dato.cloud_idx;
     sig.segment_idx = dato.segment_idx;
 
-    sig.selected   = dato.selected;
+    sig.selected   = true;
     sig.standalone = dato.standalone;
-
     sig.value      = dato.value;
-    sig.associated = false;
 
-    // TODO: compute eigenvalues also for non-selected features
-    if (sig.selected) {
+    // Find if the index has been associated to the map (and hence used in optimization)
+    const auto it = std::find_if(idx_eigvals_sel.cbegin(), idx_eigvals_sel.cend(),
+                                 [&](const std::pair<unsigned int, std::vector<double>> &x) { return x.first == dato.cloud_idx; });
 
-      const auto it = std::find_if(assoc_idx_eigvals.cbegin(), assoc_idx_eigvals.cend(),
-                                   [&](const std::pair<unsigned int, std::vector<double>> &x) { return x.first == dato.cloud_idx; });
+    if (it != idx_eigvals_sel.cend()) {
+      sig.associated = true;
 
-      if (it != assoc_idx_eigvals.cend()) {
-        sig.associated = true;
-
-        // Convert eigen values to float
-        sig.eigenvalues.reserve(it->second.size());
-        for (const double v : it->second) {
-          sig.eigenvalues.push_back(float(v));
-        }
+      // Convert eigen values to float
+      sig.eigenvalues.reserve(it->second.size());
+      for (const double v : it->second) {
+        sig.eigenvalues.push_back(float(v));
       }
-      /*   // Else: not-associated */
+
+    } else {
+      sig.associated = false;
     }
+
     msg.push_back(sig);
   }
+
+  // | -------------- Fill removed features second -------------- |
+  for (const auto &dato : dbg_data->data_rem) {
+
+    aloam_slam::Signature sig;
+
+    sig.cloud_idx   = dato.cloud_idx;
+    sig.segment_idx = dato.segment_idx;
+
+    sig.selected   = false;
+    sig.standalone = dato.standalone;
+    sig.value      = dato.value;
+
+    // Find if the index has been associated to the map (and hence used in optimization)
+    const auto it = std::find_if(idx_eigvals_rem.cbegin(), idx_eigvals_rem.cend(),
+                                 [&](const std::pair<unsigned int, std::vector<double>> &x) { return x.first == dato.cloud_idx; });
+
+    if (it != idx_eigvals_rem.cend()) {
+      sig.associated = true;
+
+      // Convert eigen values to float
+      sig.eigenvalues.reserve(it->second.size());
+      for (const double v : it->second) {
+        sig.eigenvalues.push_back(float(v));
+      }
+
+    } else {
+      sig.associated = false;
+    }
+
+    msg.push_back(sig);
+  }
+}
+/*//}*/
+
+/*//{ parseJacobianFromCeresProblem() */
+template <class T_pt>
+Eigen::MatrixXd AloamMapping<T_pt>::parseJacobianFromCeresProblem(ceres::Problem &problem) {
+
+  Eigen::MatrixXd J;
+
+  ceres::CRSMatrix J_ceres;
+  problem.Evaluate(ceres::Problem::EvaluateOptions(), nullptr, nullptr, nullptr, &J_ceres);
+
+  // Convert it to eigen matrix
+  J.resize(J_ceres.num_rows, J_ceres.num_cols);
+  J.setZero();
+
+  for (int row = 0; row < J_ceres.num_rows; ++row) {
+    const int start = J_ceres.rows.at(row);
+    const int end   = J_ceres.rows.at(row + 1) - 1;
+
+    for (int i = start; i <= end; i++) {
+      const int    col   = J_ceres.cols.at(i);
+      const double value = J_ceres.values.at(i);
+
+      J(row, col) = value;
+    }
+  }
+
+  return J;
 }
 /*//}*/
 
@@ -1203,14 +1356,12 @@ VoxelFilter<T_pt>::VoxelFilter(const feature_selection::FSCloudManagerPtr<T_pt> 
 
 /*//{ filter() */
 template <class T_pt>
-feature_selection::FSCloudManagerPtr<T_pt> VoxelFilter<T_pt>::filter(const feature_extraction::indices_ptr_t indices_removed) {
+feature_selection::FSCloudManagerPtr<T_pt> VoxelFilter<T_pt>::filter() {
 
   if (_empty || !_enabled) {
     return std::make_shared<feature_selection::FSCloudManager<T_pt>>(boost::make_shared<pcl::PointCloud<T_pt>>(),
                                                                      std::make_shared<feature_extraction::indices_t>());
   }
-
-  const bool return_removed = indices_removed != nullptr;
 
   // Voxelization map
   std::unordered_map<int, std::pair<size_t, T_pt>> voxel_map;
@@ -1246,11 +1397,6 @@ feature_selection::FSCloudManagerPtr<T_pt> VoxelFilter<T_pt>::filter(const featu
       mean.x += (p.x - mean.x) / it->second.first;
       mean.y += (p.y - mean.y) / it->second.first;
       mean.z += (p.z - mean.z) / it->second.first;
-
-    } else if (return_removed) {
-
-      // Store removed indices
-      indices_removed->push_back(idx);
     }
   }
 

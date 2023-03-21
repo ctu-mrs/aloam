@@ -90,7 +90,6 @@ struct CommonHandlers_t
   tf::Transform tf_lidar_in_fcu_frame;
 
   // Sensor parameters
-  int   samples_per_row;
   float frequency;
 
   // Scope timer
