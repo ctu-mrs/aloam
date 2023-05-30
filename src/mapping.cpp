@@ -798,6 +798,9 @@ bool AloamMapping<T_pt>::computeMapping(geometry_msgs::TransformStamped &tf_msg_
   ROS_INFO_THROTTLE(1.0, "[Aloam] Run time: %.1f ms (FE: %.0f | FS: %.0f | O: %.0f | M: %.0f)", diag_msg_out.ms_total, diag_msg_out.feature_extraction.ms_total,
                     diag_msg_out.feature_selection.ms_total, diag_msg_out.odometry.ms_total, diag_msg_out.mapping.ms_total);
 
+  _runtime_total += diag_msg_out.ms_total;
+  ROS_INFO_THROTTLE(5.0, "[Aloam] Average run time: %.1f ms", _runtime_total / diag_msg_out.frame);
+
   return true;
 }
 /*//}*/

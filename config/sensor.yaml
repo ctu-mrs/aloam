@@ -2,7 +2,9 @@
 # by default, these obtained by subscribing to the
 # MRS PCL Filter diagnostics
 sensor:
-  lines: 32 # [-]
-  samples: 512 # [-]
-  vertical_fov: 90 # [deg]
+  lines: 128 # [-]
+  samples: 1024 # [-]
+  vertical_fov: deg(90.0) # [deg]
   frequency: 10 # [Hz]
+  # point_type: "pandar_pointcloud::PointXYZIT" # 
+  point_type: "ouster_ros::Point" # 

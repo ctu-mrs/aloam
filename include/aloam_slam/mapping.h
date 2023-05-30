@@ -117,6 +117,7 @@ private:
   Eigen::Vector3d     _path_last_added_pos = Eigen::Vector3d::Identity();
 
   // member variables
+  float _runtime_total = 0.0f;
   float _scan_period_sec;
   float _mapping_frequency;
   float _map_publish_period;
