@@ -66,10 +66,14 @@
 
 #include <mrs_lib/profiler.h>
 #include <mrs_lib/transformer.h>
+#include <mrs_lib/attitude_converter.h>
 #include <mrs_msgs/Float64ArrayStamped.h>
 #include <mrs_msgs/PclToolsDiagnostics.h>
 
 typedef pcl::PointXYZI pt_I_t;
+
+namespace aloam_slam
+{
 
 struct CommonHandlers_t
 {
@@ -90,7 +94,9 @@ struct CommonHandlers_t
   tf::Transform tf_lidar_in_fcu_frame;
 
   // Sensor parameters
-  float frequency;
+  float  frequency;
+  size_t channels;
+  bool   has_ring = false;
 
   // Scope timer
   bool                                       enable_scope_timer;
@@ -99,6 +105,32 @@ struct CommonHandlers_t
   // Feature extraction
   bool overwrite_intensity_with_curvature = false;
 };
+
+/*//{ hasField() */
+inline bool hasField(const std::string& field, const sensor_msgs::PointCloud2::ConstPtr msg) {
+  for (const auto& f : msg->fields) {
+    if (f.name == field) {
+      return true;
+    }
+  }
+  return false;
+}
+/*//}*/
+
+/*//{ getFieldOffset() */
+template <typename T_pt>
+inline std::tuple<bool, std::size_t> getFieldOffset(const std::string& field_name) {
+  std::vector<pcl::PCLPointField> fields;
+  const int                       field_idx = pcl::getFieldIndex<T_pt>(field_name, fields);
+
+  if (field_idx == -1) {
+    return {false, 0};
+  }
+
+  const std::size_t field_offset = fields.at(field_idx).offset;
+  return {true, field_offset};
+}
+/*//}*/
 
 /*//{ cloudPointTtoCloudIPoint() */
 template <typename T_pt>
@@ -134,9 +166,8 @@ inline pcl::PointCloud<pt_I_t>::Ptr cloudPointTtoCloudIPoint(const boost::shared
 /*//}*/
 
 /*//{ publishCloud() */
-
 template <typename T_pt>
-inline void publishCloud(const ros::Publisher &pub, const feature_selection::FSCloudManagerPtr<T_pt> cloud_manager) {
+inline void publishCloud(const ros::Publisher& pub, const feature_selection::FSCloudManagerPtr<T_pt> cloud_manager) {
   if (cloud_manager && pub.getNumSubscribers() > 0) {
 
     boost::shared_ptr<pcl::PointCloud<T_pt>> cloud;
@@ -158,13 +189,14 @@ inline void publishCloud(const ros::Publisher &pub, const feature_selection::FSC
 }
 
 template <typename T_pt>
-inline void publishCloud(const ros::Publisher &pub, const boost::shared_ptr<pcl::PointCloud<T_pt>> cloud,
-                         const feature_extraction::indices_ptr_t indices = nullptr) {
-  if (cloud && pub.getNumSubscribers() > 0) {
+inline void publishCloud(const ros::Publisher& pub, const boost::shared_ptr<pcl::PointCloud<T_pt>> cloud, const feature_extraction::indices_ptr_t indices = nullptr) {
 
+  if (cloud && pub.getNumSubscribers() > 0) {
     const auto manager = std::make_shared<feature_selection::FSCloudManager<T_pt>>(cloud, indices);
     publishCloud(pub, manager);
   }
 }
 
 /*//}*/
+
+}  // namespace aloam_slam

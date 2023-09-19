@@ -29,7 +29,6 @@ private:
   const sensor_msgs::PointCloud2::Ptr pclToRos(const feature_selection::FSCloudManagerPtr<T_pt> manager);
 
   const tf2_msgs::TFMessage geomToTf2(const geometry_msgs::TransformStamped &geom_msg);
-  bool                      hasField(const std::string field, const sensor_msgs::PointCloud2::ConstPtr &msg);
 
   /* Rosbag processing */
   rosbag::Bag _bag_in_;
@@ -42,7 +41,7 @@ private:
 
   template <typename T_pt>
   void readWriteRosbag([[maybe_unused]] const std::string &rosbag_points_topic, const bool write_bag_out, const bool write_input_points,
-                       const bool write_pointclouds, const bool write_signatures);
+                       const bool write_pointclouds, const bool write_signatures, const bool convert_to_ouster_type);
 };
 
 //}
@@ -68,6 +67,7 @@ void AloamSlamRosbag::onInit() {
   handlers->param_loader->loadParam("odom_frame", handlers->frame_odom);
   handlers->param_loader->loadParam("map_frame", handlers->frame_map);
   handlers->param_loader->loadParam("sensor/frequency", handlers->frequency, -1.0f);
+  handlers->channels                     = size_t(handlers->param_loader->loadParamReusable<int>("sensor/lines", 0));
   const bool verbose                     = handlers->param_loader->loadParamReusable<bool>("verbose", false);
   const bool enable_profiler             = handlers->param_loader->loadParamReusable<bool>("enable_profiler", false);
   handlers->enable_scope_timer           = handlers->param_loader->loadParamReusable<bool>("scope_timer/enable", false);
@@ -129,8 +129,9 @@ void AloamSlamRosbag::onInit() {
 
   /*//{ Read point type */
   ROS_INFO("[AloamRosbag] Deriving point type by looking onto the first message.");
-  bool is_ouster = false;
-  bool is_pandar = false;
+  bool is_ouster   = false;
+  bool is_pandar   = false;
+  bool is_velodyne = false;
   for (auto it = bag_points_view->begin(); it != bag_points_view->end(); it++) {
     const sensor_msgs::PointCloud2::Ptr cloud_msg = it->instantiate<sensor_msgs::PointCloud2>();
     if (!cloud_msg) {
@@ -150,10 +151,18 @@ void AloamSlamRosbag::onInit() {
       ROS_INFO("[AloamRosbag] Derived point type: pandar_pointcloud::PointXYZIT.");
       is_pandar = true;
       break;
+      // Velodyne type (Velodyne)
+    } else if (hasField("i", cloud_msg) && !hasField("ring", cloud_msg)) {
+
+      ROS_INFO("[AloamRosbag] Derived point type: pcl::PointXYZI.");
+      is_velodyne = true;
+      break;
     }
   }
-  if (!is_ouster && !is_pandar) {
-    ROS_ERROR("[AloamRosbag] Could not derive the point type. The point type should be from: {ouster_ros::Point, pandar_pointcloud::PointXYZIT}.");
+
+  if (!is_ouster && !is_pandar && !is_velodyne) {
+    ROS_ERROR(
+        "[AloamRosbag] Could not derive the point type. The point type should be from: {ouster_ros::Point, pandar_pointcloud::PointXYZIT, pcl::PointXYZI}.");
     _bag_in_.close();
     if (write_bag_out) {
       _bag_out_.close();
@@ -207,10 +216,10 @@ void AloamSlamRosbag::onInit() {
   handlers->profiler              = std::make_shared<mrs_lib::Profiler>(nh_, "AloamRosbag", enable_profiler);
   handlers->scope_timer_logger    = std::make_shared<mrs_lib::ScopeTimerLogger>(time_logger_filepath, handlers->enable_scope_timer);
 
-  if (is_ouster) {
-    readWriteRosbag<ouster_ros::Point>(rosbag_points_topic, write_bag_out, write_input_points, write_pointclouds, write_signatures);
+  if (is_ouster || is_velodyne) {
+    readWriteRosbag<ouster_ros::Point>(rosbag_points_topic, write_bag_out, write_input_points, write_pointclouds, write_signatures, is_velodyne);
   } else if (is_pandar) {
-    readWriteRosbag<pandar_pointcloud::PointXYZIT>(rosbag_points_topic, write_bag_out, write_input_points, write_pointclouds, write_signatures);
+    readWriteRosbag<pandar_pointcloud::PointXYZIT>(rosbag_points_topic, write_bag_out, write_input_points, write_pointclouds, write_signatures, false);
   }
 
   if (shutdown_ros) {
@@ -251,7 +260,7 @@ tf::Transform AloamSlamRosbag::getStaticTf(const std::string &frame_from, const 
 /* readWriteRosbag() //{ */
 template <typename T_pt>
 void AloamSlamRosbag::readWriteRosbag([[maybe_unused]] const std::string &rosbag_points_topic, const bool write_bag_out, const bool write_input_points,
-                                      const bool write_pointclouds, const bool write_signatures) {
+                                      const bool write_pointclouds, const bool write_signatures, const bool convert_to_ouster_type) {
 
   const std::shared_ptr<feature_selection::FeatureSelection> feature_selection = std::make_shared<feature_selection::FeatureSelection>();
   feature_selection->initialize(*handlers->param_loader);
@@ -308,7 +317,7 @@ void AloamSlamRosbag::readWriteRosbag([[maybe_unused]] const std::string &rosbag
     }
 
     // | ---------------- Read message from rosbag ---------------- |
-    const sensor_msgs::PointCloud2::Ptr cloud_msg = it->instantiate<sensor_msgs::PointCloud2>();
+    sensor_msgs::PointCloud2::Ptr cloud_msg = it->instantiate<sensor_msgs::PointCloud2>();
     if (!cloud_msg) {
       ROS_WARN("[AloamRosbag] Failed to instantiate frame: %d/%ld", frame, frame_total_count);
 
@@ -406,17 +415,6 @@ const tf2_msgs::TFMessage AloamSlamRosbag::geomToTf2(const geometry_msgs::Transf
   tf2_msgs::TFMessage tf2_msg;
   tf2_msg.transforms = {geom_msg};
   return tf2_msg;
-}
-/*//}*/
-
-/*//{ hasField() */
-bool AloamSlamRosbag::hasField(const std::string field, const sensor_msgs::PointCloud2::ConstPtr &msg) {
-  for (auto f : msg->fields) {
-    if (f.name == field) {
-      return true;
-    }
-  }
-  return false;
 }
 /*//}*/
 

@@ -1410,14 +1410,18 @@ feature_selection::FSCloudManagerPtr<T_pt> VoxelFilter<T_pt>::filter() {
 // Explicit template instantiation
 template class VoxelFilter<ouster_ros::Point>;
 template class VoxelFilter<pandar_pointcloud::PointXYZIT>;
+/* template class VoxelFilter<pcl::PointXYZI>; */
 
 template struct MappingCloudManagersOut_t<ouster_ros::Point>;
 template struct MappingCloudManagersOut_t<pandar_pointcloud::PointXYZIT>;
+/* template struct MappingCloudManagersOut_t<pcl::PointXYZI>; */
 
 template struct MappingData<ouster_ros::Point>;
 template struct MappingData<pandar_pointcloud::PointXYZIT>;
+/* template struct MappingData<pcl::PointXYZI>; */
 
 template class AloamMapping<ouster_ros::Point>;
 template class AloamMapping<pandar_pointcloud::PointXYZIT>;
+/* template class AloamMapping<pcl::PointXYZI>; */
 
 }  // namespace aloam_slam

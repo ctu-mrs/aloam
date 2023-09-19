@@ -533,9 +533,11 @@ void AloamOdometry<T_pt>::setFrequency(const float frequency) {
 // Explicit template instantiation
 template struct OdometryData<ouster_ros::Point>;
 template struct OdometryData<pandar_pointcloud::PointXYZIT>;
+/* template struct OdometryData<pcl::PointXYZI>; */
 
 template class AloamOdometry<ouster_ros::Point>;
 template class AloamOdometry<pandar_pointcloud::PointXYZIT>;
+/* template class AloamOdometry<pcl::PointXYZI>; */
 
 }  // namespace aloam_slam
 
