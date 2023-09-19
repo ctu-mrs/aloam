@@ -67,11 +67,22 @@ void AloamSlamRosbag::onInit() {
   handlers->param_loader->loadParam("odom_frame", handlers->frame_odom);
   handlers->param_loader->loadParam("map_frame", handlers->frame_map);
   handlers->param_loader->loadParam("sensor/frequency", handlers->frequency, -1.0f);
+  handlers->param_loader->loadParam("sensor/vertical_fov", handlers->vfov, -1.0f);
+  handlers->param_loader->loadParam("sensor/vertical_fov_starting_from", handlers->vfov_begin, -1.0f);
   handlers->channels                     = size_t(handlers->param_loader->loadParamReusable<int>("sensor/lines", 0));
   const bool verbose                     = handlers->param_loader->loadParamReusable<bool>("verbose", false);
   const bool enable_profiler             = handlers->param_loader->loadParamReusable<bool>("enable_profiler", false);
   handlers->enable_scope_timer           = handlers->param_loader->loadParamReusable<bool>("scope_timer/enable", false);
   const std::string time_logger_filepath = handlers->param_loader->loadParamReusable<std::string>("scope_timer/log_filename", std::string(""));
+
+  handlers->vfov *= M_PI / 180.0;
+  /* 50/50 up/down */
+  if (handlers->vfov_begin < 0.0f) {
+    handlers->vfov_begin = -handlers->vfov / 2.0f;
+    /* shifted up/down (KITTI) */
+  } else {
+    handlers->vfov_begin *= M_PI / 180.0;
+  }
 
   if (verbose && ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Debug)) {
     ros::console::notifyLoggerLevelsChanged();
@@ -317,7 +328,7 @@ void AloamSlamRosbag::readWriteRosbag([[maybe_unused]] const std::string &rosbag
     }
 
     // | ---------------- Read message from rosbag ---------------- |
-    sensor_msgs::PointCloud2::Ptr cloud_msg = it->instantiate<sensor_msgs::PointCloud2>();
+    const sensor_msgs::PointCloud2::Ptr cloud_msg = it->instantiate<sensor_msgs::PointCloud2>();
     if (!cloud_msg) {
       ROS_WARN("[AloamRosbag] Failed to instantiate frame: %d/%ld", frame, frame_total_count);
 
@@ -327,6 +338,50 @@ void AloamSlamRosbag::readWriteRosbag([[maybe_unused]] const std::string &rosbag
 
     if (write_bag_out && write_input_points) {
       _bag_out_.write(it->getTopic(), stamp, cloud_msg);
+    }
+
+    // | --- convert to ouster if needed (ringless types) --- |
+    if (convert_to_ouster_type) {
+
+      ROS_WARN_ONCE("[AloamRosbag] Have to convert given point type to Ouster type first. If the program fails, check your sensor parameters (channels).");
+
+      const boost::shared_ptr<pcl::PointCloud<ouster_ros::Point>> cloud_os  = boost::make_shared<pcl::PointCloud<ouster_ros::Point>>();
+      const boost::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>     cloud_xyz = boost::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+
+      pcl::fromROSMsg(*cloud_msg, *cloud_xyz);
+      cloud_os->header   = cloud_xyz->header;
+      cloud_os->width    = cloud_xyz->width;
+      cloud_os->height   = cloud_xyz->height;
+      cloud_os->is_dense = cloud_xyz->is_dense;
+      cloud_os->points.reserve(cloud_xyz->size());
+
+      for (const auto &p_xyz : cloud_xyz->points) {
+
+        ouster_ros::Point p;
+        p.x = p_xyz.x;
+        p.y = p_xyz.y;
+        p.z = p_xyz.z;
+
+        const float p_norm = std::sqrt(p.x * p.x + p.y * p.y + p.z * p.z);
+
+        float elev = float(M_PI / 2.0f) - std::acos(p.z / p_norm) - handlers->vfov_begin;
+        if (elev < 0.0) {
+          elev = 0.0;
+        }
+        p.ring = std::floor(float(handlers->channels) * elev / handlers->vfov);
+
+        if (elev < 0.0) {
+          ROS_INFO("elev: %.2f, ring: %d", elev, p.ring);
+        }
+
+        // range in mm (needed for feature extraction)
+        p.range = p_norm * 1000.0f;
+
+        cloud_os->points.emplace_back(p);
+      }
+
+      // HACK: convert back to ROS
+      pcl::toROSMsg(*cloud_os, *cloud_msg);
     }
 
     // | -------------------- Extract features -------------------- |

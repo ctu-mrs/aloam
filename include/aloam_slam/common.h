@@ -95,6 +95,8 @@ struct CommonHandlers_t
 
   // Sensor parameters
   float  frequency;
+  float  vfov;
+  float  vfov_begin;
   size_t channels;
   bool   has_ring = false;
 
@@ -150,7 +152,7 @@ inline pcl::PointCloud<pt_I_t>::Ptr cloudPointTtoCloudIPoint(const boost::shared
 
   cloud_out->reserve(cloud_out->width);
   for (const auto idx : *indices) {
-    const auto &point = cloud_in->at(idx.val);
+    const auto& point = cloud_in->at(idx.val);
 
     pt_I_t point_I;
     point_I.x         = point.x;
@@ -189,7 +191,8 @@ inline void publishCloud(const ros::Publisher& pub, const feature_selection::FSC
 }
 
 template <typename T_pt>
-inline void publishCloud(const ros::Publisher& pub, const boost::shared_ptr<pcl::PointCloud<T_pt>> cloud, const feature_extraction::indices_ptr_t indices = nullptr) {
+inline void publishCloud(const ros::Publisher& pub, const boost::shared_ptr<pcl::PointCloud<T_pt>> cloud,
+                         const feature_extraction::indices_ptr_t indices = nullptr) {
 
   if (cloud && pub.getNumSubscribers() > 0) {
     const auto manager = std::make_shared<feature_selection::FSCloudManager<T_pt>>(cloud, indices);
