@@ -43,8 +43,8 @@ FeatureExtractor::FeatureExtractor(const ros::NodeHandle &parent_nh, mrs_lib::Pa
 /*//}*/
 
 /*//{ callbackLaserCloud() */
-void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs::PointCloud2> &sub) {
-  if (!is_initialized || !sub.hasMsg()) {
+void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2::ConstPtr laserCloudMsg) {
+  if (!is_initialized) {
     return;
   }
   if (!_has_required_parameters) {
@@ -53,7 +53,6 @@ void FeatureExtractor::callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs:
     return;
   }
 
-  const auto laserCloudMsg = sub.getMsg();
   if (laserCloudMsg->data.size() == 0) {
     ROS_WARN("[AloamFeatureExtractor]: Received empty laser cloud msg. Skipping frame.");
     return;

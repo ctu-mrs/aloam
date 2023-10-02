@@ -58,7 +58,7 @@ private:
   bool hasField(const std::string field, const sensor_msgs::PointCloud2::ConstPtr &msg);
 
   // callbacks
-  void callbackLaserCloud(mrs_lib::SubscribeHandler<sensor_msgs::PointCloud2> &laserCloudMsg);
+  void callbackLaserCloud(const sensor_msgs::PointCloud2::ConstPtr laserCloudMsg);
 };
 }  // namespace aloam_slam
 #endif
