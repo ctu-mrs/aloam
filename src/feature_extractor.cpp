@@ -256,12 +256,12 @@ void FeatureExtractor::callbackLaserCloud(const sensor_msgs::PointCloud2ConstPtr
 /*//}*/
 
 /*//{ callbackInputDataProcDiag */
-void FeatureExtractor::callbackInputDataProcDiag(const mrs_msgs::PclToolsDiagnosticsConstPtr &msg) {
+void FeatureExtractor::callbackInputDataProcDiag(const mrs_modules_msgs::PclToolsDiagnosticsConstPtr &msg) {
 
   if (_has_required_parameters) {
     _sub_input_data_processing_diag.shutdown();
     return;
-  } else if (msg->sensor_type != mrs_msgs::PclToolsDiagnostics::SENSOR_TYPE_LIDAR_3D) {
+  } else if (msg->sensor_type != mrs_modules_msgs::PclToolsDiagnostics::SENSOR_TYPE_LIDAR_3D) {
     return;
   }
 

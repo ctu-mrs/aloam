@@ -53,7 +53,7 @@
 #include <mrs_lib/attitude_converter.h>
 #include <mrs_lib/scope_timer.h>
 #include <mrs_msgs/Float64ArrayStamped.h>
-#include <mrs_msgs/PclToolsDiagnostics.h>
+#include <mrs_modules_msgs/PclToolsDiagnostics.h>
 
 #include "aloam_slam/common.h"
 #include "aloam_slam/tic_toc.h"
