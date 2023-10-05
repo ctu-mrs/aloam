@@ -35,6 +35,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf
   mrs_lib
   mrs_msgs
+  mrs_modules_msgs
   eigen_conversions
   tf_conversions
   tf2_eigen
@@ -58,7 +59,7 @@ set(LIBRARIES
   )
 
 catkin_package(
-  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs mrs_lib mrs_msgs eigen_conversions tf_conversions pcl_ros pcl_conversions pcl_msgs
+  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs mrs_lib mrs_msgs mrs_modules_msgs eigen_conversions tf_conversions pcl_ros pcl_conversions pcl_msgs
   LIBRARIES ${LIBRARIES}
   )
 
