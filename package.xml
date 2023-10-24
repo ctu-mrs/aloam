@@ -15,7 +15,7 @@
   <license>BSD</license>
 
   <author email="zhangji@cmu.edu">Ji Zhang</author>
-  
+
   <buildtool_depend>catkin</buildtool_depend>
 
   <depend>geometry_msgs</depend>
@@ -38,6 +38,7 @@
   <depend>pcl_conversions</depend>
   <depend>pcl_msgs</depend>
   <depend>ouster_ros</depend>
+  <depend>libceres-dev</depend>
 
   <export>
     <nodelet plugin="${prefix}/plugins.xml" />
