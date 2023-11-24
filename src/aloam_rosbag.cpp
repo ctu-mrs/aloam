@@ -25,6 +25,8 @@ public:
 private:
   std::shared_ptr<CommonHandlers_t> handlers;
 
+  double _delay_per_frame;
+
   template <typename T_pt>
   const sensor_msgs::PointCloud2::Ptr pclToRos(const feature_selection::FSCloudManagerPtr<T_pt> manager);
 
@@ -74,6 +76,8 @@ void AloamSlamRosbag::onInit() {
   const bool enable_profiler             = handlers->param_loader->loadParamReusable<bool>("enable_profiler", false);
   handlers->enable_scope_timer           = handlers->param_loader->loadParamReusable<bool>("scope_timer/enable", false);
   const std::string time_logger_filepath = handlers->param_loader->loadParamReusable<std::string>("scope_timer/log_filename", std::string(""));
+
+  handlers->param_loader->loadParam("delay_per_frame", _delay_per_frame, 0.0);
 
   handlers->vfov *= M_PI / 180.0;
   /* 50/50 up/down */
@@ -447,6 +451,8 @@ void AloamSlamRosbag::readWriteRosbag([[maybe_unused]] const std::string &rosbag
     }
 
     frame_valid_count++;
+
+    ros::Duration(_delay_per_frame).sleep();
   }
 
   _bag_in_.close();
