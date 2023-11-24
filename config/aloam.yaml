@@ -11,7 +11,7 @@ scan_line: -1 # [-]
 vertical_fov: -1 # [deg]
 sensor_frequency: -1 # [Hz]
 
-initialize_from_odom: false
+initialize_from_odom: true
 
 mapping:
   remap_tf: false

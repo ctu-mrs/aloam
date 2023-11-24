@@ -16,7 +16,7 @@
   <arg name="lidar_frame" default="$(arg UAV_NAME)/os_sensor" />
   <arg name="odom_frame" default="$(arg UAV_NAME)/aloam_odom_origin" />
   <arg name="map_frame" default="$(arg UAV_NAME)/aloam_origin" />
-  <arg name="init_frame" default="$(arg UAV_NAME)/gps_origin" />
+  <arg name="init_frame" default="$(arg fcu_frame)" />
 
   <arg     if="$(arg debug)" name="launch_prefix" value="debug_roslaunch" />
   <arg unless="$(arg debug)" name="launch_prefix" value="" />
