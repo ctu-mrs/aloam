@@ -49,7 +49,7 @@ private:
   void            callbackPointCloud(const sensor_msgs::PointCloud2::ConstPtr msg);
 
   ros::Subscriber _sub_input_data_processing_diag;
-  void            callbackInputDataProcDiag(const mrs_msgs::PclToolsDiagnosticsConstPtr &msg);
+  void            callbackInputDataProcDiag(const mrs_modules_msgs::PclToolsDiagnosticsConstPtr &msg);
 
   void publishRangeDiff(const boost::shared_ptr<pcl::PointCloud<T_pt>> cloud, const ros::Time &stamp);
 

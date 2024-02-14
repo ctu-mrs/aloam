@@ -55,7 +55,7 @@ void AloamSlam::onInit() {
   handlers->nh           = nh_;
   handlers->param_loader = std::make_shared<mrs_lib::ParamLoader>(nh_, "Aloam");
 
-  const std::string point_type = handlers->param_loader->loadParamReusable<std::string>("sensor/point_type");
+  const std::string point_type = handlers->param_loader->loadParamReusable2<std::string>("sensor/point_type");
 
   std::string time_logger_filepath;
   bool        verbose;

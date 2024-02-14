@@ -27,6 +27,7 @@
   <depend>tf</depend>
   <depend>mrs_lib</depend>
   <depend>mrs_msgs</depend>
+  <depend>mrs_modules_msgs</depend>
   <depend>eigen_conversions</depend>
   <depend>tf_conversions</depend>
   <depend>tf2_eigen</depend>

@@ -32,6 +32,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf
   mrs_lib
   mrs_msgs
+  mrs_modules_msgs
   eigen_conversions
   tf_conversions
   tf2_eigen
@@ -60,7 +61,7 @@ add_message_files(DIRECTORY msg FILES
 )
 
 generate_messages(DEPENDENCIES
-  geometry_msgs nav_msgs mrs_msgs pcl_msgs feature_extraction feature_selection ouster_ros sensor_msgs
+  geometry_msgs nav_msgs mrs_msgs mrs_modules_msgs pcl_msgs feature_extraction feature_selection ouster_ros sensor_msgs
 )
 
 set(LIBRARIES
@@ -68,7 +69,7 @@ set(LIBRARIES
   )
 
 catkin_package(
-  CATKIN_DEPENDS geometry_msgs sensor_msgs nav_msgs roscpp rospy mrs_lib mrs_msgs eigen_conversions tf_conversions pcl_ros pcl_conversions pcl_msgs feature_extraction feature_selection ouster_ros
+  CATKIN_DEPENDS geometry_msgs sensor_msgs nav_msgs roscpp rospy mrs_lib mrs_msgs mrs_modules_msgs eigen_conversions tf_conversions pcl_ros pcl_conversions pcl_msgs feature_extraction feature_selection ouster_ros
   LIBRARIES ${LIBRARIES}
   )
 

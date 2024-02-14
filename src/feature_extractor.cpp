@@ -149,9 +149,9 @@ void FeatureExtractor<T_pt>::callbackPointCloud(const sensor_msgs::PointCloud2::
 
 /*//{ callbackInputDataProcDiag */
 template <class T_pt>
-void FeatureExtractor<T_pt>::callbackInputDataProcDiag(const mrs_msgs::PclToolsDiagnosticsConstPtr& msg) {
+void FeatureExtractor<T_pt>::callbackInputDataProcDiag(const mrs_modules_msgs::PclToolsDiagnosticsConstPtr& msg) {
 
-  if (_has_required_parameters || msg->sensor_type != mrs_msgs::PclToolsDiagnostics::SENSOR_TYPE_LIDAR_3D) {
+  if (_has_required_parameters || msg->sensor_type != mrs_modules_msgs::PclToolsDiagnostics::SENSOR_TYPE_LIDAR_3D) {
     return;
   }
 

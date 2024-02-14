@@ -68,7 +68,7 @@
 #include <mrs_lib/transformer.h>
 #include <mrs_lib/attitude_converter.h>
 #include <mrs_msgs/Float64ArrayStamped.h>
-#include <mrs_msgs/PclToolsDiagnostics.h>
+#include <mrs_modules_msgs/PclToolsDiagnostics.h>
 
 typedef pcl::PointXYZI pt_I_t;
 

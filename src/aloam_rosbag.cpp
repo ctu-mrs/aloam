@@ -71,11 +71,11 @@ void AloamSlamRosbag::onInit() {
   handlers->param_loader->loadParam("sensor/frequency", handlers->frequency, -1.0f);
   handlers->param_loader->loadParam("sensor/vertical_fov", handlers->vfov, -1.0f);
   handlers->param_loader->loadParam("sensor/vertical_fov_starting_from", handlers->vfov_begin, -1.0f);
-  handlers->channels                     = size_t(handlers->param_loader->loadParamReusable<int>("sensor/lines", 0));
-  const bool verbose                     = handlers->param_loader->loadParamReusable<bool>("verbose", false);
-  const bool enable_profiler             = handlers->param_loader->loadParamReusable<bool>("enable_profiler", false);
-  handlers->enable_scope_timer           = handlers->param_loader->loadParamReusable<bool>("scope_timer/enable", false);
-  const std::string time_logger_filepath = handlers->param_loader->loadParamReusable<std::string>("scope_timer/log_filename", std::string(""));
+  handlers->channels                     = size_t(handlers->param_loader->loadParamReusable2<int>("sensor/lines", 0));
+  const bool verbose                     = handlers->param_loader->loadParamReusable2<bool>("verbose", false);
+  const bool enable_profiler             = handlers->param_loader->loadParamReusable2<bool>("enable_profiler", false);
+  handlers->enable_scope_timer           = handlers->param_loader->loadParamReusable2<bool>("scope_timer/enable", false);
+  const std::string time_logger_filepath = handlers->param_loader->loadParamReusable2<std::string>("scope_timer/log_filename", std::string(""));
 
   handlers->param_loader->loadParam("delay_per_frame", _delay_per_frame, 0.0);
 
@@ -95,10 +95,10 @@ void AloamSlamRosbag::onInit() {
   // Setup offline processing
   handlers->offline_run = true;
 
-  const bool        shutdown_ros  = handlers->param_loader->loadParamReusable<bool>("rosbag/shutdown_ros", false);
-  const bool        write_bag_out = handlers->param_loader->loadParamReusable<bool>("rosbag/write_out/enable");
-  const std::string bag_dir       = handlers->param_loader->loadParamReusable<std::string>("rosbag/directory");
-  const std::string bag_fn_in     = bag_dir + "/" + handlers->param_loader->loadParamReusable<std::string>("rosbag/filename");
+  const bool        shutdown_ros  = handlers->param_loader->loadParamReusable2<bool>("rosbag/shutdown_ros", false);
+  const bool        write_bag_out = handlers->param_loader->loadParamReusable2<bool>("rosbag/write_out/enable");
+  const std::string bag_dir       = handlers->param_loader->loadParamReusable2<std::string>("rosbag/directory");
+  const std::string bag_fn_in     = bag_dir + "/" + handlers->param_loader->loadParamReusable2<std::string>("rosbag/filename");
 
   /* //{ Open rosbags */
   try {
@@ -118,11 +118,11 @@ void AloamSlamRosbag::onInit() {
 
   if (write_bag_out) {
 
-    const std::string bag_fn_out = bag_dir + "/" + handlers->param_loader->loadParamReusable<std::string>("rosbag/write_out/filename");
-    rosbag_points_topic          = handlers->param_loader->loadParamReusable<std::string>("rosbag/points_topic");
-    write_input_points           = handlers->param_loader->loadParamReusable<bool>("rosbag/write_out/input_points");
-    write_pointclouds            = handlers->param_loader->loadParamReusable<bool>("rosbag/write_out/pointclouds");
-    write_signatures             = handlers->param_loader->loadParamReusable<bool>("rosbag/write_out/signatures");
+    const std::string bag_fn_out = bag_dir + "/" + handlers->param_loader->loadParamReusable2<std::string>("rosbag/write_out/filename");
+    rosbag_points_topic          = handlers->param_loader->loadParamReusable2<std::string>("rosbag/points_topic");
+    write_input_points           = handlers->param_loader->loadParamReusable2<bool>("rosbag/write_out/input_points");
+    write_pointclouds            = handlers->param_loader->loadParamReusable2<bool>("rosbag/write_out/pointclouds");
+    write_signatures             = handlers->param_loader->loadParamReusable2<bool>("rosbag/write_out/signatures");
 
     try {
       ROS_INFO("[AloamRosbag] Opening rosbag (%s) for writing.", bag_fn_out.c_str());
